@@ -18,7 +18,7 @@ const projects = [
 export default function Page() {
   return (
     <section>
-      <h1 className="mb-8 text-2xl font-semibold tracking-tighter">
+      <h1 className="mb-8 text-2xl font-seDamibold tracking-tighter">
         Dillon Shearer | Data Science & Analytics
       </h1>
 

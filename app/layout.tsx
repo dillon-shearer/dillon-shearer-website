@@ -15,6 +15,9 @@ export const metadata: Metadata = {
     template: '%s | Next.js Portfolio Starter',
   },
   description: 'This is my portfolio.',
+  icons: {
+    icon: '/ds_logo.png', // Make sure your PNG file is placed in the /public folder
+  },
   openGraph: {
     title: 'My Portfolio',
     description: 'This is my portfolio.',
