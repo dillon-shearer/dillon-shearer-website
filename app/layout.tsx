@@ -12,17 +12,17 @@ export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: {
     default: 'Data With Dillon',
-    template: '%s | Next.js Portfolio Starter',
+    template: '%s',
   },
-  description: 'This is my portfolio.',
+  description: '',
   icons: {
     icon: '/ds_logo.png', // Make sure your PNG file is placed in the /public folder
   },
   openGraph: {
-    title: 'My Portfolio',
-    description: 'This is my portfolio.',
+    title: 'Data With Dillon',
+    description: '',
     url: baseUrl,
-    siteName: 'My Portfolio',
+    siteName: 'Data With Dillon',
     locale: 'en_US',
     type: 'website',
   },
