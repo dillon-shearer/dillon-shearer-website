@@ -18,9 +18,16 @@ const projects = [
 export default function Page() {
   return (
     <section>
-      <h1 className="mb-8 text-2xl font-seDamibold tracking-tighter">
-        Dillon Shearer | Data Science & Analytics
-      </h1>
+      <div className="flex items-center mb-8">
+        <h1 className="text-2xl font-seDamibold tracking-tighter">
+          Dillon Shearer | Data Science & Analytics
+        </h1>
+        <img 
+          src="ds.jpg" 
+          alt="Dillon Shearer" 
+          className="w-32 h-32 rounded-full ml-4" 
+        />
+      </div>
 
       {/* About Me Section */}
       <div className="mb-8">
@@ -28,6 +35,66 @@ export default function Page() {
         <p className="mb-4">
           {`I am a dedicated data science and analytics professional focused on healthcare. I leverage advanced statistical techniques, machine learning, and data visualization to extract meaningful insights from complex health data. My goal is to transform raw data into strategic decisions that improve patient outcomes and optimize healthcare operations.`}
         </p>
+      </div>
+
+      {/* Condensed Skills & Technologies Section */}
+      <div className="mb-8">
+        <h2 className="text-xl font-medium">Skills & Technologies:</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ml-5 mt-4">
+          <div>
+            <p className="font-semibold">Programming:</p>
+            <ul className="list-disc ml-5">
+              <li>Python</li>
+              <li>SQL</li>
+              <li>R</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold">Analytics:</p>
+            <ul className="list-disc ml-5">
+              <li>Pandas</li>
+              <li>Matplotlib</li>
+              <li>Seaborn</li>
+              <li>Tableau</li>
+              <li>Power BI</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold">Machine Learning:</p>
+            <ul className="list-disc ml-5">
+              <li>Scikit-learn</li>
+              <li>TensorFlow</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold">Database & Integration:</p>
+            <ul className="list-disc ml-5">
+              <li>MySQL</li>
+              <li>PostgreSQL</li>
+              <li>SnowSQL</li>
+              <li>ETL Processes</li>
+              <li>Relational & Graph DBs</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold">Tools:</p>
+            <ul className="list-disc ml-5">
+              <li>Jupyter</li>
+              <li>Git</li>
+              <li>Excel</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold">Standards & Formats:</p>
+            <ul className="list-disc ml-5">
+              <li>SNOMED CT</li>
+              <li>LOINC</li>
+              <li>RxNorm</li>
+              <li>XML</li>
+              <li>JSON</li>
+            </ul>
+          </div>
+        </div>
       </div>
 
       {/* Projects Section */}
