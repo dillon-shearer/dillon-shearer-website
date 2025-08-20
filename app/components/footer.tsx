@@ -17,45 +17,47 @@ function ArrowIcon() {
 
 export default function Footer() {
   return (
-    <footer className="mb-16">
-      <ul className="font-sm mt-8 flex flex-col space-x-0 space-y-2 text-neutral-600 md:flex-row md:space-x-4 md:space-y-0 dark:text-neutral-300">
-        <li>
-          <a
-            className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100"
-            rel="noopener noreferrer"
-            target="_blank"
-            href="https://github.com/dillon-shearer"
-          >
-            <ArrowIcon />
-            <p className="ml-2 h-7">GitHub</p>
-          </a>
-        </li>
-        <li>
-          <a
-            className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100"
-            rel="noopener noreferrer"
-            target="_blank"
-            href="https://www.linkedin.com/in/dillonshearer/"
-          >
-            <ArrowIcon />
-            <p className="ml-2 h-7">LinkedIn</p>
-          </a>
-        </li>
-        <li>
-          <a
-            className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100"
-            rel="noopener noreferrer"
-            target="_blank"
-            href="/Dillon_Shearer_Resume.pdf"
-          >
-            <ArrowIcon />
-            <p className="ml-2 h-7">Resume</p>
-          </a>
-        </li>
-      </ul>
-      <p className="mt-8 text-neutral-600 dark:text-neutral-300">
-        © {new Date().getFullYear()} MIT Licensed
-      </p>
-    </footer>
+    <div className="max-w-7xl mx-auto px-6">
+      <footer className="mb-16 text-center">
+        <ul className="font-sm mt-8 flex flex-col space-x-0 space-y-2 text-neutral-600 md:flex-row md:space-x-4 md:space-y-0 dark:text-neutral-300 justify-center">
+          <li>
+            <a
+              className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100 justify-center"
+              rel="noopener noreferrer"
+              target="_blank"
+              href="https://github.com/dillon-shearer"
+            >
+              <ArrowIcon />
+              <p className="ml-2 h-7">GitHub</p>
+            </a>
+          </li>
+          <li>
+            <a
+              className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100 justify-center"
+              rel="noopener noreferrer"
+              target="_blank"
+              href="https://www.linkedin.com/in/dillonshearer/"
+            >
+              <ArrowIcon />
+              <p className="ml-2 h-7">LinkedIn</p>
+            </a>
+          </li>
+          <li>
+            <a
+              className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100 justify-center"
+              rel="noopener noreferrer"
+              target="_blank"
+              href="/Dillon_Shearer_Resume.pdf"
+            >
+              <ArrowIcon />
+              <p className="ml-2 h-7">Resume</p>
+            </a>
+          </li>
+        </ul>
+        <p className="mt-8 text-neutral-600 dark:text-neutral-300">
+          © {new Date().getFullYear()} MIT Licensed
+        </p>
+      </footer>
+    </div>
   )
 }
