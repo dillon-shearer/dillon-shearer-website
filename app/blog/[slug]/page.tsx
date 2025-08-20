@@ -1,7 +1,14 @@
 import { notFound } from 'next/navigation'
 import { CustomMDX } from '@/app/components/mdx'
-import { formatDate, getBlogPosts } from 'app/blog/utils'
-import { baseUrl } from 'app/sitemap'
+import { formatDate, getBlogPosts } from '@/app/blog/utils'
+import { baseUrl } from '@/app/sitemap'
+
+// Updated type for Next.js 15
+type Params = {
+  params: Promise<{
+    slug: string
+  }>
+}
 
 export async function generateStaticParams() {
   let posts = getBlogPosts()
@@ -11,8 +18,10 @@ export async function generateStaticParams() {
   }))
 }
 
-export function generateMetadata({ params }) {
-  let post = getBlogPosts().find((post) => post.slug === params.slug)
+// Make this async and await params
+export async function generateMetadata({ params }: Params) {
+  const { slug } = await params
+  let post = getBlogPosts().find((post) => post.slug === slug)
   if (!post) {
     return
   }
@@ -51,8 +60,10 @@ export function generateMetadata({ params }) {
   }
 }
 
-export default function Blog({ params }) {
-  let post = getBlogPosts().find((post) => post.slug === params.slug)
+// Make this async and await params
+export default async function Blog({ params }: Params) {
+  const { slug } = await params
+  let post = getBlogPosts().find((post) => post.slug === slug)
 
   if (!post) {
     notFound()
