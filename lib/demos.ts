@@ -1,26 +1,27 @@
-// lib/demos.ts
+// Update: lib/demos.ts
 import { Demo } from '@/types/demo'
 
-// Sample demo data - replace with your actual projects
 const demos: Demo[] = [
   {
-    slug: 'dashboard-analytics',
+    slug: 'materials-dashboard',
     title: 'Real-time Materials Dashboard',
-    description: 'A custom comprehensive dashboard showing real-time data with interactive charts, filters, and responsive design.',
-    image: '/images/demos/dashboard-preview.jpg',
-    techStack: ['Python', 'Matplotlib'],
+    description: 'Interactive inventory management system with real-time analytics, scenario planning, and predictive insights for manufacturing operations. Features dynamic KPIs, supply chain simulation, and responsive design.',
+    image: '/images/demos/materials-dashboard-preview.jpg',
+    techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Interactive Charts'],
     category: 'fullstack',
     complexity: 'advanced',
     buildTime: '2 weeks',
-    status: 'in-progress',
+    status: 'live',
     featured: true,
     githubUrl: 'https://github.com/dillon-shearer',
-    liveUrl: 'https://your-dashboard-demo.vercel.app',
+    liveUrl: undefined, // Will be the demo page itself
     highlights: [
-      'Real-time data streaming',
-      'Interactive data visualization',
-      'Responsive design',
-      'Performance optimized'
+      'Real-time inventory tracking with status indicators',
+      'Interactive scenario planning (stockouts, overstock, seasonal spikes)',
+      'Automated KPI calculations and trend analysis',
+      'Hidden control panel for comprehensive data manipulation',
+      'Responsive design optimized for mobile and desktop',
+      'Smooth animations and state transitions'
     ]
   }
 ]
