@@ -4,7 +4,7 @@ import DemoCard from '@/app/components/demo-card'
 import { getAllDemos } from '@/lib/demos'
 
 export const metadata: Metadata = {
-  title: 'Work Demos | Data With Dillon',
+  title: 'Work Demos | DWD',
   description: 'Interactive demonstrations of my development work and technical skills.',
   openGraph: {
     title: 'Work Demos | Data With Dillon',

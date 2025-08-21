@@ -11,7 +11,7 @@ import { baseUrl } from './sitemap'
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: {
-    default: 'Data With Dillon',
+    default: 'Home | DWD',
     template: '%s',
   },
   description: '',
