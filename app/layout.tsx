@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   description: '',
   icons: {
-    icon: '/ds_logo.png', // Make sure your PNG file is placed in the /public folder
+    icon: '/favicon.ico', // updated to favicon
   },
   openGraph: {
     title: 'Data With Dillon',
