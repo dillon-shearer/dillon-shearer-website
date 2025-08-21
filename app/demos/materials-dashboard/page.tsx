@@ -34,12 +34,6 @@ export default function MaterialsDashboardPage() {
       <div className="bg-black border-t border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="text-center">
-            <a
-              href="/demos"
-              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              ← Back to All Demos
-            </a>
           </div>
         </div>
       </div>
