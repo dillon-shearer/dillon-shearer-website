@@ -750,6 +750,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     unit: '',
     cost: 0
   })
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+
+  const handleDeleteMaterial = (materialId: string) => {
+    onDeleteMaterial(materialId)
+    setDeleteConfirm(null)
+  }
 
   const handleAddMaterial = () => {
     setAddError('')
@@ -984,7 +990,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-300">Current: {material.current.toLocaleString()}</span>
                       <button
-                        onClick={() => onDeleteMaterial(material.id)}
+                        onClick={() => setDeleteConfirm(material.id)}
                         className="text-red-400 hover:text-red-300 transition-colors p-1"
                         title="Delete Material"
                       >
@@ -1023,10 +1029,36 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
         </div>
+        </div>
+
+        {/* Delete Confirmation Modal */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-800 rounded-lg border border-gray-700 max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Confirm Delete</h3>
+              <p className="text-gray-300 mb-6">
+                Are you sure you want to delete "{materials.find(m => m.id === deleteConfirm)?.name}"? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteMaterial(deleteConfirm)}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                >
+                  I'm Sure
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  )
-}
+    )
+  }
 
 interface InfoPanelProps {
   isOpen: boolean
@@ -1555,15 +1587,30 @@ const Dashboard: React.FC = () => {
           <div className="flex gap-2">
             <button
               onClick={() => setInstructionsOpen(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
             >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               Instructions
             </button>
             <button
-              onClick={() => setCalculationsOpen(true)}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              onClick={() => downloadDatasetAsCSV(materials)}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
             >
-              Calculations
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download Dataset
+            </button>
+            <button
+              onClick={() => setCalculationsOpen(true)}
+              className="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 002 2z" />
+              </svg>
+              View Calculations
             </button>
           </div>
           </div>
@@ -1632,38 +1679,6 @@ const Dashboard: React.FC = () => {
         isOpen={instructionsOpen}
         onToggle={() => setInstructionsOpen(!instructionsOpen)}
       />
-      <div className="bg-black border-t border-gray-800">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <a
-              href="/demos"
-              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              ← Back to All Demos
-            </a>
-            <div className="flex gap-2">
-              <button
-                onClick={() => downloadDatasetAsCSV(materials)}
-                className="inline-flex items-center px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Download Dataset
-              </button>
-              <button
-                onClick={() => setCalculationsOpen(true)}
-                className="inline-flex items-center px-6 py-3 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                View Calculations
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Calculations Panel */}
       <CalculationsPanel
