@@ -2,21 +2,6 @@
 
 import { BlogPosts } from '@/app/components/posts'
 
-const projects = [
-  {
-    name: 'State-by-State Analysis of Chronic Condition Drug Utilization and Costs',
-    link: 'https://github.com/dillon-shearer/portfolio/tree/main/ChronicConditions_PrescriptionDrugs_Project'
-  },
-  {
-    name: '2022 Census SAIPE Poverty Data Analysis and Visualization',
-    link: 'https://github.com/dillon-shearer/portfolio/tree/main/census_Poverty'
-  },
-  {
-    name: 'Reddit TikTok Script',
-    link: 'https://github.com/dillon-shearer/portfolio/tree/main/reddit-tiktok-script'
-  }
-]
-
 export default function Page() {
   return (
     <div className="min-h-screen">

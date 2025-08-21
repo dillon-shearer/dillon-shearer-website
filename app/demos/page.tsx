@@ -18,7 +18,7 @@ export default function DemosPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-6 py-16">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header Section */}
         <div className="text-center mb-16">
           <h1 className="text-4xl font-bold mb-4">
@@ -37,23 +37,25 @@ export default function DemosPage() {
           ))}
         </div>
 
-        {/* Call to Action */}
-        <div className="text-center mt-16 p-8 bg-gray-50 dark:bg-gray-800 rounded-xl">
-          <h2 className="text-2xl font-bold mb-4">
-            Interested in working together?
-          </h2>
-          <p className="mb-6">
-            I'm always excited to discuss new opportunities and challenging projects.
-          </p>
-          <a
-            href="/contact"
-            className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Get in Touch
-            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </a>
+        {/* Call to Action - Now constrained to max-w-4xl to match content width */}
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mt-16 p-8 bg-gray-50 dark:bg-gray-800 rounded-xl">
+            <h2 className="text-2xl font-bold mb-4">
+              Interested in working together?
+            </h2>
+            <p className="mb-6">
+              I'm always excited to discuss new opportunities and challenging projects.
+            </p>
+            <a
+              href="/contact"
+              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Get in Touch
+              <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </a>
+          </div>
         </div>
       </div>
     </div>

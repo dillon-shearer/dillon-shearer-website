@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <div className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-6 py-16">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header Section */}
         <div className="text-center mb-16">
           <h1 className="text-4xl font-bold mb-4">
@@ -69,27 +69,27 @@ export default function AboutPage() {
               complex insights to diverse stakeholders.
             </p>
           </div>
-        </div>
 
-        {/* Call to Action */}
-        <div className="text-center mt-16 p-8 bg-gray-50 dark:bg-gray-800 rounded-xl">
-          <h2 className="text-2xl font-bold mb-4">
-            Let's Connect
-          </h2>
-          <p className="mb-6">
-            I'm always interested in discussing data challenges, especially in healthcare 
-            and life sciences. Whether you're looking for collaboration or just want to chat 
-            about data science, feel free to reach out.
-          </p>
-          <a
-            href="/contact"
-            className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Get in Touch
-            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </a>
+          {/* Call to Action - Now constrained to prose width */}
+          <div className="text-center mt-16 p-8 bg-gray-50 dark:bg-gray-800 rounded-xl prose prose-lg prose-gray dark:prose-invert mx-auto">
+            <h2 className="text-2xl font-bold mb-4">
+              Let's Connect
+            </h2>
+            <p className="mb-6">
+              I'm always interested in discussing data challenges, especially in healthcare 
+              and life sciences. Whether you're looking for collaboration or just want to chat 
+              about data science, feel free to reach out.
+            </p>
+            <a
+              href="/contact"
+              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Get in Touch
+              <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </a>
+          </div>
         </div>
       </div>
     </div>
