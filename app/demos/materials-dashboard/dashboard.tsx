@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react'
 interface Material {
   id: string
   name: string
-  category: string
+  category: 'Raw Materials' | 'Components' | 'Electronics' | 'Tools'
   current: number
   originalCurrent: number
   reorder: number
@@ -48,7 +48,7 @@ const generateTimeSeriesData = (months: number = 12): any[] => {
     const month = date.toISOString().substr(0, 7) // YYYY-MM format
     
     // Generate data for each material
-    const materials = ['ST001', 'AL002', 'PL003', 'SC004', 'BR005', 'WR006']
+    const materials = ['ST001', 'AL002', 'PL001', 'SC001', 'BR001B', 'WR001', 'DR001', 'LED01']
     
     materials.forEach(materialId => {
       // Base demand with seasonal variation
@@ -244,27 +244,136 @@ const convertToCSV = (data: any[]) => {
 }
 const generateMaterialsData = (): Material[] => {
   const materials = [
-  // Set up for realistic 83% fill rate (5 good, 1 warning)
-  { id: 'ST001', name: 'Steel Sheets', category: 'Raw Materials', current: 1250, reorder: 500, max: 2000, unit: 'tons', cost: 850 },
-  { id: 'AL002', name: 'Aluminum Rods', category: 'Raw Materials', current: 890, reorder: 300, max: 1500, unit: 'units', cost: 1200 },
-  { id: 'PL003', name: 'Plastic Pellets', category: 'Raw Materials', current: 450, reorder: 200, max: 800, unit: 'kg', cost: 450 },
-  { id: 'SC004', name: 'Screws M6', category: 'Components', current: 45000, reorder: 10000, max: 60000, unit: 'pieces', cost: 0.15 },
-  { id: 'BR005', name: 'Bearings 608', category: 'Components', current: 2300, reorder: 1000, max: 5000, unit: 'pieces', cost: 8.50 },
-  { id: 'WR006', name: 'Copper Wire', category: 'Raw Materials', current: 160, reorder: 150, max: 400, unit: 'meters', cost: 3.20 }, // Warning: 160 between 150-225
-]
+    // Raw Materials - Metals (20 items)
+    { id: 'ST001', name: 'Steel Sheets 4mm', category: 'Raw Materials', current: 1250, reorder: 500, max: 2000, unit: 'tons', cost: 850 },
+    { id: 'ST002', name: 'Steel Plates 10mm', category: 'Raw Materials', current: 890, reorder: 400, max: 1500, unit: 'tons', cost: 920 },
+    { id: 'ST003', name: 'Steel Beams I-Section', category: 'Raw Materials', current: 120, reorder: 50, max: 200, unit: 'pieces', cost: 45 },
+    { id: 'AL001', name: 'Aluminum Sheets 2mm', category: 'Raw Materials', current: 340, reorder: 150, max: 600, unit: 'sheets', cost: 28 },
+    { id: 'AL002', name: 'Aluminum Rods 25mm', category: 'Raw Materials', current: 890, reorder: 300, max: 1500, unit: 'meters', cost: 12 },
+    { id: 'AL003', name: 'Aluminum Tubing 50mm', category: 'Raw Materials', current: 220, reorder: 100, max: 400, unit: 'meters', cost: 18 },
+    { id: 'AL004', name: 'Aluminum Angle 40x40', category: 'Raw Materials', current: 180, reorder: 80, max: 300, unit: 'meters', cost: 15 },
+    { id: 'BR001', name: 'Brass Fittings Assorted', category: 'Raw Materials', current: 450, reorder: 200, max: 800, unit: 'pieces', cost: 8.5 },
+    { id: 'BR002', name: 'Brass Rods 15mm', category: 'Raw Materials', current: 120, reorder: 60, max: 250, unit: 'meters', cost: 22 },
+    { id: 'CU001', name: 'Copper Wire 14AWG', category: 'Raw Materials', current: 160, reorder: 150, max: 400, unit: 'meters', cost: 3.20 },
+    { id: 'CU002', name: 'Copper Sheets 1mm', category: 'Raw Materials', current: 85, reorder: 40, max: 150, unit: 'sheets', cost: 35 },
+    { id: 'CU003', name: 'Copper Tubing 12mm', category: 'Raw Materials', current: 300, reorder: 120, max: 500, unit: 'meters', cost: 8.90 },
+    { id: 'TI001', name: 'Titanium Bars Grade 2', category: 'Raw Materials', current: 12, reorder: 8, max: 25, unit: 'pieces', cost: 450 },
+    { id: 'TI002', name: 'Titanium Sheets 0.5mm', category: 'Raw Materials', current: 18, reorder: 10, max: 40, unit: 'sheets', cost: 320 },
+    { id: 'SS001', name: 'Stainless Steel 316L', category: 'Raw Materials', current: 290, reorder: 150, max: 500, unit: 'kg', cost: 8.20 },
+    { id: 'SS002', name: 'Stainless Steel Mesh', category: 'Raw Materials', current: 45, reorder: 25, max: 80, unit: 'sqm', cost: 95 },
+    { id: 'ZN001', name: 'Zinc Plates', category: 'Raw Materials', current: 180, reorder: 80, max: 300, unit: 'kg', cost: 4.50 },
+    { id: 'NI001', name: 'Nickel Alloy Sheets', category: 'Raw Materials', current: 25, reorder: 15, max: 50, unit: 'sheets', cost: 180 },
+    { id: 'MG001', name: 'Magnesium Bars', category: 'Raw Materials', current: 60, reorder: 30, max: 100, unit: 'pieces', cost: 75 },
+    { id: 'PB001', name: 'Lead Sheets 2mm', category: 'Raw Materials', current: 95, reorder: 50, max: 180, unit: 'sheets', cost: 12 },
 
-  const suppliers = ['AcmeCorp', 'MetalWorks Inc', 'PlastiCo', 'ComponentsPlus', 'WireWorld']
-  const leadTimes = [8, 12, 9, 15, 11, 13] // Varied lead times: 8-15 days range
+    // Raw Materials - Plastics & Polymers (15 items)
+    { id: 'PL001', name: 'PVC Pellets', category: 'Raw Materials', current: 450, reorder: 200, max: 800, unit: 'kg', cost: 4.50 },
+    { id: 'PL002', name: 'ABS Plastic Sheets', category: 'Raw Materials', current: 180, reorder: 80, max: 350, unit: 'sheets', cost: 25 },
+    { id: 'PL003', name: 'Polycarbonate Rods', category: 'Raw Materials', current: 95, reorder: 50, max: 180, unit: 'pieces', cost: 45 },
+    { id: 'PL004', name: 'Nylon Filament 3mm', category: 'Raw Materials', current: 120, reorder: 60, max: 220, unit: 'kg', cost: 18 },
+    { id: 'PL005', name: 'HDPE Sheets 5mm', category: 'Raw Materials', current: 200, reorder: 100, max: 400, unit: 'sheets', cost: 32 },
+    { id: 'PL006', name: 'PTFE Tape Rolls', category: 'Raw Materials', current: 340, reorder: 150, max: 600, unit: 'rolls', cost: 8.90 },
+    { id: 'PL007', name: 'Polyurethane Foam', category: 'Raw Materials', current: 85, reorder: 40, max: 150, unit: 'blocks', cost: 65 },
+    { id: 'PL008', name: 'Acrylic Sheets Clear', category: 'Raw Materials', current: 110, reorder: 60, max: 200, unit: 'sheets', cost: 48 },
+    { id: 'PL009', name: 'Silicone Rubber Sheets', category: 'Raw Materials', current: 75, reorder: 35, max: 140, unit: 'sheets', cost: 85 },
+    { id: 'PL010', name: 'Polypropylene Rods', category: 'Raw Materials', current: 160, reorder: 80, max: 280, unit: 'pieces', cost: 22 },
+    { id: 'RU001', name: 'Natural Rubber Sheets', category: 'Raw Materials', current: 95, reorder: 50, max: 180, unit: 'sheets', cost: 35 },
+    { id: 'RU002', name: 'Neoprene Gaskets', category: 'Raw Materials', current: 280, reorder: 120, max: 500, unit: 'pieces', cost: 4.20 },
+    { id: 'FG001', name: 'Fiberglass Cloth', category: 'Raw Materials', current: 45, reorder: 25, max: 80, unit: 'sqm', cost: 15 },
+    { id: 'CF001', name: 'Carbon Fiber Sheets', category: 'Raw Materials', current: 18, reorder: 10, max: 35, unit: 'sheets', cost: 280 },
+    { id: 'KV001', name: 'Kevlar Fabric', category: 'Raw Materials', current: 12, reorder: 8, max: 25, unit: 'sqm', cost: 120 },
+
+    // Components - Fasteners (20 items)
+    { id: 'SC001', name: 'Machine Screws M3x10', category: 'Components', current: 85000, reorder: 25000, max: 150000, unit: 'pieces', cost: 0.05 },
+    { id: 'SC002', name: 'Machine Screws M4x12', category: 'Components', current: 65000, reorder: 20000, max: 120000, unit: 'pieces', cost: 0.08 },
+    { id: 'SC003', name: 'Machine Screws M5x16', category: 'Components', current: 45000, reorder: 15000, max: 80000, unit: 'pieces', cost: 0.12 },
+    { id: 'SC004', name: 'Machine Screws M6x20', category: 'Components', current: 45000, reorder: 10000, max: 60000, unit: 'pieces', cost: 0.15 },
+    { id: 'SC005', name: 'Machine Screws M8x25', category: 'Components', current: 28000, reorder: 8000, max: 45000, unit: 'pieces', cost: 0.25 },
+    { id: 'BT001', name: 'Hex Bolts M6x30', category: 'Components', current: 15000, reorder: 5000, max: 25000, unit: 'pieces', cost: 0.35 },
+    { id: 'BT002', name: 'Hex Bolts M8x40', category: 'Components', current: 12000, reorder: 4000, max: 20000, unit: 'pieces', cost: 0.55 },
+    { id: 'BT003', name: 'Hex Bolts M10x50', category: 'Components', current: 8000, reorder: 2500, max: 15000, unit: 'pieces', cost: 0.85 },
+    { id: 'NT001', name: 'Hex Nuts M6', category: 'Components', current: 18000, reorder: 6000, max: 30000, unit: 'pieces', cost: 0.08 },
+    { id: 'NT002', name: 'Hex Nuts M8', category: 'Components', current: 14000, reorder: 4500, max: 25000, unit: 'pieces', cost: 0.12 },
+    { id: 'NT003', name: 'Hex Nuts M10', category: 'Components', current: 9000, reorder: 3000, max: 18000, unit: 'pieces', cost: 0.18 },
+    { id: 'WS001', name: 'Flat Washers M6', category: 'Components', current: 25000, reorder: 8000, max: 45000, unit: 'pieces', cost: 0.03 },
+    { id: 'WS002', name: 'Spring Washers M8', category: 'Components', current: 18000, reorder: 6000, max: 35000, unit: 'pieces', cost: 0.05 },
+    { id: 'WS003', name: 'Lock Washers M10', category: 'Components', current: 12000, reorder: 4000, max: 22000, unit: 'pieces', cost: 0.08 },
+    { id: 'RV001', name: 'Aluminum Rivets 4mm', category: 'Components', current: 35000, reorder: 12000, max: 60000, unit: 'pieces', cost: 0.02 },
+    { id: 'RV002', name: 'Steel Rivets 5mm', category: 'Components', current: 28000, reorder: 10000, max: 50000, unit: 'pieces', cost: 0.04 },
+    { id: 'AN001', name: 'Anchor Bolts M12', category: 'Components', current: 450, reorder: 150, max: 800, unit: 'pieces', cost: 2.85 },
+    { id: 'TH001', name: 'Threaded Rods M8x1m', category: 'Components', current: 280, reorder: 100, max: 500, unit: 'pieces', cost: 4.20 },
+    { id: 'ST001F', name: 'Self-Tapping Screws', category: 'Components', current: 22000, reorder: 8000, max: 40000, unit: 'pieces', cost: 0.06 },
+    { id: 'CL001', name: 'Hose Clamps 25-40mm', category: 'Components', current: 1200, reorder: 400, max: 2000, unit: 'pieces', cost: 1.25 },
+
+    // Components - Bearings & Motion (15 items)
+    { id: 'BR001B', name: 'Ball Bearings 608ZZ', category: 'Components', current: 2300, reorder: 1000, max: 5000, unit: 'pieces', cost: 8.50 },
+    { id: 'BR002B', name: 'Ball Bearings 6200', category: 'Components', current: 850, reorder: 300, max: 1500, unit: 'pieces', cost: 12.50 },
+    { id: 'BR003B', name: 'Ball Bearings 6300', category: 'Components', current: 480, reorder: 200, max: 900, unit: 'pieces', cost: 18.50 },
+    { id: 'BR004B', name: 'Thrust Bearings 51200', category: 'Components', current: 180, reorder: 80, max: 350, unit: 'pieces', cost: 25.50 },
+    { id: 'BR005B', name: 'Roller Bearings 32004', category: 'Components', current: 95, reorder: 40, max: 180, unit: 'pieces', cost: 45.50 },
+    { id: 'BU001', name: 'Bronze Bushings 12mm', category: 'Components', current: 650, reorder: 250, max: 1200, unit: 'pieces', cost: 3.80 },
+    { id: 'BU002', name: 'Plastic Bushings 15mm', category: 'Components', current: 890, reorder: 350, max: 1600, unit: 'pieces', cost: 1.20 },
+    { id: 'SH001', name: 'Steel Shafts 20mm x 1m', category: 'Components', current: 85, reorder: 35, max: 150, unit: 'pieces', cost: 28.50 },
+    { id: 'SH002', name: 'Stainless Shafts 15mm', category: 'Components', current: 120, reorder: 50, max: 220, unit: 'pieces', cost: 35.50 },
+    { id: 'CP001', name: 'Shaft Couplings 20mm', category: 'Components', current: 45, reorder: 20, max: 80, unit: 'pieces', cost: 85.50 },
+    { id: 'CP002', name: 'Flexible Couplings', category: 'Components', current: 35, reorder: 15, max: 65, unit: 'pieces', cost: 125.50 },
+    { id: 'KB001', name: 'Keystock 6x6mm', category: 'Components', current: 180, reorder: 80, max: 320, unit: 'meters', cost: 4.50 },
+    { id: 'KB002', name: 'Keystock 8x7mm', category: 'Components', current: 150, reorder: 60, max: 280, unit: 'meters', cost: 5.80 },
+    { id: 'LB001', name: 'Linear Bearings 12mm', category: 'Components', current: 220, reorder: 100, max: 400, unit: 'pieces', cost: 15.50 },
+    { id: 'PL001M', name: 'Pillow Block Bearings', category: 'Components', current: 65, reorder: 25, max: 120, unit: 'pieces', cost: 45.50 },
+
+    // Electronics & Electrical (20 items)
+    { id: 'WR001', name: 'Electrical Wire 12AWG', category: 'Electronics', current: 850, reorder: 300, max: 1500, unit: 'meters', cost: 2.20 },
+    { id: 'WR002', name: 'Electrical Wire 16AWG', category: 'Electronics', current: 1200, reorder: 400, max: 2000, unit: 'meters', cost: 1.80 },
+    { id: 'CB001', name: 'Ethernet Cable Cat6', category: 'Electronics', current: 450, reorder: 200, max: 800, unit: 'meters', cost: 1.25 },
+    { id: 'CB002', name: 'USB Cables Type-A', category: 'Electronics', current: 280, reorder: 120, max: 500, unit: 'pieces', cost: 4.50 },
+    { id: 'CN001', name: 'RJ45 Connectors', category: 'Electronics', current: 1800, reorder: 600, max: 3000, unit: 'pieces', cost: 0.85 },
+    { id: 'CN002', name: 'Power Connectors 2-Pin', category: 'Electronics', current: 650, reorder: 250, max: 1200, unit: 'pieces', cost: 2.20 },
+    { id: 'CN003', name: 'BNC Connectors', category: 'Electronics', current: 180, reorder: 80, max: 350, unit: 'pieces', cost: 8.50 },
+    { id: 'RS001', name: 'Resistors 1kΩ 1/4W', category: 'Electronics', current: 5000, reorder: 2000, max: 10000, unit: 'pieces', cost: 0.02 },
+    { id: 'RS002', name: 'Resistors 10kΩ 1/4W', category: 'Electronics', current: 4500, reorder: 1800, max: 8000, unit: 'pieces', cost: 0.02 },
+    { id: 'CP001E', name: 'Capacitors 100μF 25V', category: 'Electronics', current: 2200, reorder: 800, max: 4000, unit: 'pieces', cost: 0.15 },
+    { id: 'CP002E', name: 'Capacitors 1000μF 16V', category: 'Electronics', current: 850, reorder: 350, max: 1500, unit: 'pieces', cost: 0.45 },
+    { id: 'LED01', name: 'LED 5mm Red', category: 'Electronics', current: 1200, reorder: 500, max: 2500, unit: 'pieces', cost: 0.08 },
+    { id: 'LED02', name: 'LED 5mm Blue', category: 'Electronics', current: 980, reorder: 400, max: 2000, unit: 'pieces', cost: 0.12 },
+    { id: 'IC001', name: 'Arduino Uno R3', category: 'Electronics', current: 45, reorder: 20, max: 80, unit: 'pieces', cost: 25.50 },
+    { id: 'IC002', name: 'Raspberry Pi 4', category: 'Electronics', current: 28, reorder: 12, max: 50, unit: 'pieces', cost: 75.50 },
+    { id: 'SW001', name: 'Push Button Switches', category: 'Electronics', current: 650, reorder: 250, max: 1200, unit: 'pieces', cost: 1.85 },
+    { id: 'SW002', name: 'Toggle Switches SPDT', category: 'Electronics', current: 180, reorder: 80, max: 350, unit: 'pieces', cost: 4.20 },
+    { id: 'PS001', name: '12V Power Supplies 5A', category: 'Electronics', current: 85, reorder: 35, max: 150, unit: 'pieces', cost: 28.50 },
+    { id: 'BT001E', name: 'Lithium Batteries 3.7V', category: 'Electronics', current: 320, reorder: 150, max: 600, unit: 'pieces', cost: 8.50 },
+    { id: 'TR001', name: 'Transformers 24V 2A', category: 'Electronics', current: 65, reorder: 25, max: 120, unit: 'pieces', cost: 45.50 },
+
+    // Tools & Consumables (10 items)
+    { id: 'DR001', name: 'HSS Drill Bits Set', category: 'Tools', current: 18, reorder: 8, max: 35, unit: 'sets', cost: 85.50 },
+    { id: 'DR002', name: 'Carbide End Mills', category: 'Tools', current: 25, reorder: 12, max: 45, unit: 'pieces', cost: 45.50 },
+    { id: 'BL001', name: 'Saw Blades 10" 60T', category: 'Tools', current: 12, reorder: 6, max: 25, unit: 'pieces', cost: 35.50 },
+    { id: 'BL002', name: 'Cut-off Wheels 4.5"', category: 'Tools', current: 180, reorder: 80, max: 350, unit: 'pieces', cost: 2.85 },
+    { id: 'SF001', name: 'Sandpaper Assorted', category: 'Tools', current: 450, reorder: 200, max: 800, unit: 'sheets', cost: 0.85 },
+    { id: 'GL001', name: 'Work Gloves Medium', category: 'Tools', current: 85, reorder: 40, max: 150, unit: 'pairs', cost: 8.50 },
+    { id: 'GL002', name: 'Cut-Resistant Gloves', category: 'Tools', current: 45, reorder: 20, max: 80, unit: 'pairs', cost: 18.50 },
+    { id: 'MK001', name: 'Permanent Markers', category: 'Tools', current: 120, reorder: 50, max: 200, unit: 'pieces', cost: 1.85 },
+    { id: 'TP001', name: 'Masking Tape 1"', category: 'Tools', current: 280, reorder: 120, max: 500, unit: 'rolls', cost: 2.20 },
+    { id: 'CL001T', name: 'Cleaning Solvent', category: 'Tools', current: 65, reorder: 30, max: 120, unit: 'liters', cost: 12.50 }
+  ]
+
+  const suppliers = [
+    'AcmeCorp', 'MetalWorks Inc', 'PlastiCo', 'ComponentsPlus', 'WireWorld',
+    'Industrial Supply Co', 'Precision Parts Ltd', 'Global Materials', 'TechComponents Inc', 'Fastener Solutions'
+  ]
+  
+  const leadTimes = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21] // More varied lead times
 
   return materials.map((material, index) => ({
     ...material,
+    category: material.category as 'Raw Materials' | 'Components' | 'Electronics' | 'Tools',
     originalCurrent: material.current,
     status: (material.current <= material.reorder ? 'critical' : 
             material.current <= material.reorder * 1.5 ? 'warning' : 'good') as 'critical' | 'warning' | 'good',
     usageRate: Math.floor(Math.random() * 50) + 10,
     supplier: suppliers[Math.floor(Math.random() * suppliers.length)],
-    lastDelivery: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    leadTime: leadTimes[index] || (Math.floor(Math.random() * 8) + 8) // Lead times 8-15 days
+    lastDelivery: new Date(Date.now() - Math.random() * 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    leadTime: leadTimes[Math.floor(Math.random() * leadTimes.length)]
   }))
 }
 
@@ -421,7 +530,7 @@ const MaterialsCard: React.FC<MaterialsCardProps> = ({ material }) => {
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:border-gray-600 transition-colors min-h-[320px]">
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:border-gray-600 transition-colors min-h-[250px]">
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="font-semibold text-white">{material.name}</h3>
@@ -444,7 +553,7 @@ const MaterialsCard: React.FC<MaterialsCardProps> = ({ material }) => {
       </div>
 
       <div className="mb-4">
-        <div className="flex justify-between text-sm mb-2">
+        <div className="flex justify-between text-sm mb-1">
           <span className="text-gray-300">Current Stock</span>
           <span className="font-medium text-white">{material.current.toLocaleString()} {material.unit}</span>
         </div>
@@ -463,7 +572,7 @@ const MaterialsCard: React.FC<MaterialsCardProps> = ({ material }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-2 gap-1 text-sm">
         <div>
           <p className="text-gray-400">Daily Usage</p>
           <p className="font-medium text-white">{material.usageRate} {material.unit}</p>
@@ -717,6 +826,200 @@ const PerformanceMetrics: React.FC<{ materials: Material[] }> = ({ materials }) 
   )
 }
 
+interface MaterialCarouselProps {
+  materials: Material[]
+}
+
+const MaterialCarousel: React.FC<MaterialCarouselProps> = ({ materials }) => {
+  const [currentPage, setCurrentPage] = useState(0)
+  const [sortBy, setSortBy] = useState<'name' | 'status' | 'category' | 'current' | 'cost' | 'leadTime'>('category')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  
+  const itemsPerPage = 9 // 3 rows × 3 columns
+  
+  // Get unique categories for filter
+  const categories = ['all', ...Array.from(new Set(materials.map(m => m.category)))]
+  
+  // Filter and sort materials
+  const filteredMaterials = materials.filter(material => 
+    categoryFilter === 'all' || material.category === categoryFilter
+  )
+  
+  const sortedMaterials = [...filteredMaterials].sort((a, b) => {
+    let comparison = 0
+    
+    switch(sortBy) {
+      case 'name':
+        comparison = a.name.localeCompare(b.name)
+        break
+      case 'status':
+        const statusOrder = { 'critical': 0, 'warning': 1, 'good': 2 }
+        comparison = statusOrder[a.status] - statusOrder[b.status]
+        break
+      case 'category':
+        comparison = a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
+        break
+      case 'current':
+        comparison = a.current - b.current
+        break
+      case 'cost':
+        comparison = a.cost - b.cost
+        break
+      case 'leadTime':
+        comparison = a.leadTime - b.leadTime
+        break
+      default:
+        comparison = 0
+    }
+    
+    return sortOrder === 'asc' ? comparison : -comparison
+  })
+  
+  const totalPages = Math.ceil(sortedMaterials.length / itemsPerPage)
+  const currentMaterials = sortedMaterials.slice(
+    currentPage * itemsPerPage, 
+    (currentPage + 1) * itemsPerPage
+  )
+  
+  const handleSort = (newSortBy: typeof sortBy) => {
+    if (sortBy === newSortBy) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(newSortBy)
+      setSortOrder('asc')
+    }
+    setCurrentPage(0) // Reset to first page when sorting changes
+  }
+  
+  const nextPage = () => {
+    setCurrentPage(prev => (prev + 1) % totalPages)
+  }
+  
+  const prevPage = () => {
+    setCurrentPage(prev => (prev - 1 + totalPages) % totalPages)
+  }
+  
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [categoryFilter])
+  
+  return (
+    <div className="mb-8">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-white mb-2">Material Inventory</h2>
+          <p className="text-sm text-gray-400">
+            Showing {currentPage * itemsPerPage + 1}-{Math.min((currentPage + 1) * itemsPerPage, filteredMaterials.length)} of {filteredMaterials.length} items
+          </p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Category Filter */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-blue-500 transition-colors"
+          >
+            {categories.map(category => (
+              <option key={category} value={category}>
+                {category === 'all' ? 'All Categories' : category}
+              </option>
+            ))}
+          </select>
+          
+          {/* Sort Controls */}
+          <div className="flex gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) => handleSort(e.target.value as typeof sortBy)}
+              className="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-blue-500 transition-colors"
+            >
+              <option value="category">Sort by Category</option>
+              <option value="name">Sort by Name</option>
+              <option value="status">Sort by Status</option>
+              <option value="current">Sort by Stock Level</option>
+              <option value="cost">Sort by Cost</option>
+              <option value="leadTime">Sort by Lead Time</option>
+            </select>
+            
+            <button
+             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+             className="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 hover:bg-gray-600 transition-colors"
+             title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+           >
+             {sortOrder === 'asc' ? '↑' : '↓'}
+           </button>
+         </div>
+       </div>
+     </div>
+     
+     {/* Navigation */}
+     <div className="flex justify-between items-center mb-6">
+       <button
+         onClick={prevPage}
+         disabled={totalPages <= 1}
+         className="flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+       >
+         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+         </svg>
+         Previous
+       </button>
+       
+       <div className="text-white">
+         Page {currentPage + 1} of {totalPages}
+       </div>
+       
+       <button
+         onClick={nextPage}
+         disabled={totalPages <= 1}
+         className="flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+       >
+         Next
+         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+         </svg>
+       </button>
+     </div>
+     
+     {/* Materials Grid */}
+     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 min-h-[600px]">
+       {currentMaterials.map(material => (
+         <MaterialsCard 
+           key={material.id} 
+           material={material}
+         />
+       ))}
+       
+       {/* Fill empty slots to maintain grid structure */}
+       {Array.from({ length: itemsPerPage - currentMaterials.length }).map((_, index) => (
+         <div key={`empty-${index}`} className="invisible">
+           <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 min-h-[320px]" />
+         </div>
+       ))}
+     </div>
+     
+     {/* Status Legend */}
+     <div className="flex justify-center gap-6 mt-6 text-sm">
+       <div className="flex items-center gap-2">
+         <div className="w-3 h-3 bg-red-500 rounded" />
+         <span className="text-gray-300">Critical</span>
+       </div>
+       <div className="flex items-center gap-2">
+         <div className="w-3 h-3 bg-yellow-500 rounded" />
+         <span className="text-gray-300">Warning</span>
+       </div>
+       <div className="flex items-center gap-2">
+         <div className="w-3 h-3 bg-green-500 rounded" />
+         <span className="text-gray-300">Good</span>
+       </div>
+     </div>
+   </div>
+ )
+}
+
 interface ControlPanelProps {
   materials: Material[]
   onScenarioChange: (scenario: string) => void
@@ -740,7 +1043,16 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 }) => {
   const [showAddForm, setShowAddForm] = useState(false)
   const [addError, setAddError] = useState('')
-  const [newMaterial, setNewMaterial] = useState({
+  const [newMaterial, setNewMaterial] = useState<{
+    id: string
+    name: string
+    category: 'Raw Materials' | 'Components' | 'Electronics' | 'Tools'
+    current: number
+    reorder: number
+    max: number
+    unit: string
+    cost: number
+  }>({
     id: '',
     name: '',
     category: 'Raw Materials',
@@ -911,12 +1223,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                   />
                   <select
                     value={newMaterial.category}
-                    onChange={(e) => setNewMaterial({...newMaterial, category: e.target.value})}
+                    onChange={(e) => setNewMaterial({...newMaterial, category: e.target.value as 'Raw Materials' | 'Components' | 'Electronics' | 'Tools'})}
                     className="bg-gray-600 text-white px-3 py-2 rounded text-sm"
                   >
-                    <option>Raw Materials</option>
-                    <option>Components</option>
-                    <option>Finished Goods</option>
+                    <option value="Raw Materials">Raw Materials</option>
+                    <option value="Components">Components</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Tools">Tools</option>
                   </select>
                   <input
                     type="text"
@@ -1029,7 +1342,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
         </div>
-        </div>
+      </div>
 
         {/* Delete Confirmation Modal */}
         {deleteConfirm && (
@@ -1674,18 +1987,8 @@ const Dashboard: React.FC = () => {
           <PerformanceMetrics materials={materials} />
         </div>
 
-        {/* Materials Grid */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-white mb-4">Material Inventory</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {materials.map(material => (
-              <MaterialsCard 
-                key={material.id} 
-                material={material}
-              />
-            ))}
-          </div>
-        </div>
+        {/* Materials Carousel */}
+        <MaterialCarousel materials={materials} />
       </div>
 
       {/* Control Panel */}
@@ -1722,7 +2025,7 @@ const Dashboard: React.FC = () => {
       />
 
 
-      {/* Instructions Panel * /}
+     {/* Instructions Panel */}
       <InstructionsPanel
         isOpen={instructionsOpen}
         onToggle={() => setInstructionsOpen(!instructionsOpen)}
