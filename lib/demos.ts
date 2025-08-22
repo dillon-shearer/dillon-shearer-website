@@ -9,7 +9,7 @@ const demos: Demo[] = [
     image: '/images/demos/materials-dashboard-preview.jpg',
     techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Interactive Charts'],
     category: 'fullstack',
-    complexity: 'advanced',
+    complexity: 'intermediate',
     buildTime: '2 days',
     status: 'live',
     featured: true,
