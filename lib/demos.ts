@@ -26,7 +26,7 @@ const demos: Demo[] = [
   },
   {
   slug: 'health-crisis-detector',
-  title: 'Real-Time Health Crisis Detector',
+  title: 'Health Crisis Detector',
   description: 'AI-powered early warning system that monitors multiple live data streams to predict disease outbreaks and track public health sentiment in real-time. Combines social media analysis, search trends, and epidemiological data for advance outbreak predictions.',
   image: '/images/demos/health-crisis-detector-preview.jpg',
   techStack: [
@@ -51,7 +51,7 @@ const demos: Demo[] = [
   highlights: [
     'Real-time multi-source data ingestion from social media and health APIs',
     'Advanced NLP sentiment analysis on live health discussions',
-    'Predictive outbreak detection 1-2 weeks before official reports',
+    'Predictive outbreak detection before official reports',
     'Interactive geographic health sentiment mapping',
     'WebSocket-powered live dashboard with real-time alerts',
     'Multi-modal ML combining text analysis and time series forecasting',
