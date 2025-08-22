@@ -10,7 +10,7 @@ const demos: Demo[] = [
     techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Interactive Charts'],
     category: 'fullstack',
     complexity: 'advanced',
-    buildTime: '2 weeks',
+    buildTime: '2 days',
     status: 'live',
     featured: true,
     githubUrl: 'https://github.com/dillon-shearer',
@@ -21,7 +21,7 @@ const demos: Demo[] = [
       'Automated KPI calculations and trend analysis',
       'Hidden control panel for comprehensive data manipulation',
       'Responsive design optimized for mobile and desktop',
-      'Smooth animations and state transitions'
+      'Dynamically generated synthetic materials data'
     ]
   }
 ]
