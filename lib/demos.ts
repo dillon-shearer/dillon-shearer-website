@@ -11,7 +11,7 @@ const demos: Demo[] = [
     category: 'fullstack',
     complexity: 'advanced',
     buildTime: '2 weeks',
-    status: 'live',
+    status: 'in-progress',
     featured: true,
     githubUrl: 'https://github.com/dillon-shearer',
     liveUrl: undefined, // Will be the demo page itself

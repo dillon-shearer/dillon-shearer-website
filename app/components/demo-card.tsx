@@ -7,6 +7,8 @@ interface DemoCardProps {
 }
 
 export default function DemoCard({ demo }: DemoCardProps) {
+  const isInProgress = demo.status !== 'live'
+
   return (
     <div className="group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 overflow-hidden">
       {/* Gradient overlay for visual appeal */}
@@ -98,12 +100,18 @@ export default function DemoCard({ demo }: DemoCardProps) {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <Link
-            href={`/demos/${demo.slug}`}
-            className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg text-sm sm:text-base"
-          >
-            Explore Demo
-          </Link>
+          {isInProgress ? (
+            <div className="flex-1 bg-gray-400 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold text-sm sm:text-base cursor-not-allowed opacity-60">
+              Demo Coming Soon
+            </div>
+          ) : (
+            <Link
+              href={`/demos/${demo.slug}`}
+              className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 hover:shadow-lg text-sm sm:text-base"
+            >
+              Explore Demo
+            </Link>
+          )}
           
           <div className="flex gap-2 justify-center sm:justify-start">
             {demo.githubUrl && (
