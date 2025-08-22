@@ -1063,23 +1063,55 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 interface InfoPanelProps {
   isOpen: boolean
   onToggle: () => void
+  controlPanelOpen: boolean   // NEW
 }
 
-const InfoPanel: React.FC<InfoPanelProps> = ({ isOpen, onToggle }) => {
+
+const InfoPanel: React.FC<InfoPanelProps> = ({ isOpen, onToggle, controlPanelOpen }) => {
+  const [bubbleHidden, setBubbleHidden] = useState(false)
+
   if (!isOpen) {
+    // Don't show the info panel at all when control panel is open
+    if (controlPanelOpen) {
+      return null
+    }
+
     return (
-      <button
-        onClick={onToggle}
-        className="fixed bottom-6 left-6 bg-gray-700 text-white p-3 rounded-lg shadow-lg hover:bg-gray-600 transition-all duration-300 z-50"
-        title="Dashboard Info"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </button>
+      <div className="fixed right-6 bottom-20 z-50 flex flex-col items-end">
+        {/* Show bubble only if control panel is NOT open and hasn't been clicked away */}
+        {!controlPanelOpen && !bubbleHidden && (
+          <div 
+            className="relative mb-4 max-w-[240px] rounded-xl bg-white border border-gray-300 px-4 py-3 shadow-lg cursor-pointer"
+            onClick={() => setBubbleHidden(true)}
+          >
+            <p className="text-sm text-gray-800 leading-snug">
+              Thanks for looking! <span className="text-gray-500">- Dillon</span>
+            </p>
+            <svg
+              className="absolute bottom-[-8px] right-6"
+              width="16" height="10" viewBox="0 0 16 10"
+            >
+              <path d="M0,0 L8,10 L16,0" fill="white" stroke="#D1D5DB" strokeWidth="1" />
+            </svg>
+          </div>
+        )}
+
+        {/* Always show the (i) button */}
+        <button
+          onClick={onToggle}
+          className="bg-gray-700 text-white w-12 h-12 rounded-lg shadow-lg hover:bg-gray-600 transition-all duration-300 flex items-center justify-center"
+          title="Dashboard Info"
+          aria-label="Open dashboard info"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+      </div>
     )
   }
 
+  // Open state: the full "About This Dashboard" modal
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 z-40 flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-lg border border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -1127,7 +1159,6 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ isOpen, onToggle }) => {
 
           <div className="bg-gray-700 rounded-lg p-6">
             <h3 className="text-xl font-semibold text-white mb-6">Key Features & Design Decisions</h3>
-            
             <div className="space-y-6">
               <div>
                 <h4 className="font-medium text-white mb-2">Status Color Coding</h4>
@@ -1160,6 +1191,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ isOpen, onToggle }) => {
     </div>
   )
 }
+
 
 interface CalculationsPanelProps {
   isOpen: boolean
@@ -1657,24 +1689,40 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Control Panel */}
-      <ControlPanel
-        materials={materials}
-        onScenarioChange={handleScenarioChange}
-        onMaterialChange={handleMaterialChange}
-        onMaterialUpdate={handleMaterialUpdate}
-        onAddMaterial={handleAddMaterial}
-        onDeleteMaterial={handleDeleteMaterial}
-        isOpen={controlPanelOpen}
-        onToggle={() => setControlPanelOpen(!controlPanelOpen)}
-      />
+      {(!infoPanelOpen || controlPanelOpen) && (
+        <ControlPanel
+          materials={materials}
+          onScenarioChange={handleScenarioChange}
+          onMaterialChange={handleMaterialChange}
+          onMaterialUpdate={handleMaterialUpdate}
+          onAddMaterial={handleAddMaterial}
+          onDeleteMaterial={handleDeleteMaterial}
+          isOpen={controlPanelOpen}
+          onToggle={() =>
+            setControlPanelOpen(prev => {
+              const next = !prev
+              if (next) setInfoPanelOpen(false)
+              return next
+            })
+          }
+        />
+      )}
 
       {/* Info Panel */}
       <InfoPanel
         isOpen={infoPanelOpen}
-        onToggle={() => setInfoPanelOpen(!infoPanelOpen)}
+        onToggle={() =>
+          setInfoPanelOpen(prev => {
+            const next = !prev
+            if (next) setControlPanelOpen(false)
+            return next
+          })
+        }
+        controlPanelOpen={controlPanelOpen}
       />
 
-      {/* Instructions Panel */}
+
+      {/* Instructions Panel * /}
       <InstructionsPanel
         isOpen={instructionsOpen}
         onToggle={() => setInstructionsOpen(!instructionsOpen)}
