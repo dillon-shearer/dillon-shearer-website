@@ -13,7 +13,7 @@ const demos: Demo[] = [
     buildTime: '2 days',
     status: 'live',
     featured: true,
-    githubUrl: 'https://github.com/dillon-shearer/dillon-shearer-website/blob/main/app/demos/materials-dashboard/page.tsx',
+    githubUrl: 'https://github.com/dillon-shearer/dillon-shearer-website/blob/main/app/demos/materials-dashboard/dashboard.tsx',
     liveUrl: undefined, // Will be the demo page itself
     highlights: [
       'Real-time inventory tracking with status indicators',
