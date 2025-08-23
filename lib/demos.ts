@@ -1,4 +1,3 @@
-// Update: lib/demos.ts
 import { Demo } from '@/types/demo'
 
 const demos: Demo[] = [
@@ -25,40 +24,27 @@ const demos: Demo[] = [
     ]
   },
   {
-  slug: 'health-crisis-detector',
-  title: 'Health Crisis Detector',
-  description: 'AI-powered early warning system that monitors multiple live data streams to predict disease outbreaks and track public health sentiment in real-time. Combines social media analysis, search trends, and epidemiological data for advance outbreak predictions.',
-  image: '/images/demos/health-crisis-detector-preview.jpg',
-  techStack: [
-    'Python',
-    'FastAPI', 
-    'Apache Kafka',
-    'Time Series Analysis',
-    'Twitter API',
-    'Google Trends API',
-    'WebSocket',
-    'React',
-    'Real-time NLP',
-    'Anomaly Detection'
-  ],
-  category: 'data-viz',
-  complexity: 'advanced',
-  buildTime: '4 weeks',
-  status: 'in-progress',
-  featured: true,
-  githubUrl: undefined, // Will be added when development starts
-  liveUrl: undefined,   // Will be added when deployed
-  highlights: [
-    'Real-time multi-source data ingestion from social media and health APIs',
-    'Advanced NLP sentiment analysis on live health discussions',
-    'Predictive outbreak detection before official reports',
-    'Interactive geographic health sentiment mapping',
-    'WebSocket-powered live dashboard with real-time alerts',
-    'Multi-modal ML combining text analysis and time series forecasting',
-    'Early warning system for emerging health concerns in communities',
-    'Integration with CDC data and epidemiological trend analysis'
-  ]
-}
+    slug: 'health-dashboards',
+    title: 'Multi-Platform Health Analytics',
+    description: 'Interactive health data visualization across 4 major BI platforms using CDC PLACES data. Same dataset, four different stakeholder perspectives - demonstrating versatility across enterprise analytics tools.',
+    image: '/images/demos/health-dashboards-preview.jpg',
+    techStack: ['Power BI', 'Tableau', 'Looker Studio', 'Amazon QuickSight', 'CDC PLACES Data', 'Next.js'],
+    category: 'data-viz',
+    complexity: 'intermediate',
+    buildTime: '4 days',
+    status: 'in-progress',
+    featured: true,
+    githubUrl: undefined,
+    liveUrl: undefined,
+    highlights: [
+      'Same healthcare dataset across 4 different BI platforms',
+      'Tailored dashboards for different business stakeholders',
+      'Real CDC community health data with geographic analysis',
+      'Embedded live dashboards with seamless platform switching',
+      'Demonstrates proficiency across major enterprise BI tools',
+      'Interactive filtering and drill-down capabilities'
+    ]
+  }
 ]
 
 export function getAllDemos(): Demo[] {
