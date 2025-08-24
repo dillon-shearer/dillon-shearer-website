@@ -22,28 +22,6 @@ const demos: Demo[] = [
       'Responsive design optimized for mobile and desktop',
       'Dynamically generated synthetic materials data'
     ]
-  },
-  {
-    slug: 'health-dashboards',
-    title: 'Multi-Platform Health Analytics',
-    description: 'Interactive health data visualization across 4 major BI platforms using CDC PLACES data. Same dataset, four different stakeholder perspectives - demonstrating versatility across enterprise analytics tools.',
-    image: '/images/demos/health-dashboards-preview.jpg',
-    techStack: ['Power BI', 'Tableau', 'Looker Studio', 'Amazon QuickSight', 'CDC PLACES Data', 'Next.js'],
-    category: 'data-viz',
-    complexity: 'intermediate',
-    buildTime: '4 days',
-    status: 'in-progress',
-    featured: true,
-    githubUrl: undefined,
-    liveUrl: undefined,
-    highlights: [
-      'Same healthcare dataset across 4 different BI platforms',
-      'Tailored dashboards for different business stakeholders',
-      'Real CDC community health data with geographic analysis',
-      'Embedded live dashboards with seamless platform switching',
-      'Demonstrates proficiency across major enterprise BI tools',
-      'Interactive filtering and drill-down capabilities'
-    ]
   }
 ]
 
