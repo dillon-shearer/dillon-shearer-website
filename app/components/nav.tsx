@@ -13,9 +13,12 @@ const navItems = {
   '/demos': {
     name: 'Demos',
   },
+  '/jupyter': {
+    name: 'Notebooks',
+  },
   '/contact': {
     name: 'Contact',
-  },
+  }
 }
 
 export function Navbar() {
