@@ -1,6 +1,7 @@
 // app/page.tsx
 
 import { BlogPosts } from '@/app/components/posts'
+import GitHubWidget from '@/app/components/github-widget'
 
 export default function Page() {
   return (
@@ -88,6 +89,9 @@ export default function Page() {
               </div>
             </div>
           </div>
+
+          {/* GitHub Widget */}
+          <GitHubWidget />
         </div>
       </div>
     </div>
