@@ -4,34 +4,21 @@ import Link from 'next/link'
 import { useState } from 'react'
 
 const navItems = {
-  '/': {
-    name: 'Home',
-  },
-  '/about': {
-    name: 'About Me',
-  },
-  '/blog': {
-    name: 'Blog',
-  },
-  '/demos': {
-    name: 'Demos',
-  },
-  '/jupyter': {
-    name: 'Notebooks',
-  },
-  '/contact': {
-    name: 'Contact',
-  },
+  '/': { name: 'Home' },
+  '/about': { name: 'About Me' },
+  '/blog': { name: 'Blog' },
+  '/demos': { name: 'Demos' },
+  '/jupyter': { name: 'Notebooks' },
+  '/contact': { name: 'Contact' },
 }
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
   const entries = Object.entries(navItems)
 
   return (
     <div className="max-w-7xl mx-auto px-6">
-      <aside className="mb-8 tracking-tight text-center">
+      <aside className="mb-1 tracking-tight text-center">
         <div className="lg:sticky lg:top-20">
           {/* Desktop Navigation */}
           <nav
@@ -66,7 +53,6 @@ export function Navbar() {
                   ${mobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-2'}
                 `}
               />
-              
               {/* Middle line */}
               <span
                 className={`
@@ -74,7 +60,6 @@ export function Navbar() {
                   ${mobileMenuOpen ? 'opacity-0 scale-0' : 'opacity-100 scale-100'}
                 `}
               />
-              
               {/* Bottom line */}
               <span
                 className={`
@@ -82,7 +67,6 @@ export function Navbar() {
                   ${mobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-2'}
                 `}
               />
-
               {/* Subtle hover effect circle */}
               <div className="absolute inset-0 rounded-full bg-gray-200 dark:bg-gray-700 scale-0 group-hover:scale-100 transition-transform duration-200 ease-out -z-10 opacity-20" />
             </button>
@@ -93,30 +77,37 @@ export function Navbar() {
                 relative overflow-hidden transition-all duration-300 ease-in-out mx-auto w-full max-w-md
                 rounded-lg border border-gray-200 dark:border-gray-700
                 ring-1 ring-blue-200/60 dark:ring-blue-500/30
-                ${mobileMenuOpen ? 'max-h-80 opacity-100 mt-4' : 'max-h-0 opacity-0 mt-0'}
+                ${mobileMenuOpen ? 'max-h-[90vh] opacity-100 mt-6' : 'max-h-0 opacity-0 mt-0'}
               `}
             >
-              {/* Even top and bottom padding */}
-              <nav className="pt-6 pb-6 bg-white dark:bg-black shadow-lg backdrop-blur-sm">
-                <div className="flex flex-col space-y-1">
-                  {entries.map(([path, { name }], index) => (
-                    <Link
-                      key={path}
-                      href={path}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`
-                        transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
-                        hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base
-                        transform transition-all duration-300
-                        ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
-                      `}
-                      style={{
-                        transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms'
-                      }}
-                    >
-                      {name}
-                    </Link>
-                  ))}
+              {/* Even top/bottom spacing via spacers */}
+              <nav className="bg-white dark:bg-black shadow-lg backdrop-blur-sm">
+                <div className="flex flex-col">
+                  {/* Equal top spacer */}
+                  <div className="h-6" />
+
+                  {/* Menu items */}
+                  <div className="flex flex-col space-y-4">
+                    {entries.map(([path, { name }], index) => (
+                      <Link
+                        key={path}
+                        href={path}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`
+                          transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
+                          hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base text-center
+                          transform transition-all duration-300
+                          ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
+                        `}
+                        style={{ transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms' }}
+                      >
+                        {name}
+                      </Link>
+                    ))}
+                  </div>
+
+                  {/* Equal bottom spacer */}
+                  <div className="h-6" />
                 </div>
               </nav>
             </div>
