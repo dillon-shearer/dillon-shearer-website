@@ -96,8 +96,8 @@ export function Navbar() {
                 ${mobileMenuOpen ? 'max-h-80 opacity-100 mt-4' : 'max-h-0 opacity-0 mt-0'}
               `}
             >
-              {/* Keep content borderless so outline isn't clipped */}
-              <nav className="py-4 bg-white dark:bg-black shadow-lg backdrop-blur-sm">
+              {/* Even top and bottom padding */}
+              <nav className="pt-6 pb-6 bg-white dark:bg-black shadow-lg backdrop-blur-sm">
                 <div className="flex flex-col space-y-1">
                   {entries.map(([path, { name }], index) => (
                     <Link
@@ -109,7 +109,6 @@ export function Navbar() {
                         hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base
                         transform transition-all duration-300
                         ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
-                        ${index === entries.length - 1 ? 'mb-2' : ''}  /* extra bottom buffer for Contact */
                       `}
                       style={{
                         transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms'
