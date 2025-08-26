@@ -2,6 +2,7 @@
 
 import { BlogPosts } from '@/app/components/posts'
 import GitHubWidget from '@/app/components/github-widget'
+import HiddenSnakeButton from '@/app/components/snake-game'
 
 export default function Page() {
   return (
@@ -89,9 +90,11 @@ export default function Page() {
               </div>
             </div>
           </div>
-
           {/* GitHub Widget */}
           <GitHubWidget />
+
+          {/* Hidden Snake Game Easter Egg */}
+          <HiddenSnakeButton />
         </div>
       </div>
     </div>
