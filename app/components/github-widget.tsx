@@ -25,7 +25,7 @@ export default function GitHubWidget() {
     const fetchCommits = async () => {
       try {
         const response = await fetch(
-          `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO_NAME}/commits?per_page=10`,
+          `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO_NAME}/commits?per_page=1000`,
           {
             headers: {
               'Accept': 'application/vnd.github.v3+json',
