@@ -53,28 +53,77 @@ export function Navbar() {
 
           {/* Mobile Navigation */}
           <div className="md:hidden">
-            {/* Hamburger Button */}
+            {/* Animated Hamburger/X Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="flex flex-col items-center justify-center w-8 h-8 space-y-1"
+              className="relative flex flex-col items-center justify-center w-10 h-10 group focus:outline-none"
               aria-label="Toggle menu"
             >
-              <span className={`w-6 h-0.5 bg-current transition-all duration-300 ${mobileMenuOpen ? 'rotate-45 translate-y-2' : ''}`} />
-              <span className={`w-6 h-0.5 bg-current transition-all duration-300 ${mobileMenuOpen ? 'opacity-0' : ''}`} />
-              <span className={`w-6 h-0.5 bg-current transition-all duration-300 ${mobileMenuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
+              {/* Top line */}
+              <span 
+                className={`
+                  block absolute h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
+                  ${mobileMenuOpen 
+                    ? 'rotate-45 translate-y-0' 
+                    : '-translate-y-2'
+                  }
+                `}
+              />
+              
+              {/* Middle line */}
+              <span 
+                className={`
+                  block absolute h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
+                  ${mobileMenuOpen 
+                    ? 'opacity-0 scale-0' 
+                    : 'opacity-100 scale-100'
+                  }
+                `}
+              />
+              
+              {/* Bottom line */}
+              <span 
+                className={`
+                  block absolute h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
+                  ${mobileMenuOpen 
+                    ? '-rotate-45 translate-y-0' 
+                    : 'translate-y-2'
+                  }
+                `}
+              />
+              
+              {/* Subtle hover effect circle */}
+              <div className="absolute inset-0 rounded-full bg-gray-200 dark:bg-gray-700 scale-0 group-hover:scale-100 transition-transform duration-200 ease-out -z-10 opacity-20" />
             </button>
 
-            {/* Mobile Menu */}
-            {mobileMenuOpen && (
-              <nav className="mt-4 py-4 bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+            {/* Mobile Menu with slide animation */}
+            <div className={`
+              relative overflow-hidden transition-all duration-300 ease-in-out
+              ${mobileMenuOpen 
+                ? 'max-h-80 opacity-100 mt-4' 
+                : 'max-h-0 opacity-0 mt-0'
+              }
+            `}>
+              <nav className="py-4 bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg backdrop-blur-sm">
                 <div className="flex flex-col space-y-1">
-                  {Object.entries(navItems).map(([path, { name }]) => {
+                  {Object.entries(navItems).map(([path, { name }], index) => {
                     return (
                       <Link
                         key={path}
                         href={path}
                         onClick={() => setMobileMenuOpen(false)}
-                        className="transition-all hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base"
+                        className={`
+                          transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
+                          hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base
+                          transform transition-all duration-300
+                          ${mobileMenuOpen 
+                            ? 'translate-x-0 opacity-100' 
+                            : 'translate-x-4 opacity-0'
+                          }
+                        `}
+                        style={{
+                          transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms'
+                        }}
                       >
                         {name}
                       </Link>
@@ -82,7 +131,7 @@ export function Navbar() {
                   })}
                 </div>
               </nav>
-            )}
+            </div>
           </div>
         </div>
       </aside>
