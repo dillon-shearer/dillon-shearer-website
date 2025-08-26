@@ -56,55 +56,48 @@ export function Navbar() {
             {/* Animated Hamburger/X Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="relative flex flex-col items-center justify-center w-10 h-10 group focus:outline-none"
+              className="relative mx-auto block w-10 h-10 group focus:outline-none"
               aria-label="Toggle menu"
             >
               {/* Top line */}
-              <span 
+              <span
                 className={`
-                  block absolute h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
-                  ${mobileMenuOpen 
-                    ? 'rotate-45 translate-y-0' 
-                    : '-translate-y-2'
-                  }
+                  block absolute left-1/2 -translate-x-1/2 h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
+                  ${mobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-2'}
                 `}
               />
               
               {/* Middle line */}
-              <span 
+              <span
                 className={`
-                  block absolute h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
-                  ${mobileMenuOpen 
-                    ? 'opacity-0 scale-0' 
-                    : 'opacity-100 scale-100'
-                  }
+                  block absolute left-1/2 -translate-x-1/2 h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
+                  ${mobileMenuOpen ? 'opacity-0 scale-0' : 'opacity-100 scale-100'}
                 `}
               />
               
               {/* Bottom line */}
-              <span 
+              <span
                 className={`
-                  block absolute h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
-                  ${mobileMenuOpen 
-                    ? '-rotate-45 translate-y-0' 
-                    : 'translate-y-2'
-                  }
+                  block absolute left-1/2 -translate-x-1/2 h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out
+                  ${mobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-2'}
                 `}
               />
-              
+
               {/* Subtle hover effect circle */}
               <div className="absolute inset-0 rounded-full bg-gray-200 dark:bg-gray-700 scale-0 group-hover:scale-100 transition-transform duration-200 ease-out -z-10 opacity-20" />
             </button>
 
             {/* Mobile Menu with slide animation */}
-            <div className={`
-              relative overflow-hidden transition-all duration-300 ease-in-out
-              ${mobileMenuOpen 
-                ? 'max-h-80 opacity-100 mt-4' 
-                : 'max-h-0 opacity-0 mt-0'
-              }
-            `}>
-              <nav className="py-4 bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg backdrop-blur-sm">
+            <div
+              className={`
+                relative overflow-hidden transition-all duration-300 ease-in-out mx-auto w-full max-w-md
+                rounded-lg border border-gray-200 dark:border-gray-700
+                ring-1 ring-blue-200/60 dark:ring-blue-500/30
+                ${mobileMenuOpen ? 'max-h-80 opacity-100 mt-4' : 'max-h-0 opacity-0 mt-0'}
+              `}
+            >
+              {/* Keep content borderless so outline isn't clipped */}
+              <nav className="py-4 bg-white dark:bg-black shadow-lg backdrop-blur-sm">
                 <div className="flex flex-col space-y-1">
                   {Object.entries(navItems).map(([path, { name }], index) => {
                     return (
@@ -116,10 +109,7 @@ export function Navbar() {
                           transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
                           hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base
                           transform transition-all duration-300
-                          ${mobileMenuOpen 
-                            ? 'translate-x-0 opacity-100' 
-                            : 'translate-x-4 opacity-0'
-                          }
+                          ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
                         `}
                         style={{
                           transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms'
