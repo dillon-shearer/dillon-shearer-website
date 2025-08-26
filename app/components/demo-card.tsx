@@ -1,13 +1,27 @@
 // components/demo-card.tsx
+'use client'
+
 import Link from 'next/link'
 import { Demo } from '@/types/demo'
+import { useState, useEffect } from 'react'
 
 interface DemoCardProps {
   demo: Demo
 }
 
 export default function DemoCard({ demo }: DemoCardProps) {
+  const [isMobile, setIsMobile] = useState(false)
   const isInProgress = demo.status !== 'live'
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768) // md breakpoint
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   return (
     <div className="group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 overflow-hidden">
@@ -103,6 +117,10 @@ export default function DemoCard({ demo }: DemoCardProps) {
           {isInProgress ? (
             <div className="flex-1 bg-gray-400 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold text-sm sm:text-base cursor-not-allowed opacity-60">
               Demo Coming Soon
+            </div>
+          ) : isMobile ? (
+            <div className="flex-1 bg-gray-400 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold text-sm sm:text-base cursor-not-allowed opacity-60">
+              Not Avail. on Mobile
             </div>
           ) : (
             <Link
