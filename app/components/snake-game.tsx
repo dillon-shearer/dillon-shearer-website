@@ -148,7 +148,7 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Snake Game</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">🐍 Snake Game</h2>
             <p className="text-sm text-gray-600 dark:text-gray-400">Score: {score}</p>
           </div>
           <button
@@ -232,9 +232,9 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
 
         {/* Instructions */}
         <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-          <p>Use arrow keys or WASD to control the snake</p>
-          <p>Eat the red food to grow and score points</p>
-          <p>Don't hit the walls or yourself!</p>
+          <p>🕹️ Use arrow keys or WASD to control the snake</p>
+          <p>🍎 Eat the red food to grow and score points</p>
+          <p>💀 Don't hit the walls or yourself!</p>
         </div>
       </div>
     </div>
@@ -244,6 +244,20 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
 const HiddenSnakeButton: React.FC = () => {
   const [isGameOpen, setIsGameOpen] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window)
+    }
+    
+    checkIsMobile()
+    window.addEventListener('resize', checkIsMobile)
+    return () => window.removeEventListener('resize', checkIsMobile)
+  }, [])
+
+  // Don't render on mobile
+  if (isMobile) return null
 
   return (
     <>
@@ -256,7 +270,7 @@ const HiddenSnakeButton: React.FC = () => {
           fixed bottom-4 right-4 w-8 h-8 rounded-full transition-all duration-500 z-40
           ${isHovered 
             ? 'bg-green-500 dark:bg-green-600 shadow-lg scale-110 opacity-100' 
-            : 'bg-gray-300 dark:bg-gray-700 shadow-sm opacity-1 hover:opacity-50'
+            : 'bg-gray-300 dark:bg-gray-700 shadow-sm opacity-5 hover:opacity-15'
           }
           border ${isHovered ? 'border-green-400 dark:border-green-500' : 'border-gray-400 dark:border-gray-600'}
           flex items-center justify-center
