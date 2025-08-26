@@ -1,12 +1,12 @@
 // app/components/snake-game.tsx
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 
 const GRID_SIZE = 20
 const INITIAL_SNAKE = [{ x: 10, y: 10 }]
 const INITIAL_FOOD = { x: 15, y: 15 }
-const INITIAL_DIRECTION = { x: 0, y: -1 }
+const INITIAL_DIRECTION = { x: 0, y: 0 } // Start stationary
 
 interface Position {
   x: number
@@ -25,32 +25,46 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
   const [gameOver, setGameOver] = useState(false)
   const [score, setScore] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [gameStarted, setGameStarted] = useState(false)
+  
+  // Use ref to track the current direction to prevent rapid direction changes
+  const currentDirectionRef = useRef<Position>(INITIAL_DIRECTION)
+  const lastDirectionChangeRef = useRef<number>(0)
 
   const generateFood = useCallback((): Position => {
-    const newFood = {
-      x: Math.floor(Math.random() * GRID_SIZE),
-      y: Math.floor(Math.random() * GRID_SIZE)
-    }
+    let newFood: Position
+    do {
+      newFood = {
+        x: Math.floor(Math.random() * GRID_SIZE),
+        y: Math.floor(Math.random() * GRID_SIZE)
+      }
+    } while (snake.some(segment => segment.x === newFood.x && segment.y === newFood.y))
     return newFood
-  }, [])
+  }, [snake])
 
   const resetGame = useCallback(() => {
     setSnake(INITIAL_SNAKE)
     setFood(INITIAL_FOOD)
     setDirection(INITIAL_DIRECTION)
+    currentDirectionRef.current = INITIAL_DIRECTION
     setGameOver(false)
     setScore(0)
     setIsPlaying(false)
+    setGameStarted(false)
+    lastDirectionChangeRef.current = 0
   }, [])
 
   const moveSnake = useCallback(() => {
-    if (gameOver || !isPlaying) return
+    if (gameOver || !isPlaying || !gameStarted) return
 
     setSnake(prevSnake => {
       const newSnake = [...prevSnake]
       const head = { ...newSnake[0] }
-      head.x += direction.x
-      head.y += direction.y
+      
+      // Use the current direction from ref
+      const currentDir = currentDirectionRef.current
+      head.x += currentDir.x
+      head.y += currentDir.y
 
       // Check wall collision
       if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
@@ -78,45 +92,70 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
 
       return newSnake
     })
-  }, [direction, food, gameOver, isPlaying, generateFood])
+  }, [direction, food, gameOver, isPlaying, gameStarted, generateFood])
 
-  const handleKeyPress = useCallback((e: KeyboardEvent) => {
-    // Start game with any movement key if not playing and not game over
-    if (!isPlaying && !gameOver && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key.toLowerCase())) {
+  const changeDirection = useCallback((newDirection: Position) => {
+    const now = Date.now()
+    const timeSinceLastChange = now - lastDirectionChangeRef.current
+    
+    // Prevent rapid direction changes (minimum 100ms between changes)
+    if (timeSinceLastChange < 100) return
+    
+    const current = currentDirectionRef.current
+    
+    // Prevent moving in opposite direction (would cause immediate self-collision)
+    if (current.x !== 0 && newDirection.x === -current.x) return
+    if (current.y !== 0 && newDirection.y === -current.y) return
+    
+    // Update direction
+    currentDirectionRef.current = newDirection
+    setDirection(newDirection)
+    lastDirectionChangeRef.current = now
+    
+    // Start the game if it hasn't started yet
+    if (!gameStarted && !gameOver) {
+      setGameStarted(true)
       setIsPlaying(true)
     }
+  }, [gameStarted, gameOver])
 
-    if (!isPlaying) return
+  const handleKeyPress = useCallback((e: KeyboardEvent) => {
+    // Prevent default for game keys
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key.toLowerCase())) {
+      e.preventDefault()
+    }
+    
+    if (gameOver) {
+      if (e.key === ' ') {
+        resetGame()
+      }
+      return
+    }
 
     switch (e.key.toLowerCase()) {
       case 'arrowup':
       case 'w':
-        e.preventDefault()
-        setDirection(prev => prev.y !== 1 ? { x: 0, y: -1 } : prev)
+        changeDirection({ x: 0, y: -1 })
         break
       case 'arrowdown':
       case 's':
-        e.preventDefault()
-        setDirection(prev => prev.y !== -1 ? { x: 0, y: 1 } : prev)
+        changeDirection({ x: 0, y: 1 })
         break
       case 'arrowleft':
       case 'a':
-        e.preventDefault()
-        setDirection(prev => prev.x !== 1 ? { x: -1, y: 0 } : prev)
+        changeDirection({ x: -1, y: 0 })
         break
       case 'arrowright':
       case 'd':
-        e.preventDefault()
-        setDirection(prev => prev.x !== -1 ? { x: 1, y: 0 } : prev)
+        changeDirection({ x: 1, y: 0 })
         break
       case ' ':
-        e.preventDefault()
         if (gameOver) {
           resetGame()
         }
         break
     }
-  }, [isPlaying, gameOver, resetGame])
+  }, [gameOver, changeDirection, resetGame])
 
   useEffect(() => {
     if (!isOpen) {
@@ -130,14 +169,17 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
   }, [isOpen, handleKeyPress, resetGame])
 
   useEffect(() => {
-    if (!isPlaying || gameOver) return
+    if (!isPlaying || gameOver || !gameStarted) return
 
-    const gameInterval = setInterval(moveSnake, 80) // Much faster - was 150ms
+    const gameInterval = setInterval(moveSnake, 120) // Slightly slower for better control
     return () => clearInterval(gameInterval)
-  }, [moveSnake, isPlaying, gameOver])
+  }, [moveSnake, isPlaying, gameOver, gameStarted])
 
   const startGame = () => {
-    setIsPlaying(true)
+    if (!gameStarted) {
+      // Just enable controls, don't start moving yet
+      setGameStarted(false) // Will be set to true when first direction is pressed
+    }
   }
 
   if (!isOpen) return null
@@ -148,7 +190,7 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">🐍 Snake Game</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Snake Game</h2>
             <p className="text-sm text-gray-600 dark:text-gray-400">Score: {score}</p>
           </div>
           <button
@@ -200,20 +242,14 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
 
         {/* Game Status */}
         <div className="text-center mb-6">
-          {!isPlaying && !gameOver && (
+          {!gameStarted && !gameOver && (
             <div>
               <p className="text-gray-600 dark:text-gray-400 mb-3">Press any arrow key or WASD to start!</p>
-              <button
-                onClick={startGame}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
-              >
-                Start Game
-              </button>
             </div>
           )}
           
-          {isPlaying && (
-            <p className="text-gray-600 dark:text-gray-400">Use arrow keys or WASD to move the snake!</p>
+          {gameStarted && isPlaying && !gameOver && (
+            <p className="text-gray-600 dark:text-gray-400">Use WASD or arrow keys to control the snake!</p>
           )}
           
           {gameOver && (
@@ -232,9 +268,9 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ isOpen, onClose }) => {
 
         {/* Instructions */}
         <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-          <p>🕹️ Use arrow keys or WASD to control the snake</p>
-          <p>🍎 Eat the red food to grow and score points</p>
-          <p>💀 Don't hit the walls or yourself!</p>
+          <p>Use arrow keys or WASD to control the snake</p>
+          <p>Eat the red food to grow and score points</p>
+          <p>Don't hit the walls or yourself!</p>
         </div>
       </div>
     </div>
@@ -277,7 +313,7 @@ const HiddenSnakeButton: React.FC = () => {
         `}
       >
         <span className={`transition-all duration-500 ${isHovered ? 'text-lg scale-125 opacity-100' : 'text-xs scale-75 opacity-30'}`}>
-          {isHovered ? '🐍' : '•'}
+          {isHovered ? 'S' : '•'}
         </span>
       </button>
 
