@@ -27,6 +27,8 @@ const navItems = {
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const entries = Object.entries(navItems)
+
   return (
     <div className="max-w-7xl mx-auto px-6">
       <aside className="mb-8 tracking-tight text-center">
@@ -37,17 +39,15 @@ export function Navbar() {
             id="nav"
           >
             <div className="flex flex-row space-x-0 justify-center w-full">
-              {Object.entries(navItems).map(([path, { name }]) => {
-                return (
-                  <Link
-                    key={path}
-                    href={path}
-                    className="transition-all hover:text-neutral-800 dark:hover:text-neutral-200 flex align-middle relative py-1 px-2 m-1 text-sm md:text-base"
-                  >
-                    {name}
-                  </Link>
-                )
-              })}
+              {entries.map(([path, { name }]) => (
+                <Link
+                  key={path}
+                  href={path}
+                  className="transition-all hover:text-neutral-800 dark:hover:text-neutral-200 flex align-middle relative py-1 px-2 m-1 text-sm md:text-base"
+                >
+                  {name}
+                </Link>
+              ))}
             </div>
           </nav>
 
@@ -99,26 +99,25 @@ export function Navbar() {
               {/* Keep content borderless so outline isn't clipped */}
               <nav className="py-4 bg-white dark:bg-black shadow-lg backdrop-blur-sm">
                 <div className="flex flex-col space-y-1">
-                  {Object.entries(navItems).map(([path, { name }], index) => {
-                    return (
-                      <Link
-                        key={path}
-                        href={path}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={`
-                          transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
-                          hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base
-                          transform transition-all duration-300
-                          ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
-                        `}
-                        style={{
-                          transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms'
-                        }}
-                      >
-                        {name}
-                      </Link>
-                    )
-                  })}
+                  {entries.map(([path, { name }], index) => (
+                    <Link
+                      key={path}
+                      href={path}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`
+                        transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
+                        hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base
+                        transform transition-all duration-300
+                        ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
+                        ${index === entries.length - 1 ? 'mb-2' : ''}  /* extra bottom buffer for Contact */
+                      `}
+                      style={{
+                        transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms'
+                      }}
+                    >
+                      {name}
+                    </Link>
+                  ))}
                 </div>
               </nav>
             </div>
