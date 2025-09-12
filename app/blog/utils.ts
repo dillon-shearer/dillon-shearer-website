@@ -1,3 +1,4 @@
+// app/blog/utils.ts
 import fs from 'fs'
 import path from 'path'
 
@@ -6,6 +7,8 @@ type Metadata = {
   publishedAt: string
   summary: string
   image?: string
+  series?: string
+  episode?: number
 }
 
 function parseFrontmatter(fileContent: string) {
@@ -20,7 +23,13 @@ function parseFrontmatter(fileContent: string) {
     let [key, ...valueArr] = line.split(': ')
     let value = valueArr.join(': ').trim()
     value = value.replace(/^['"](.*)['"]$/, '$1') // Remove quotes
-    metadata[key.trim() as keyof Metadata] = value
+    
+    // Handle numeric values for episode
+    if (key.trim() === 'episode') {
+      metadata[key.trim() as keyof Metadata] = parseInt(value) as any
+    } else {
+      metadata[key.trim() as keyof Metadata] = value as any
+    }
   })
 
   return { metadata: metadata as Metadata, content }

@@ -1,5 +1,6 @@
 // app/blog/page.tsx
 import { BlogPosts } from '@/app/components/posts'
+import { DataDontLiePosts } from '@/app/components/data-dont-lie-posts'
 
 export const metadata = {
   title: 'Blog | DWD',
@@ -48,16 +49,8 @@ export default function Page() {
                 Exploring trends, debunking myths, and uncovering patterns that matter.
               </p>
 
-              {/* Placeholder for Data Don't Lie posts */}
-              <div className="bg-white dark:bg-gray-700 rounded-lg p-6 border-2 border-dashed border-gray-200 dark:border-gray-600">
-                <div className="text-center text-gray-500 dark:text-gray-400">
-                  <svg className="w-10 h-10 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                  <p className="font-medium">Coming Soon</p>
-                  <p className="text-sm">"Data Don't Lie" series coming soon... </p>
-                </div>
-              </div>
+              {/* Data Don't Lie posts will appear here */}
+              <DataDontLiePosts />
             </div>
           </section>
 
@@ -82,11 +75,30 @@ export default function Page() {
                 General thoughts, tutorials, and insights from my experiences in data science, 
                 analytics, and technology.
               </p>
+
               <div className="space-y-4">
                 <BlogPosts />
               </div>
             </div>
           </section>
+        </div>
+
+        {/* Newsletter CTA */}
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mt-16 p-8 bg-gray-50 dark:bg-gray-800 rounded-xl">
+            <h2 className="text-2xl font-bold mb-4">
+              Stay Updated
+            </h2>
+            <p className="mb-6">
+              Get notified when new "Data Don't Lie" episodes are published and never miss an insight.
+            </p>
+            <button className="inline-flex items-center px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors">
+              Subscribe to Updates
+              <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
