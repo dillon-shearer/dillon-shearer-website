@@ -82,24 +82,6 @@ export default function Page() {
             </div>
           </section>
         </div>
-
-        {/* Newsletter CTA */}
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mt-16 p-8 bg-gray-50 dark:bg-gray-800 rounded-xl">
-            <h2 className="text-2xl font-bold mb-4">
-              Stay Updated
-            </h2>
-            <p className="mb-6">
-              Get notified when new "Data Don't Lie" episodes are published and never miss an insight.
-            </p>
-            <button className="inline-flex items-center px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors">
-              Subscribe to Updates
-              <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   )
