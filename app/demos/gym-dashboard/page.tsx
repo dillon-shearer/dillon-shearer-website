@@ -1,6 +1,8 @@
 import { Metadata } from 'next'
 import GymDashboard from './dashboard'
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Gym Data Tracker | DWD',
   description: 'Daily updates of my personal gym lift data!',

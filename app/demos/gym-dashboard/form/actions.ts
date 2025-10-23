@@ -2,6 +2,7 @@
 'use server'
 
 import { sql } from '@vercel/postgres'
+import { revalidatePath } from 'next/cache'
 
 export interface GymLift {
   id: string
@@ -13,7 +14,7 @@ export interface GymLift {
   timestamp: string
   dayTag?: string | null
   isUnilateral?: boolean | null
-  equipment?: string | null            // NEW
+  equipment?: string | null
 }
 
 export interface GymDayMeta {
@@ -29,6 +30,8 @@ const DAYTAG_DEFAULTS_SERVER: Record<string, string[]> = {
   'pull day': ['back', 'triceps', 'core'],
   'leg day':  ['quads', 'hamstrings', 'hips', 'glutes', 'calves'],
 }
+
+const DASHBOARD_PATH = '/demos/gym-dashboard'
 
 /** Postgres text[] literal from string[], or null */
 function toPgTextArrayLiteral(arr: string[] | null | undefined): string | null {
@@ -51,7 +54,7 @@ export async function getGymLifts(): Promise<GymLift[]> {
       timestamp,
       day_tag AS "dayTag",
       is_unilateral AS "isUnilateral",
-      equipment AS "equipment"          -- NEW
+      equipment
     FROM gym_lifts
     ORDER BY date DESC, exercise ASC, set_number ASC
   `
@@ -134,6 +137,8 @@ export async function setBodyPartsForDate(date: string, parts: string[] | null) 
         updated_at = NOW()
     `
   }
+  // ensure dashboard refreshes
+  revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
 
@@ -173,10 +178,12 @@ export async function setDayTagForDate(date: string, tag: string | null) {
     SET day_tag = ${tag}
     WHERE date = ${date}::date
   `
+
+  revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
 
-/** Insert a new lift (now includes equipment) */
+/** Insert a new lift (correct column order) */
 export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
   const id = `lift_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
   const timestamp = new Date().toISOString()
@@ -188,7 +195,7 @@ export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
   const reps = Number(lift.reps)
   const setNumber = Number(lift.setNumber)
   const isUnilateral = lift.isUnilateral === undefined ? null : Boolean(lift.isUnilateral)
-  const equipment = (lift.equipment ?? '').toString().trim() || null
+  const equipment = (lift.equipment ?? '').trim() || null
   let tagToUse = (lift.dayTag ?? '').trim()
 
   if (!tagToUse) {
@@ -242,7 +249,7 @@ export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
       ${timestamp},
       ${tagToUse || null},
       ${isUnilateral}::boolean,
-      ${equipment}::text
+      ${equipment}
     )
   `
 
@@ -256,18 +263,21 @@ export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
     timestamp,
     dayTag: tagToUse || null,
     isUnilateral,
-    equipment,
+    equipment
   }
+
+  revalidatePath(DASHBOARD_PATH)
   return { success: true, data: newLift }
 }
 
 /** Delete a lift */
 export async function deleteGymLift(id: string) {
   await sql/* sql */`DELETE FROM gym_lifts WHERE id = ${id}`
+  revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
 
-/** Update a lift (casts applied; includes equipment) */
+/** Update a lift (casts applied) */
 export async function updateGymLift(
   id: string,
   updated: Omit<GymLift, 'id' | 'timestamp'>
@@ -276,7 +286,7 @@ export async function updateGymLift(
   const reps = Number(updated.reps)
   const setNumber = Number(updated.setNumber)
   const isUnilateral = updated.isUnilateral === undefined ? null : Boolean(updated.isUnilateral)
-  const equipment = (updated.equipment ?? '').toString().trim() || null
+  const equipment = (updated.equipment ?? '').trim() || null
 
   await sql/* sql */`
     UPDATE gym_lifts
@@ -288,13 +298,14 @@ export async function updateGymLift(
       set_number = ${setNumber}::int,
       day_tag = ${updated.dayTag ?? null},
       is_unilateral = ${isUnilateral}::boolean,
-      equipment = ${equipment}::text
+      equipment = ${equipment}
     WHERE id = ${id}
   `
+  revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
 
-/** Recent lifts (include equipment) */
+/** Recent lifts */
 export async function getRecentLifts(limit: number = 10): Promise<GymLift[]> {
   const { rows } = await sql/* sql */`
     SELECT
@@ -307,7 +318,7 @@ export async function getRecentLifts(limit: number = 10): Promise<GymLift[]> {
       timestamp,
       day_tag AS "dayTag",
       is_unilateral AS "isUnilateral",
-      equipment AS "equipment"
+      equipment
     FROM gym_lifts
     ORDER BY date DESC, timestamp DESC
     LIMIT ${limit}
