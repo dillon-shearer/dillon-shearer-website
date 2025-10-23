@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { addGymLift, getGymLifts, deleteGymLift, type GymLift } from './actions'
+import { addGymLift, getGymLifts, deleteGymLift, updateGymLift, type GymLift } from './actions'
 
 export default function GymEntryForm() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -47,8 +47,14 @@ export default function GymEntryForm() {
   }, [])
 
   const fetchAllLifts = async () => {
-    const lifts = await getGymLifts()
-    setAllLifts(lifts)
+    try {
+      const lifts = await getGymLifts()
+      setAllLifts(lifts)
+    } catch (error) {
+      console.error('Error fetching lifts:', error)
+      setStatus('error')
+      setTimeout(() => setStatus('idle'), 3000)
+    }
   }
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -68,6 +74,11 @@ export default function GymEntryForm() {
     setStatus('submitting')
     
     try {
+      // Validate form data
+      if (!formData.date || !formData.exercise || !formData.weight || !formData.reps) {
+        throw new Error('Please fill in all required fields')
+      }
+
       // Find the next set number for this exercise on this date
       const existingSets = allLifts.filter(
         lift => lift.date === formData.date && lift.exercise === formData.exercise
@@ -85,7 +96,12 @@ export default function GymEntryForm() {
       })
 
       if (!result.success) {
-        throw new Error(result.error)
+        throw new Error(result.error || 'Failed to save lift')
+      }
+
+      // Show development mode warning if applicable
+      if (result.dev) {
+        console.warn('⚠️ Running in development mode - data not persisted to Vercel Blob')
       }
 
       setStatus('success')
@@ -98,7 +114,7 @@ export default function GymEntryForm() {
       })
       
       // Refresh lifts
-      fetchAllLifts()
+      await fetchAllLifts()
       
       setTimeout(() => setStatus('idle'), 2000)
     } catch (error) {
@@ -111,9 +127,17 @@ export default function GymEntryForm() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this set?')) return
     
-    const result = await deleteGymLift(id)
-    if (result.success) {
-      fetchAllLifts()
+    try {
+      const result = await deleteGymLift(id)
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete lift')
+      }
+      
+      await fetchAllLifts()
+    } catch (error) {
+      console.error('Error deleting lift:', error)
+      alert('Failed to delete lift. Please try again.')
     }
   }
 
@@ -124,20 +148,26 @@ export default function GymEntryForm() {
   const handleUpdate = async () => {
     if (!editingLift) return
     
-    // Delete old and add new (simpler than adding update function)
-    await deleteGymLift(editingLift.id)
-    
-    const result = await addGymLift({
-      date: editingLift.date,
-      exercise: editingLift.exercise,
-      weight: editingLift.weight,
-      reps: editingLift.reps,
-      setNumber: editingLift.setNumber,
-    })
+    try {
+      // Use the dedicated update function instead of delete + add
+      const result = await updateGymLift(editingLift.id, {
+        date: editingLift.date,
+        exercise: editingLift.exercise,
+        weight: editingLift.weight,
+        reps: editingLift.reps,
+        setNumber: editingLift.setNumber,
+      })
 
-    if (result.success) {
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update lift')
+      }
+
       setEditingLift(null)
-      fetchAllLifts()
+      await fetchAllLifts() // Refresh the list
+      
+    } catch (error) {
+      console.error('Error updating lift:', error)
+      alert('Failed to update lift. Please try again.')
     }
   }
 
@@ -233,7 +263,7 @@ export default function GymEntryForm() {
 
         {status === 'error' && (
           <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 mb-6">
-            <p className="text-red-400">❌ Error saving data. Check your Vercel Blob setup.</p>
+            <p className="text-red-400">❌ Error saving data. Check your Vercel Blob setup and console logs.</p>
           </div>
         )}
 
@@ -340,45 +370,41 @@ export default function GymEntryForm() {
                           {Object.keys(exerciseGroups).length} exercise{Object.keys(exerciseGroups).length !== 1 ? 's' : ''}
                         </span>
                       </div>
-                      <div className="text-right">
-                        <div className="text-gray-400 text-sm">Total Volume</div>
-                        <div className="text-blue-400 font-medium">
-                          {totalVolume.toLocaleString()} lbs
-                        </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-gray-400 text-sm">
+                          {totalVolume.toLocaleString()} lbs total
+                        </span>
+                        <span className="text-gray-400">
+                          {selectedDate === date ? '▼' : '▶'}
+                        </span>
                       </div>
                     </div>
                   </button>
-                  
+
                   {selectedDate === date && (
-                    <div className="mt-2 space-y-3 pl-4">
+                    <div className="mt-2 ml-4 space-y-3">
                       {Object.entries(exerciseGroups).map(([exercise, sets]) => {
                         const exerciseVolume = sets.reduce((sum, set) => 
                           sum + (set.weight * set.reps), 0
                         )
                         
                         return (
-                          <div key={exercise} className="bg-gray-800 rounded-lg p-4">
+                          <div key={exercise} className="bg-gray-850 rounded-lg p-3">
                             <div className="flex justify-between items-center mb-2">
-                              <h4 className="text-white font-medium">{exercise}</h4>
+                              <span className="text-white font-medium">{exercise}</span>
                               <span className="text-gray-400 text-sm">
-                                {sets.length} set{sets.length !== 1 ? 's' : ''} • {exerciseVolume.toLocaleString()} lbs
+                                {exerciseVolume.toLocaleString()} lbs
                               </span>
                             </div>
-                            
                             <div className="space-y-1">
-                              {sets.map(set => (
-                                <div key={set.id} className="flex justify-between items-center bg-gray-750 rounded p-2 text-sm">
-                                  <div className="flex items-center gap-3">
-                                    <span className="text-gray-500 font-mono text-xs w-8">
-                                      Set {set.setNumber}
-                                    </span>
-                                    <span className="text-white">
-                                      {set.weight}lbs × {set.reps} reps
-                                    </span>
-                                    <span className="text-gray-500 text-xs">
-                                      = {(set.weight * set.reps).toLocaleString()} lbs
-                                    </span>
-                                  </div>
+                              {sets.map((set) => (
+                                <div
+                                  key={set.id}
+                                  className="flex justify-between items-center text-sm bg-gray-800 rounded px-3 py-2"
+                                >
+                                  <span className="text-gray-300">
+                                    Set {set.setNumber}: {set.weight} lbs × {set.reps} reps
+                                  </span>
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => handleEdit(set)}
@@ -430,7 +456,7 @@ export default function GymEntryForm() {
                   className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Exercise</label>
                 <select
@@ -443,8 +469,8 @@ export default function GymEntryForm() {
                   ))}
                 </select>
               </div>
-              
-              <div className="grid grid-cols-2 gap-3">
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">Weight (lbs)</label>
                   <input
@@ -453,6 +479,7 @@ export default function GymEntryForm() {
                     onChange={(e) => setEditingLift({...editingLift, weight: parseInt(e.target.value)})}
                     className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
                     min="0"
+                    step="5"
                   />
                 </div>
                 <div>
