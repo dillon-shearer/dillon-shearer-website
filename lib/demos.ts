@@ -26,9 +26,9 @@ const demos: Demo[] = [
   {
     slug: 'gym-dashboard',
     title: 'Gym Data Tracker',
-    description: 'Personal fitness tracking dashboard with workout history, lift analytics, and progress visualization. Daily updates of gym lift data with comprehensive volume calculations and performance metrics.',
+    description: 'My personal fitness tracking dashboard with workout history, lift analytics, and progress visualization. Daily updates of gym lift data with comprehensive volume calculations and performance metrics.',
     image: '/images/demos/gym-dashboard-preview.jpg',
-    techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS'],
+    techStack: ['React', 'Tailwind CSS', 'PostgreSQL', 'API Endpoints', 'Swagger UI'],
     category: 'fullstack',
     complexity: 'intermediate',
     buildTime: '3 days',

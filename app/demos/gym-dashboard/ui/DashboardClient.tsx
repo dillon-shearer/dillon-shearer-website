@@ -61,7 +61,6 @@ function calcDailyVolume(lifts: GymLift[], dates: string[]) {
 }
 
 /* -------------------------- Tooltip (chart-style) -------------------------- */
-/* Cursor-follow tooltip that visually matches chart tooltips */
 function Tooltip({
   text,
   children,
@@ -107,7 +106,7 @@ function Tooltip({
   )
 }
 
-/* -------------------------- date-time output helper -------------------------- */
+/* -------------------------- date-time & title helpers -------------------------- */
 function formatYMDHM_EST(d?: Date | null) {
   if (!d) return ''
 
@@ -123,9 +122,17 @@ function formatYMDHM_EST(d?: Date | null) {
 
   const parts = formatter.formatToParts(d)
   const lookup = Object.fromEntries(parts.map(p => [p.type, p.value]))
-
-  // → "2025-10-23 12:07AM EST"
   return `${lookup.year}-${lookup.month}-${lookup.day} ${lookup.hour}:${lookup.minute}${lookup.dayPeriod?.toLowerCase() || ''} EST`
+}
+
+function formatLongDate(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function titleCaseTag(tag?: string | null) {
+  if (!tag) return ''
+  return tag.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())
 }
 
 /* -------------------------- shared pager -------------------------- */
@@ -284,7 +291,17 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
       const volume = day.reduce((s: number, l: GymLift) => s + l.weight * l.reps, 0)
       const exercises = unique(day.map(l => l.exercise))
       const sets = day.length
-      return { date, volume, exercises, sets, lifts: day }
+
+      // NEW: derive canonical day tag (majority / first non-empty)
+      const tags = day.map(l => (l.dayTag ?? '').trim()).filter(Boolean) as string[]
+      let dayTag: string | null = null
+      if (tags.length) {
+        const counts = new Map<string, number>()
+        for (const t of tags) counts.set(t, (counts.get(t) || 0) + 1)
+        dayTag = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0]
+      }
+
+      return { date, volume, exercises, sets, lifts: day, dayTag }
     })
   }, [filtered])
 
@@ -300,7 +317,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const [openDay, setOpenDay] = useState<null | { date: string; lifts: GymLift[] }>(null)
 
   // --- Download Modal state ---
-  // Defaults: current + CSV (and CSV button first)
   const [showDownload, setShowDownload] = useState(false)
   const [dlRange, setDlRange] = useState<'current' | 'all'>('current')
   const [dlFormat, setDlFormat] = useState<'json' | 'csv'>('csv')
@@ -446,7 +462,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Exercise PRs</h2>
-                  {/* Single hover info icon using unified Tooltip */}
                   <Tooltip text={e1RMTooltip}>
                     <span
                       className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none"
@@ -501,7 +516,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 />
               </div>
 
-              {/* Heatmap — removed native labels; add our own tooltip on header */}
+              {/* Heatmap */}
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Volume Heatmap</h2>
@@ -519,8 +534,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                   data={daily.map(d => ({
                     date: d.date,
                     volume: d.volume,
-                    // REMOVE label so the Heatmap component doesn't emit native <title> tooltips
-                    // label: d.lifts.length > 0 ? undefined : 'Not Available',
                   }))}
                   naColor="#3b4351"
                 />
@@ -548,7 +561,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                       aria-label={`Open session for ${s.date}`}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="font-semibold tracking-wide">{s.date}</div>
+                        <div className="font-semibold tracking-wide">
+                          {/* NEW: Long date + day tag */}
+                          {formatLongDate(s.date)}
+                          {s.dayTag ? `: ${titleCaseTag(s.dayTag)}` : ''}
+                        </div>
                         <div className="text-xs text-gray-400 group-hover:text-gray-300">
                           {formatNum(s.volume)} lbs
                         </div>
@@ -578,7 +595,14 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-2xl w-full">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-              <h3 className="text-lg font-semibold">Session Details — {openDay.date}</h3>
+              {/* NEW: header shows long date + day tag */}
+              <h3 className="text-lg font-semibold">
+                {(() => {
+                  const tagCandidates = openDay.lifts.map(l => (l.dayTag ?? '').trim()).filter(Boolean)
+                  const tag = tagCandidates.length ? titleCaseTag(tagCandidates[0]) : ''
+                  return `Session Details — ${formatLongDate(openDay.date)}${tag ? `: ${tag}` : ''}`
+                })()}
+              </h3>
               <button onClick={() => setOpenDay(null)} className="text-gray-400 hover:text-gray-200" aria-label="Close">
                 ✕
               </button>
@@ -594,6 +618,8 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                       <th className="py-2 pr-4">Set</th>
                       <th className="py-2 pr-4">Weight (lbs)</th>
                       <th className="py-2 pr-4">Reps</th>
+                      {/* NEW: Unilateral column */}
+                      <th className="py-2 pr-4">Unilateral</th>
                       <th className="py-2 pr-4">Volume</th>
                     </tr>
                   </thead>
@@ -606,6 +632,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                           <td className="py-2 pr-4">{r.setNumber}</td>
                           <td className="py-2 pr-4">{r.weight}</td>
                           <td className="py-2 pr-4">{r.reps}</td>
+                          <td className="py-2 pr-4">{r.isUnilateral ? 'true' : 'false'}</td>
                           <td className="py-2 pr-4">{(r.weight * r.reps).toLocaleString()}</td>
                         </tr>
                       ))}

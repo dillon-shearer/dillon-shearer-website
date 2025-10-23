@@ -1,8 +1,6 @@
-// app/api/gym-data.csv/route.ts
 import { NextResponse } from 'next/server'
 import { getGymLifts, type GymLift } from '../../demos/gym-dashboard/form/actions'
 
-// Keep the enrichment identical to JSON route
 type OutRow = GymLift & {
   volume: number
   oneRM_est: number
@@ -42,15 +40,25 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const from = searchParams.get('from')
   const to = searchParams.get('to')
+  const exclude = (searchParams.get('exclude') || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
 
   let rows = enrich(await getGymLifts())
   if (from) rows = rows.filter(r => r.date >= from)
   if (to)   rows = rows.filter(r => r.date <= to)
 
-  const headers = rows[0] ? Object.keys(rows[0]) : [
-    'id','date','exercise','weight','reps','setNumber','timestamp',
-    'volume','oneRM_est','day_of_week','iso_week','month','year'
-  ]
+  // Build headers from first row, honoring exclude list
+  const baseHeaders = rows[0]
+    ? Object.keys(rows[0])
+    : [
+        'id','date','exercise','weight','reps','setNumber','timestamp','dayTag','isUnilateral',
+        'volume','oneRM_est','day_of_week','iso_week','month','year'
+      ]
+
+  const headers = baseHeaders.filter(h => !exclude.includes(h))
+
   const lines = [
     headers.join(','),
     ...rows.map(r => headers.map(h => csvEscape((r as any)[h])).join(',')),
@@ -65,3 +73,4 @@ export async function GET(req: Request) {
     },
   })
 }
+ 

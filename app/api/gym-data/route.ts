@@ -1,4 +1,3 @@
-// app/api/gym-data/route.ts
 import { NextResponse } from 'next/server'
 import { getGymLifts, type GymLift } from '../../demos/gym-dashboard/form/actions'
 
@@ -37,20 +36,32 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const from = searchParams.get('from') // YYYY-MM-DD (optional)
   const to = searchParams.get('to')     // YYYY-MM-DD (optional)
+  const exclude = (searchParams.get('exclude') || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
 
   let rows = enrich(await getGymLifts())
 
   if (from) rows = rows.filter(r => r.date >= from)
   if (to)   rows = rows.filter(r => r.date <= to)
 
-  // Download-friendly headers
+  // Optional field exclusions (e.g., ?exclude=day_of_week,iso_week)
+  if (exclude.length && rows.length) {
+    rows = rows.map(r => {
+      const copy: any = { ...r }
+      for (const key of exclude) delete copy[key as keyof OutRow]
+      return copy
+    })
+  }
+
   return new NextResponse(JSON.stringify({
     meta: {
       count: rows.length,
       generated_at: new Date().toISOString(),
       fields: Object.keys(rows[0] ?? {}),
       filter: { from, to },
-      note: 'This is a wide export with raw and derived fields.',
+      note: 'Wide export with raw + derived fields (includes dayTag and isUnilateral; excludes bodyParts).',
     },
     data: rows,
   }, null, 2), {

@@ -1,3 +1,4 @@
+// app/demos/gym-dashboard/ui/Heatmap.tsx
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -11,7 +12,8 @@ export default function Heatmap({
   height = 120,        // fixed visual height (px) — same box for all modes
   gap = 4,             // px gap between segments
   padding = 12,        // px inner padding
-  naColor = '#3b4351', // neutral for "Not Available"
+  naColor = '#3b4351', // neutral base for 0-volume days
+  naOpacity = 0.12,    // make 0-volume days barely visible
   minYearSegWidth = 10 // minimum segment width for YEAR; component will wrap to new rows to respect this
 }: {
   data: Cell[]
@@ -20,6 +22,7 @@ export default function Heatmap({
   gap?: number
   padding?: number
   naColor?: string
+  naOpacity?: number
   minYearSegWidth?: number
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -48,27 +51,60 @@ export default function Heatmap({
     mode === 'month' ? 30 :
     Math.max(1, data.length) // YTD length supplied by the caller
 
-  // align length (pad on the left with NA or take last N)
+  // align length (pad on the left with 0s or take last N)
   const series: Cell[] =
     data.length >= N
       ? data.slice(data.length - N)
       : [
           ...Array.from({ length: N - data.length }, (_, i) => ({
             date: `na-${i}`,
-            volume: 0,
-            label: 'Not Available',
+            volume: 0, // treat as NA
           })),
           ...data,
         ]
 
-  // intensity buckets
-  const max = Math.max(1, ...series.map(d => d.volume))
-  const bucket = (v: number) => Math.min(5, Math.floor((v / max) * 5))
-  const colorFor = (d: Cell) => {
-    if (d.label === 'Not Available') return naColor
-    const idx = bucket(d.volume)
-    return ['#064e3b', '#065f46', '#047857', '#059669', '#10b981', '#34d399'][idx] // emerald ramp
+  // ---------- Color scaling ----------
+  // Adaptive thresholds so low-volume days are clearly low, but with a guard for tiny datasets.
+  const nonZero = series
+    .filter(d => d.volume > 0)
+    .map(d => d.volume)
+    .sort((a, b) => a - b)
+
+  // Percentile helper
+  const quantile = (arr: number[], p: number) => {
+    if (!arr.length) return 0
+    const idx = (arr.length - 1) * p
+    const lo = Math.floor(idx)
+    const hi = Math.ceil(idx)
+    const h = idx - lo
+    return (1 - h) * arr[lo] + h * arr[hi]
   }
+
+  // Guard: with very little data, avoid unfair "low" coloring.
+  const singlePointNeutralBucket = 4 // a friendly lime for a lone day
+
+  // Thresholds at 20/40/60/80% — adaptive to your dataset
+  const q20 = quantile(nonZero, 0.2)
+  const q40 = quantile(nonZero, 0.4)
+  const q60 = quantile(nonZero, 0.6)
+  const q80 = quantile(nonZero, 0.8)
+
+  // Palette (bad -> good): deep red → red → orange → yellow → green → deep green
+  const RAMP = ['#7f1d1d', '#b91c1c', '#dc2626', '#f59e0b', '#10b981', '#059669']
+
+  const isNA = (d: Cell) => d.volume === 0
+
+  const bucketFor = (v: number) => {
+    if (nonZero.length <= 1) return singlePointNeutralBucket
+    if (v <= q20) return 1
+    if (v <= q40) return 2
+    if (v <= q60) return 3
+    if (v <= q80) return 4
+    return 5
+  }
+
+  const colorFor = (d: Cell) => (isNA(d) ? naColor : RAMP[bucketFor(d.volume)])
+  const opacityFor = (d: Cell) => (isNA(d) ? naOpacity : 1)
 
   // fixed outer box
   const width = w
@@ -128,9 +164,11 @@ export default function Heatmap({
           const c = i % cols
           const x = padding + c * (segW + gap)
           const y = padding + r * (segH + gap)
-          const text = d.label
-            ? `${d.date} • ${d.label}`
+
+          const text = isNA(d)
+            ? `${d.date} • no sets`
             : `${d.date} • ${d.volume.toLocaleString()} lbs`
+
           return (
             <g
               key={`${d.date}-${i}`}
@@ -142,8 +180,16 @@ export default function Heatmap({
                 })
               }}
             >
-              {/* removed <title> to avoid native browser tooltip */}
-              <rect x={x} y={y} width={segW} height={segH} rx={rx} ry={rx} fill={colorFor(d)} />
+              <rect
+                x={x}
+                y={y}
+                width={segW}
+                height={segH}
+                rx={rx}
+                ry={rx}
+                fill={colorFor(d)}
+                opacity={opacityFor(d)}
+              />
             </g>
           )
         })}
