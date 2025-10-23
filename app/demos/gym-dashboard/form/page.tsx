@@ -188,7 +188,7 @@ export default function GymEntryForm() {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-900 rounded-lg border border-gray-700 p-8 max-w-md w-full">
-          <h1 className="text-2xl font-bold text-white mb-6">🏋️ Gym Tracker Access</h1>
+          <h1 className="text-2xl font-bold text-white mb-6">Gym Tracker Access</h1>
           <form onSubmit={handlePasswordSubmit}>
             <input
               type="password"
@@ -217,7 +217,7 @@ export default function GymEntryForm() {
     <div className="min-h-screen bg-black p-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-white">💪 Gym Tracker</h1>
+          <h1 className="text-3xl font-bold text-white">Gym Tracker</h1>
           <div className="flex gap-2">
             <a
               href="/demos/gym-dashboard"
@@ -330,7 +330,7 @@ export default function GymEntryForm() {
 
         {/* Lifts by Date */}
         <div className="bg-gray-900 rounded-lg border border-gray-700 p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">📅 Workout History</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">Workout History</h3>
           <div className="space-y-2">
             {sortedDates.map(date => {
               const lifts = liftsByDate[date]
