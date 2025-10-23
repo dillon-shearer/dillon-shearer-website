@@ -1,30 +1,38 @@
 'use client'
 
-import { useState } from 'react'
-
-interface LiftData {
-  date: string
-  exercise: string
-  weight: number
-  reps: number
-  sets: number
-}
-
-const mockData: LiftData[] = [
-  { date: '2025-10-20', exercise: 'Bench Press', weight: 185, reps: 8, sets: 4 },
-  { date: '2025-10-20', exercise: 'Squat', weight: 225, reps: 6, sets: 4 },
-  { date: '2025-10-18', exercise: 'Deadlift', weight: 275, reps: 5, sets: 3 },
-  { date: '2025-10-18', exercise: 'Bench Press', weight: 180, reps: 10, sets: 4 },
-  { date: '2025-10-15', exercise: 'Squat', weight: 215, reps: 8, sets: 4 },
-]
+import { useState, useEffect } from 'react'
+import { getGymLifts, type GymLift } from './form/actions'
 
 export default function GymDashboard() {
-  const [data] = useState<LiftData[]>(mockData)
+  const [data, setData] = useState<GymLift[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Calculate some basic stats
+  useEffect(() => {
+    async function fetchData() {
+      const lifts = await getGymLifts()
+      setData(lifts)
+      setLoading(false)
+    }
+    fetchData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="text-center text-white">Loading your lift data...</div>
+      </div>
+    )
+  }
+
+  // Calculate stats
   const totalWorkouts = new Set(data.map(d => d.date)).size
   const exercises = new Set(data.map(d => d.exercise)).size
   const totalVolume = data.reduce((sum, lift) => sum + (lift.weight * lift.reps * lift.sets), 0)
+
+  // Sort by date descending
+  const sortedData = [...data].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
@@ -74,28 +82,36 @@ export default function GymDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {data.map((lift, idx) => (
-                <tr key={idx} className="hover:bg-gray-800/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {lift.date}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    {lift.exercise}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {lift.weight}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {lift.reps}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {lift.sets}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    {(lift.weight * lift.reps * lift.sets).toLocaleString()}
+              {sortedData.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
+                    No lift data yet. Add your first workout!
                   </td>
                 </tr>
-              ))}
+              ) : (
+                sortedData.map((lift) => (
+                  <tr key={lift.id} className="hover:bg-gray-800/50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {lift.date}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                      {lift.exercise}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {lift.weight}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {lift.reps}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {lift.sets}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {(lift.weight * lift.reps * lift.sets).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
