@@ -27,7 +27,7 @@ export default function GymDashboard() {
   // Calculate stats
   const totalWorkouts = new Set(data.map(d => d.date)).size
   const exercises = new Set(data.map(d => d.exercise)).size
-  const totalVolume = data.reduce((sum, lift) => sum + (lift.weight * lift.reps * lift.sets), 0)
+  const totalVolume = data.reduce((sum, lift) => sum + (lift.weight * lift.reps), 0)
 
   // Sort by date descending
   const sortedData = [...data].sort((a, b) => 
@@ -74,9 +74,6 @@ export default function GymDashboard() {
                   Reps
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Sets
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Volume
                 </th>
               </tr>
@@ -104,10 +101,7 @@ export default function GymDashboard() {
                       {lift.reps}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {lift.sets}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {(lift.weight * lift.reps * lift.sets).toLocaleString()}
+                      {(lift.weight * lift.reps).toLocaleString()}
                     </td>
                   </tr>
                 ))
