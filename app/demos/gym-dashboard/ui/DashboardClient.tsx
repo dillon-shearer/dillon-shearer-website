@@ -1,10 +1,12 @@
-// app/demos/gym-dashboard/ui/DashboardClient.tsx
 'use client'
 
 import { useMemo, useState, useRef, useEffect } from 'react'
 import type { GymLift } from '../form/actions'
 import VolumeChart from './VolumeChart'
 import Heatmap from './Heatmap'
+
+// NEW: import the UtilityCard (card that contains filters, AI CTA, download + last modified)
+import UtilityCard from './UtilityCard'
 
 type RangeMode = 'month' | 'week' | 'year'
 type SortKey = 'exercise' | 'bestWeight' | 'best1RM' | 'bestSetDate'
@@ -218,6 +220,8 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     return new Date(ts)
   }, [lifts])
 
+  const lastModifiedStr = lastModified ? formatYMDHM_EST(lastModified) : ''
+
   // Metrics
   const daily = useMemo(() => calcDailyVolume(filtered, dateWindow), [filtered, dateWindow])
   const totalVolume = useMemo(() => daily.reduce((s: number, d: any) => s + d.volume, 0), [daily])
@@ -348,68 +352,90 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const e1RMTooltip = 'Estimated 1RM = weight × (1 + reps/30)  (Epley formula)'
   const heatmapTooltip = 'Each column is a day. Darker = more total volume. Empty = no recorded sets.'
 
+  // ---------------------- UtilityCard content ----------------------
+
+  // Filters (left zone)
+  const Filters = (
+    <div className="flex items-center gap-2">
+      <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
+        <button
+          className={`px-3 py-2 text-sm ${mode === 'week' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+          onClick={() => setMode('week')}
+        >
+          Week
+        </button>
+        <button
+          className={`px-3 py-2 text-sm ${mode === 'month' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+          onClick={() => setMode('month')}
+        >
+          Month
+        </button>
+        <button
+          className={`px-3 py-2 text-sm ${mode === 'year' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+          onClick={() => setMode('year')}
+        >
+          Year (YTD)
+        </button>
+      </div>
+
+      {mode === 'year' && (
+        <div className="flex items-center gap-2 ml-2">
+          <button
+            className="px-2 py-2 bg-gray-900 hover:bg-gray-800 rounded-lg border border-gray-700"
+            onClick={decYear}
+            aria-label="Previous Year"
+          >
+            ◀
+          </button>
+          <div className="min-w-[72px] text-center text-sm text-gray-300">{year}</div>
+          <button
+            className="px-2 py-2 bg-gray-900 hover:bg-gray-800 rounded-lg border border-gray-700 disabled:opacity-40"
+            onClick={incYear}
+            aria-label="Next Year"
+            disabled={year >= currentYear}
+          >
+            ▶
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
+  // Download button (right zone)
+  const DownloadButton = (
+    <button
+      onClick={() => setShowDownload(true)}
+      className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md"
+    >
+      Download Data
+    </button>
+  )
+
+  // AI insight context (center zone)
+  const selectedExercises = useMemo(
+    () => unique(filtered.map(l => l.exercise)).slice(0, 12),
+    [filtered]
+  )
+  const dateFrom = dateWindow[0]
+  const dateTo = dateWindow[dateWindow.length - 1]
+  const insightScope: 'week' | 'month' | 'year' = mode // matches your API scope
+
   return (
     <div className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-6 pb-12">
-        {/* Top bar */}
-        <div className="flex items-center justify-between mb-4">
-          {/* Filters (left) */}
-          <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
-              <button
-                className={`px-3 py-2 text-sm ${mode === 'week' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
-                onClick={() => setMode('week')}
-              >
-                Week
-              </button>
-              <button
-                className={`px-3 py-2 text-sm ${mode === 'month' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
-                onClick={() => setMode('month')}
-              >
-                Month
-              </button>
-              <button
-                className={`px-3 py-2 text-sm ${mode === 'year' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
-                onClick={() => setMode('year')}
-              >
-                Year (YTD)
-              </button>
-            </div>
-
-            {mode === 'year' && (
-              <div className="flex items-center gap-2 ml-2">
-                <button
-                  className="px-2 py-2 bg-gray-900 hover:bg-gray-800 rounded-lg border border-gray-700"
-                  onClick={decYear}
-                  aria-label="Previous Year"
-                >
-                  ◀
-                </button>
-                <div className="min-w-[72px] text-center text-sm text-gray-300">{year}</div>
-                <button
-                  className="px-2 py-2 bg-gray-900 hover:bg-gray-800 rounded-lg border border-gray-700 disabled:opacity-40"
-                  onClick={incYear}
-                  aria-label="Next Year"
-                  disabled={year >= currentYear}
-                >
-                  ▶
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Right side (order switched): Last modified | Download */}
-          <div className="flex items-center gap-4">
-            <div className="text-xs italic text-gray-400">
-              {lastModified ? `Last modified: ${formatYMDHM_EST(lastModified)}` : ''}
-            </div>
-            <button
-              onClick={() => setShowDownload(true)}
-              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md"
-            >
-              Download Data
-            </button>
-          </div>
+        {/* NEW: Utility Card row (filters | AI CTA | download + last modified) */}
+        <div className="mt-4 mb-6">
+          <UtilityCard
+            filters={Filters}
+            downloadButton={DownloadButton}
+            lastModified={lastModifiedStr}
+            insightContext={{
+              scope: insightScope,
+              selectedExercises,
+              dateFrom,
+              dateTo
+            }}
+          />
         </div>
 
         {!hasData ? (
