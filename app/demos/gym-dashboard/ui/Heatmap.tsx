@@ -25,6 +25,9 @@ export default function Heatmap({
   const containerRef = useRef<HTMLDivElement>(null)
   const [w, setW] = useState<number>(600) // measured container width
 
+  // === dark tooltip state (cursor-follow) ===
+  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null)
+
   // responsive: measure container width
   useEffect(() => {
     const el = containerRef.current
@@ -99,17 +102,47 @@ export default function Heatmap({
   const rx = Math.min(6, Math.min(segW, segH) / 4)
 
   return (
-    <div ref={containerRef} className="w-full">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Volume heatmap">
+    <div ref={containerRef} className="w-full relative">
+      {/* custom tooltip (matches chart style) */}
+      {tip && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{ left: tip.x + 12, top: tip.y + 12 }}
+        >
+          <div className="rounded-md border shadow-lg px-3 py-2 text-xs bg-[#1f2937] border-[#374151] text-white">
+            {tip.text}
+          </div>
+        </div>
+      )}
+
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Volume heatmap"
+        onMouseLeave={() => setTip(null)}
+      >
         {series.map((d, i) => {
           const r = Math.floor(i / cols)
           const c = i % cols
           const x = padding + c * (segW + gap)
           const y = padding + r * (segH + gap)
-          const title = d.label ? `${d.date} • ${d.label}` : `${d.date} • ${d.volume.toLocaleString()} lbs`
+          const text = d.label
+            ? `${d.date} • ${d.label}`
+            : `${d.date} • ${d.volume.toLocaleString()} lbs`
           return (
-            <g key={`${d.date}-${i}`}>
-              <title>{title}</title>
+            <g
+              key={`${d.date}-${i}`}
+              onMouseMove={(e) => {
+                setTip({
+                  x: e.clientX,
+                  y: e.clientY,
+                  text,
+                })
+              }}
+            >
+              {/* removed <title> to avoid native browser tooltip */}
               <rect x={x} y={y} width={segW} height={segH} rx={rx} ry={rx} fill={colorFor(d)} />
             </g>
           )

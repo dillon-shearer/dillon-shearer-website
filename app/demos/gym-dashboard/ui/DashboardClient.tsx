@@ -1,7 +1,7 @@
 // app/demos/gym-dashboard/ui/DashboardClient.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import type { GymLift } from '../form/actions'
 import VolumeChart from './VolumeChart'
 import Heatmap from './Heatmap'
@@ -58,6 +58,74 @@ function calcDailyVolume(lifts: GymLift[], dates: string[]) {
     const volume = day.reduce((sum: number, l: GymLift) => sum + l.weight * l.reps, 0)
     return { date, volume, lifts: day }
   })
+}
+
+/* -------------------------- Tooltip (chart-style) -------------------------- */
+/* Cursor-follow tooltip that visually matches chart tooltips */
+function Tooltip({
+  text,
+  children,
+  offset = 12,
+}: {
+  text: string
+  children: React.ReactNode
+  offset?: number
+}) {
+  const [visible, setVisible] = useState(false)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+  const ref = useRef<HTMLSpanElement | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const onMove = (e: MouseEvent) => setPos({ x: e.clientX, y: e.clientY })
+    el.addEventListener('mousemove', onMove)
+    return () => el.removeEventListener('mousemove', onMove)
+  }, [])
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className="inline-flex items-center"
+        onMouseEnter={() => setVisible(true)}
+        onMouseLeave={() => setVisible(false)}
+      >
+        {children}
+      </span>
+      {visible && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{ left: pos.x + offset, top: pos.y + offset }}
+        >
+          <div className="rounded-md border shadow-lg px-3 py-2 text-xs bg-[#1f2937] border-[#374151] text-white">
+            {text}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/* -------------------------- date-time output helper -------------------------- */
+function formatYMDHM_EST(d?: Date | null) {
+  if (!d) return ''
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+
+  const parts = formatter.formatToParts(d)
+  const lookup = Object.fromEntries(parts.map(p => [p.type, p.value]))
+
+  // → "2025-10-23 12:07AM EST"
+  return `${lookup.year}-${lookup.month}-${lookup.day} ${lookup.hour}:${lookup.minute}${lookup.dayPeriod?.toLowerCase() || ''} EST`
 }
 
 /* -------------------------- shared pager -------------------------- */
@@ -145,7 +213,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   // Metrics
   const daily = useMemo(() => calcDailyVolume(filtered, dateWindow), [filtered, dateWindow])
-  const totalVolume = useMemo(() => daily.reduce((s: number, d) => s + d.volume, 0), [daily])
+  const totalVolume = useMemo(() => daily.reduce((s: number, d: any) => s + d.volume, 0), [daily])
 
   const gymDaysCount = useMemo(() => unique(filtered.map(l => l.date)).length, [filtered])
   const exerciseVariety = useMemo(() => unique(filtered.map(l => l.exercise)).length, [filtered])
@@ -232,15 +300,14 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const [openDay, setOpenDay] = useState<null | { date: string; lifts: GymLift[] }>(null)
 
   // --- Download Modal state ---
+  // Defaults: current + CSV (and CSV button first)
   const [showDownload, setShowDownload] = useState(false)
-  const [dlRange, setDlRange] = useState<'current' | 'all' | 'custom'>('current')
-  const [dlFormat, setDlFormat] = useState<'json' | 'csv'>('json')
+  const [dlRange, setDlRange] = useState<'current' | 'all'>('current')
+  const [dlFormat, setDlFormat] = useState<'json' | 'csv'>('csv')
   const datasetMinDate = useMemo(() => (lifts.length ? lifts.reduce((m, l) => (l.date < m ? l.date : m), lifts[0].date) : ''), [lifts])
   const datasetMaxDate = useMemo(() => (lifts.length ? lifts.reduce((m, l) => (l.date > m ? l.date : m), lifts[0].date) : ''), [lifts])
-  const [dlFrom, setDlFrom] = useState<string>(datasetMinDate)
-  const [dlTo, setDlTo] = useState<string>(datasetMaxDate)
 
-  // Build URL based on modal selections
+  // Build URL based on modal selections (no custom) + exclude unwanted fields
   const buildDownloadUrl = () => {
     const base = dlFormat === 'json' ? '/api/gym-data' : '/api/gym-data.csv'
     let from = ''
@@ -248,29 +315,29 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     if (dlRange === 'current') {
       from = dateWindow[0]
       to = dateWindow[dateWindow.length - 1]
-    } else if (dlRange === 'all') {
+    } else {
       from = datasetMinDate
       to = datasetMaxDate
-    } else {
-      from = dlFrom
-      to = dlTo
     }
     const qs = new URLSearchParams()
     if (from) qs.set('from', from)
     if (to) qs.set('to', to)
+    // Remove these fields from output: day_of_week, iso_week, month, year
+    qs.set('exclude', 'day_of_week,iso_week,month,year')
     const url = qs.toString() ? `${base}?${qs.toString()}` : base
     return url
   }
 
-  // Heatmap label: “Not Available” when no lifts on that day
-  const labelForDay = (hasLifts: boolean): string | undefined => (hasLifts ? undefined : 'Not Available')
+  // Tooltip texts
+  const e1RMTooltip = 'Estimated 1RM = weight × (1 + reps/30)  (Epley formula)'
+  const heatmapTooltip = 'Each column is a day. Darker = more total volume. Empty = no recorded sets.'
 
   return (
     <div className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-6 pb-12">
-        {/* Top bar: filters (left) + right column (Download above Last modified) */}
-        <div className="flex items-start justify-between">
-          {/* Filters */}
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Filters (left) */}
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
               <button
@@ -315,30 +382,19 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             )}
           </div>
 
-          {/* Right column: Download button above Last modified (centered pyramid) */}
-          <div className="flex flex-col items-end">
-            <div className="flex flex-col items-center">
-              <button
-                onClick={() => {
-                  setDlRange('current')
-                  setDlFormat('json')
-                  setDlFrom(datasetMinDate)
-                  setDlTo(datasetMaxDate)
-                  setShowDownload(true)
-                }}
-                className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md"
-              >
-                ⬇️ Download Data
-              </button>
-              <div className="text-xs italic text-gray-400 mt-1">
-                {lastModified ? `Last modified: ${lastModified.toLocaleString()}` : ''}
-              </div>
+          {/* Right side (order switched): Last modified | Download */}
+          <div className="flex items-center gap-4">
+            <div className="text-xs italic text-gray-400">
+              {lastModified ? `Last modified: ${formatYMDHM_EST(lastModified)}` : ''}
             </div>
+            <button
+              onClick={() => setShowDownload(true)}
+              className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md"
+            >
+              Download Data
+            </button>
           </div>
         </div>
-
-        {/* tiny gap below filters */}
-        <div className="h-2" />
 
         {!hasData ? (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-8">
@@ -388,7 +444,18 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               {/* PRs */}
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <h2 className="text-lg font-semibold mb-4">Exercise PRs</h2>
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-lg font-semibold">Exercise PRs</h2>
+                  {/* Single hover info icon using unified Tooltip */}
+                  <Tooltip text={e1RMTooltip}>
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none"
+                      aria-label="Estimated 1RM formula info"
+                    >
+                      i
+                    </span>
+                  </Tooltip>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
@@ -417,7 +484,9 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                           <td className="py-2 pr-4 text-gray-300">
                             {row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}
                           </td>
-                          <td className="py-2 pr-4">{row.bestSetDate}</td>
+                          <td className="py-2 pr-4">
+                            {row.bestSetDate /* YYYY-MM-DD */}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -432,15 +501,26 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 />
               </div>
 
-              {/* Heatmap — fixed box; year wraps to preserve readability */}
+              {/* Heatmap — removed native labels; add our own tooltip on header */}
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <h2 className="text-lg font-semibold mb-4">Volume Heatmap</h2>
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-lg font-semibold">Volume Heatmap</h2>
+                  <Tooltip text={heatmapTooltip}>
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none"
+                      aria-label="Heatmap info"
+                    >
+                      i
+                    </span>
+                  </Tooltip>
+                </div>
                 <Heatmap
                   mode={mode}
                   data={daily.map(d => ({
                     date: d.date,
                     volume: d.volume,
-                    label: d.lifts.length > 0 ? undefined : 'Not Available',
+                    // REMOVE label so the Heatmap component doesn't emit native <title> tooltips
+                    // label: d.lifts.length > 0 ? undefined : 'Not Available',
                   }))}
                   naColor="#3b4351"
                 />
@@ -461,30 +541,31 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {recentSessions.rows.map((s) => (
-                  <button
-                    key={s.date}
-                    onClick={() => setOpenDay({ date: s.date, lifts: s.lifts })}
-                    className="text-left bg-gray-800/60 hover:bg-gray-800 transition-colors rounded-lg px-4 py-4 border border-gray-700/60 hover:border-gray-600 group"
-                    title="View session details"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold tracking-wide">{s.date}</div>
-                      <div className="text-xs text-gray-400 group-hover:text-gray-300">
-                        {formatNum(s.volume)} lbs
+                  <Tooltip key={s.date} text="Click to view session details">
+                    <button
+                      onClick={() => setOpenDay({ date: s.date, lifts: s.lifts })}
+                      className="text-left bg-gray-800/60 hover:bg-gray-800 transition-colors rounded-lg px-4 py-4 border border-gray-700/60 hover:border-gray-600 group w-full"
+                      aria-label={`Open session for ${s.date}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold tracking-wide">{s.date}</div>
+                        <div className="text-xs text-gray-400 group-hover:text-gray-300">
+                          {formatNum(s.volume)} lbs
+                        </div>
                       </div>
-                    </div>
-                    <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
-                      <span className="inline-block px-2 py-1 bg-gray-900 rounded">
-                        {s.exercises.length} exercise{s.exercises.length === 1 ? '' : 's'}
-                      </span>
-                      <span className="inline-block px-2 py-1 bg-gray-900 rounded">
-                        {s.sets} set{s.sets === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                    <div className="mt-3 text-[11px] italic text-gray-500">
-                      Click to view details
-                    </div>
-                  </button>
+                      <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
+                        <span className="inline-block px-2 py-1 bg-gray-900 rounded">
+                          {s.exercises.length} exercise{s.exercises.length === 1 ? '' : 's'}
+                        </span>
+                        <span className="inline-block px-2 py-1 bg-gray-900 rounded">
+                          {s.sets} set{s.sets === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <div className="mt-3 text-[11px] italic text-gray-500">
+                        Click to view details
+                      </div>
+                    </button>
+                  </Tooltip>
                 ))}
               </div>
             </section>
@@ -553,10 +634,10 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             </div>
 
             <div className="p-5 space-y-4 text-sm">
-              {/* Range */}
+              {/* Range (no Custom) */}
               <div>
                 <div className="text-gray-300 mb-2">Range</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     className={`px-3 py-2 rounded-lg border ${dlRange === 'current' ? 'bg-blue-600 border-blue-500' : 'bg-gray-800 border-gray-700 hover:bg-gray-750'}`}
                     onClick={() => setDlRange('current')}
@@ -569,53 +650,24 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                   >
                     All time
                   </button>
-                  <button
-                    className={`px-3 py-2 rounded-lg border ${dlRange === 'custom' ? 'bg-blue-600 border-blue-500' : 'bg-gray-800 border-gray-700 hover:bg-gray-750'}`}
-                    onClick={() => setDlRange('custom')}
-                  >
-                    Custom
-                  </button>
                 </div>
-
-                {dlRange === 'custom' && (
-                  <div className="grid grid-cols-2 gap-3 mt-3">
-                    <div>
-                      <div className="text-gray-400 mb-1">From</div>
-                      <input
-                        type="date"
-                        value={dlFrom}
-                        onChange={(e) => setDlFrom(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-gray-400 mb-1">To</div>
-                      <input
-                        type="date"
-                        value={dlTo}
-                        onChange={(e) => setDlTo(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Format */}
+              {/* Format (CSV first) */}
               <div>
                 <div className="text-gray-300 mb-2">Format</div>
                 <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
-                  <button
-                    className={`px-4 py-2 text-sm ${dlFormat === 'json' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
-                    onClick={() => setDlFormat('json')}
-                  >
-                    JSON
-                  </button>
                   <button
                     className={`px-4 py-2 text-sm ${dlFormat === 'csv' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
                     onClick={() => setDlFormat('csv')}
                   >
                     CSV
+                  </button>
+                  <button
+                    className={`px-4 py-2 text-sm ${dlFormat === 'json' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                    onClick={() => setDlFormat('json')}
+                  >
+                    JSON
                   </button>
                 </div>
               </div>

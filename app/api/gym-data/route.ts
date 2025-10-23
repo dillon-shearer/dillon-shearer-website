@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       generated_at: new Date().toISOString(),
       fields: Object.keys(rows[0] ?? {}),
       filter: { from, to },
-      note: 'This is a wide “ML-style” export with raw and derived fields.',
+      note: 'This is a wide export with raw and derived fields.',
     },
     data: rows,
   }, null, 2), {
