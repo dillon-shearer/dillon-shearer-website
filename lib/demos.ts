@@ -3,17 +3,17 @@ import { Demo } from '@/types/demo'
 const demos: Demo[] = [
   {
     slug: 'materials-dashboard',
-    title: 'Real-time Materials Dashboard',
+    title: 'Materials Dashboard (Synthetic Data)',
     description: 'Interactive inventory management system with real-time analytics, scenario planning, and predictive insights for manufacturing operations. Features dynamic KPIs, supply chain simulation, and responsive design.',
     image: '/images/demos/materials-dashboard-preview.jpg',
     techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Interactive Charts'],
     category: 'fullstack',
-    complexity: 'intermediate',
+    complexity: 'beginner',
     buildTime: '2 days',
     status: 'live',
-    featured: true,
+    featured: false,
     githubUrl: 'https://github.com/dillon-shearer/dillon-shearer-website/blob/main/app/demos/materials-dashboard/dashboard.tsx',
-    liveUrl: undefined, // Will be the demo page itself
+    liveUrl: 'https://www.datawithdillon.com/demos/materials-dashboard', // Will be the demo page itself
     highlights: [
       'Real-time inventory tracking with status indicators',
       'Interactive scenario planning (stockouts, overstock, seasonal spikes)',
@@ -26,16 +26,16 @@ const demos: Demo[] = [
   {
     slug: 'gym-dashboard',
     title: 'Gym Data Tracker',
-    description: 'My personal fitness tracking dashboard with workout history, lift analytics, and progress visualization. Daily updates of gym lift data with comprehensive volume calculations and performance metrics.',
+    description: 'My real-time personal fitness tracking dashboard with workout history, lift analytics, and progress visualization. Daily updates of gym lift data with comprehensive volume calculations and performance metrics.',
     image: '/images/demos/gym-dashboard-preview.jpg',
-    techStack: ['React', 'Tailwind CSS', 'PostgreSQL', 'API Endpoints', 'Swagger UI'],
+    techStack: ['React', 'Tailwind CSS', 'PostgreSQL', 'API Endpoints'],
     category: 'fullstack',
     complexity: 'intermediate',
     buildTime: '3 days',
-    status: 'in-progress',
-    featured: false,
+    status: 'live',
+    featured: true,
     githubUrl: 'https://github.com/dillon-shearer/dillon-shearer-website/blob/main/app/demos/gym-dashboard/dashboard.tsx',
-    liveUrl: undefined, // Will be the demo page itself
+    liveUrl: 'https://www.datawithdillon.com/demos/gym-dashboard', // Will be the demo page itself
     highlights: [
       'Track weight, reps, and sets for major lifts',
       'Automatic volume calculations and KPI tracking',
