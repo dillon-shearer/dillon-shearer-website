@@ -35,14 +35,8 @@ export default function Page() {
                   <h2 className="text-2xl font-bold">
                     General Blog
                   </h2>
-                  <p className="text-blue-600 font-medium">Thoughts & Insights</p>
                 </div>
               </div>
-              
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                General thoughts, tutorials, and insights from my experiences in data science, 
-                analytics, and technology.
-              </p>
 
               <div className="space-y-4">
                 <BlogPosts />
