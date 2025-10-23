@@ -22,6 +22,28 @@ const demos: Demo[] = [
       'Responsive design optimized for mobile and desktop',
       'Dynamically generated synthetic materials data'
     ]
+  },
+  {
+    slug: 'gym-dashboard',
+    title: 'Gym Data Tracker',
+    description: 'Personal fitness tracking dashboard with workout history, lift analytics, and progress visualization. Daily updates of gym lift data with comprehensive volume calculations and performance metrics.',
+    image: '/images/demos/gym-dashboard-preview.jpg',
+    techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS'],
+    category: 'fullstack',
+    complexity: 'intermediate',
+    buildTime: '3 days',
+    status: 'in-progress',
+    featured: false,
+    githubUrl: 'https://github.com/dillon-shearer/dillon-shearer-website/blob/main/app/demos/gym-dashboard/dashboard.tsx',
+    liveUrl: undefined, // Will be the demo page itself
+    highlights: [
+      'Track weight, reps, and sets for major lifts',
+      'Automatic volume calculations and KPI tracking',
+      'Clean, minimal interface focused on core metrics',
+      'Workout history with sortable data tables',
+      'Responsive dark theme design',
+      'Real-time statistics dashboard'
+    ]
   }
 ]
 
@@ -30,12 +52,9 @@ export function getAllDemos(): Demo[] {
     // Featured first, then by complexity, then alphabetical
     if (a.featured && !b.featured) return -1
     if (!a.featured && b.featured) return 1
-    
     const complexityOrder = { advanced: 3, intermediate: 2, beginner: 1 }
     const complexityDiff = complexityOrder[b.complexity] - complexityOrder[a.complexity]
-    
     if (complexityDiff !== 0) return complexityDiff
-    
     return a.title.localeCompare(b.title)
   })
 }
