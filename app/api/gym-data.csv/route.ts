@@ -49,11 +49,10 @@ export async function GET(req: Request) {
   if (from) rows = rows.filter(r => r.date >= from)
   if (to)   rows = rows.filter(r => r.date <= to)
 
-  // Build headers from first row, honoring exclude list
   const baseHeaders = rows[0]
     ? Object.keys(rows[0])
     : [
-        'id','date','exercise','weight','reps','setNumber','timestamp','dayTag','isUnilateral',
+        'id','date','exercise','weight','reps','setNumber','timestamp','dayTag','isUnilateral','equipment',
         'volume','oneRM_est','day_of_week','iso_week','month','year'
       ]
 
@@ -73,4 +72,3 @@ export async function GET(req: Request) {
     },
   })
 }
- 

@@ -15,10 +15,9 @@ function enrich(lifts: GymLift[]): OutRow[] {
     const d = new Date(l.date + 'T00:00:00Z')
     // day-of-week in UTC (Mon..Sun)
     const dow = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
-    // ISO week (rough approach, good enough for download)
+    // ISO week (approx)
     const iso = (() => {
       const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
-      // Thursday in current week decides the year.
       date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7))
       const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
       const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
@@ -46,7 +45,6 @@ export async function GET(req: Request) {
   if (from) rows = rows.filter(r => r.date >= from)
   if (to)   rows = rows.filter(r => r.date <= to)
 
-  // Optional field exclusions (e.g., ?exclude=day_of_week,iso_week)
   if (exclude.length && rows.length) {
     rows = rows.map(r => {
       const copy: any = { ...r }
@@ -61,7 +59,7 @@ export async function GET(req: Request) {
       generated_at: new Date().toISOString(),
       fields: Object.keys(rows[0] ?? {}),
       filter: { from, to },
-      note: 'Wide export with raw + derived fields (includes dayTag and isUnilateral; excludes bodyParts).',
+      note: 'Wide export with raw + derived fields (includes dayTag, isUnilateral, equipment; excludes bodyParts).',
     },
     data: rows,
   }, null, 2), {
