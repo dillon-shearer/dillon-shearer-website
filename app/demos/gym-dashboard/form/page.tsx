@@ -1,3 +1,4 @@
+// app/demos/gym-dashboard/form/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -87,22 +88,13 @@ export default function GymEntryForm() {
         ? Math.max(...existingSets.map(s => s.setNumber)) + 1 
         : 1
 
-      const result = await addGymLift({
+      await addGymLift({
         date: formData.date,
         exercise: formData.exercise,
         weight: parseInt(formData.weight),
         reps: parseInt(formData.reps),
         setNumber: nextSetNumber,
       })
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to save lift')
-      }
-
-      // Show development mode warning if applicable
-      if (result.dev) {
-        console.warn('⚠️ Running in development mode - data not persisted to Vercel Blob')
-      }
 
       setStatus('success')
       
@@ -128,12 +120,7 @@ export default function GymEntryForm() {
     if (!confirm('Are you sure you want to delete this set?')) return
     
     try {
-      const result = await deleteGymLift(id)
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to delete lift')
-      }
-      
+      await deleteGymLift(id)
       await fetchAllLifts()
     } catch (error) {
       console.error('Error deleting lift:', error)
@@ -149,8 +136,7 @@ export default function GymEntryForm() {
     if (!editingLift) return
     
     try {
-      // Use the dedicated update function instead of delete + add
-      const result = await updateGymLift(editingLift.id, {
+      await updateGymLift(editingLift.id, {
         date: editingLift.date,
         exercise: editingLift.exercise,
         weight: editingLift.weight,
@@ -158,12 +144,8 @@ export default function GymEntryForm() {
         setNumber: editingLift.setNumber,
       })
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update lift')
-      }
-
       setEditingLift(null)
-      await fetchAllLifts() // Refresh the list
+      await fetchAllLifts()
       
     } catch (error) {
       console.error('Error updating lift:', error)
@@ -263,7 +245,7 @@ export default function GymEntryForm() {
 
         {status === 'error' && (
           <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 mb-6">
-            <p className="text-red-400">❌ Error saving data. Check your Vercel Blob setup and console logs.</p>
+            <p className="text-red-400">❌ Error saving data. Check your setup and console logs.</p>
           </div>
         )}
 

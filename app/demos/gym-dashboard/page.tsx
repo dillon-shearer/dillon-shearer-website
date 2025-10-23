@@ -17,7 +17,7 @@ export default function GymDashboardPage() {
       {/* Demo Header */}
         <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="text-center">
-            <h1 className="text-4xl font-bold mb-6">Materials Dashboard Demo</h1>
+            <h1 className="text-4xl font-bold mb-6">Workout Data Dashboard</h1>
               <p className="text-sm opacity-75 mt-2 italic">
                 Enjoy my daily live workout data available for viewing or download.
               </p>
