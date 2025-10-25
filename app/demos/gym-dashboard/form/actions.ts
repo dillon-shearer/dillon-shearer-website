@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 
 export interface GymLift {
   id: string
-  date: string
+  date: string            // stored as text or date in DB; we cast defensively below
   exercise: string
   weight: number
   reps: number
@@ -41,7 +41,27 @@ function toPgTextArrayLiteral(arr: string[] | null | undefined): string | null {
   return `{${cleaned.join(',')}}`
 }
 
-/** Fetch all lifts */
+/** Re-sequence set numbers for a calendar date, per exercise (contiguous 1..N across the day). */
+async function resequenceSetsForDate(dateISO: string) {
+  await sql/* sql */`
+    WITH ordered AS (
+      SELECT
+        id,
+        ROW_NUMBER() OVER (
+          PARTITION BY (date::date), exercise
+          ORDER BY (timestamp::timestamptz) ASC, id ASC
+        ) AS rn
+      FROM gym_lifts
+      WHERE (date::date) = ${dateISO}::date
+    )
+    UPDATE gym_lifts g
+    SET set_number = o.rn
+    FROM ordered o
+    WHERE g.id = o.id
+  `
+}
+
+/** Fetch all lifts — order by real time; cast date defensively. */
 export async function getGymLifts(): Promise<GymLift[]> {
   const { rows } = await sql/* sql */`
     SELECT
@@ -56,7 +76,7 @@ export async function getGymLifts(): Promise<GymLift[]> {
       is_unilateral AS "isUnilateral",
       equipment
     FROM gym_lifts
-    ORDER BY date DESC, exercise ASC, set_number ASC
+    ORDER BY (date::date) ASC, (timestamp::timestamptz) ASC, id ASC
   `
   return rows as GymLift[]
 }
@@ -85,7 +105,7 @@ export async function getDayTagForDate(date: string): Promise<string | null> {
   const { rows } = await sql/* sql */`
     SELECT day_tag AS "dayTag"
     FROM gym_lifts
-    WHERE date = ${date}::date AND day_tag IS NOT NULL AND day_tag <> ''
+    WHERE (date::date) = ${date}::date AND day_tag IS NOT NULL AND day_tag <> ''
     LIMIT 1
   `
   return (rows[0]?.dayTag as string | undefined) ?? null
@@ -137,7 +157,6 @@ export async function setBodyPartsForDate(date: string, parts: string[] | null) 
         updated_at = NOW()
     `
   }
-  // ensure dashboard refreshes
   revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
@@ -176,14 +195,14 @@ export async function setDayTagForDate(date: string, tag: string | null) {
   await sql/* sql */`
     UPDATE gym_lifts
     SET day_tag = ${tag}
-    WHERE date = ${date}::date
+    WHERE (date::date) = ${date}::date
   `
 
   revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
 
-/** Insert a new lift (correct column order) */
+/** Insert a new lift (then re-sequence for the date) */
 export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
   const id = `lift_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
   const timestamp = new Date().toISOString()
@@ -241,7 +260,7 @@ export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
     )
     VALUES (
       ${id},
-      ${date}::date,
+      ${date},
       ${exercise},
       ${weight}::numeric,
       ${reps}::int,
@@ -253,59 +272,104 @@ export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
     )
   `
 
-  const newLift: GymLift = {
-    id,
-    date,
-    exercise,
-    weight,
-    reps,
-    setNumber,
-    timestamp,
-    dayTag: tagToUse || null,
-    isUnilateral,
-    equipment
+  // Normalize numbering per (date, exercise)
+  await resequenceSetsForDate(date)
+
+  revalidatePath(DASHBOARD_PATH)
+  return {
+    success: true,
+    data: {
+      id, date, exercise, weight, reps, setNumber,
+      timestamp, dayTag: tagToUse || null, isUnilateral, equipment
+    } as GymLift
   }
-
-  revalidatePath(DASHBOARD_PATH)
-  return { success: true, data: newLift }
 }
 
-/** Delete a lift */
-export async function deleteGymLift(id: string) {
-  await sql/* sql */`DELETE FROM gym_lifts WHERE id = ${id}`
-  revalidatePath(DASHBOARD_PATH)
-  return { success: true }
-}
-
-/** Update a lift (casts applied) */
+/**
+ * Update a lift. If the exercise or date changes:
+ * - Push the row to the END of the target day by setting timestamp to ISO end-of-day ("T23:59:59.999Z"),
+ *   so it appends and becomes the last set number after resequencing.
+ * Then resequence affected dates (previous and current if changed).
+ */
 export async function updateGymLift(
   id: string,
   updated: Omit<GymLift, 'id' | 'timestamp'>
 ) {
+  const before = await sql/* sql */`
+    SELECT date, exercise
+    FROM gym_lifts
+    WHERE id = ${id}
+    LIMIT 1
+  `
+  const previousDate: string | undefined = before.rows[0]?.date
+  const previousExercise: string | undefined = before.rows[0]?.exercise
+
   const weight = Number(updated.weight)
   const reps = Number(updated.reps)
   const setNumber = Number(updated.setNumber)
   const isUnilateral = updated.isUnilateral === undefined ? null : Boolean(updated.isUnilateral)
   const equipment = (updated.equipment ?? '').trim() || null
 
-  await sql/* sql */`
-    UPDATE gym_lifts
-    SET
-      date = ${updated.date}::date,
-      exercise = ${updated.exercise},
-      weight = ${weight}::numeric,
-      reps = ${reps}::int,
-      set_number = ${setNumber}::int,
-      day_tag = ${updated.dayTag ?? null},
-      is_unilateral = ${isUnilateral}::boolean,
-      equipment = ${equipment}
-    WHERE id = ${id}
-  `
+  const exerciseChanged = previousExercise !== updated.exercise
+  const dateChanged = previousDate !== updated.date
+
+  // Always use ISO timestamps so client + DB ordering is consistent
+  const isoEndOfDay = `${updated.date}T23:59:59.999Z`
+
+  if (exerciseChanged || dateChanged) {
+    await sql/* sql */`
+      UPDATE gym_lifts
+      SET
+        date = ${updated.date},
+        exercise = ${updated.exercise},
+        weight = ${weight}::numeric,
+        reps = ${reps}::int,
+        set_number = ${setNumber}::int,
+        day_tag = ${updated.dayTag ?? null},
+        is_unilateral = ${isUnilateral}::boolean,
+        equipment = ${equipment},
+        timestamp = ${isoEndOfDay}
+      WHERE id = ${id}
+    `
+  } else {
+    await sql/* sql */`
+      UPDATE gym_lifts
+      SET
+        date = ${updated.date},
+        exercise = ${updated.exercise},
+        weight = ${weight}::numeric,
+        reps = ${reps}::int,
+        set_number = ${setNumber}::int,
+        day_tag = ${updated.dayTag ?? null},
+        is_unilateral = ${isUnilateral}::boolean,
+        equipment = ${equipment}
+      WHERE id = ${id}
+    `
+  }
+
+  if (previousDate && previousDate !== updated.date) {
+    await resequenceSetsForDate(previousDate)
+  }
+  await resequenceSetsForDate(updated.date)
+
   revalidatePath(DASHBOARD_PATH)
   return { success: true }
 }
 
-/** Recent lifts */
+/** Delete a lift (then re-sequence for that date) */
+export async function deleteGymLift(id: string) {
+  const prev = await sql/* sql */`SELECT date FROM gym_lifts WHERE id = ${id} LIMIT 1`
+  const prevDate: string | undefined = prev.rows[0]?.date
+
+  await sql/* sql */`DELETE FROM gym_lifts WHERE id = ${id}`
+
+  if (prevDate) await resequenceSetsForDate(prevDate)
+
+  revalidatePath(DASHBOARD_PATH)
+  return { success: true }
+}
+
+/** Recent lifts — cast date defensively for ordering */
 export async function getRecentLifts(limit: number = 10): Promise<GymLift[]> {
   const { rows } = await sql/* sql */`
     SELECT
@@ -320,7 +384,7 @@ export async function getRecentLifts(limit: number = 10): Promise<GymLift[]> {
       is_unilateral AS "isUnilateral",
       equipment
     FROM gym_lifts
-    ORDER BY date DESC, timestamp DESC
+    ORDER BY (date::date) DESC, (timestamp::timestamptz) DESC, id DESC
     LIMIT ${limit}
   `
   return rows as GymLift[]

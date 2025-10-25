@@ -37,7 +37,7 @@ const EQUIPMENT_OPTIONS = [
 ] as const
 type Equipment = typeof EQUIPMENT_OPTIONS[number]
 
-// Dummy catalog (replace later) - want to add "equipment" ie smith machine, machine, dumbbells.
+// Exercise catalog
 const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
   biceps:     ['Preacher Curl', 'Hammer Curl', 'Bayesian Curl', 'Incline Curl'],
   chest:      ['Incline Press', 'Flat Press', 'Decline Press', 'Chest Fly', 'Bench Press'],
@@ -213,6 +213,8 @@ export default function GymEntryForm() {
       if (!formData.date || !formData.exercise || !formData.weight || !formData.reps || !formData.equipment) {
         throw new Error('Please fill in all required fields')
       }
+
+      // (Server re-sequences; this is just for UX hint)
       const existingSets = allLifts.filter(
         lift => lift.date === formData.date && lift.exercise === formData.exercise
       )
@@ -263,10 +265,10 @@ export default function GymEntryForm() {
     try {
       await updateGymLift(editingLift.id, {
         date: editingLift.date,
-        exercise: editingLift.exercise,
+        exercise: editingLift.exercise,   // relabel → server pushes to end of day (appends)
         weight: editingLift.weight,
         reps: editingLift.reps,
-        setNumber: editingLift.setNumber,
+        setNumber: editingLift.setNumber, // normalized on server
         dayTag: editingLift.dayTag ?? null,
         isUnilateral: editingLift.isUnilateral ?? null,
         equipment: editingLift.equipment ?? null,
@@ -280,37 +282,44 @@ export default function GymEntryForm() {
     }
   }
 
-  const liftsForSelectedDate = allLifts.filter(l => l.date === formData.date)
+  // ---- Derivations for selected date ----
+  const liftsForSelectedDate = useMemo(
+    () => allLifts
+      .filter(l => l.date === formData.date)
+      .sort((a, b) => {
+        const ta = Date.parse(a.timestamp)
+        const tb = Date.parse(b.timestamp)
+        if (ta === tb) return a.id.localeCompare(b.id)
+        return ta - tb
+      }),
+    [allLifts, formData.date]
+  )
 
-  // Build a stable global order map based on the fetch order of allLifts.
-  // Higher index === more recently logged (top of history).
-  const globalOrderIndex = useMemo(() => {
-    const m = new Map<string, number>()
-    allLifts.forEach((l, idx) => m.set(l.id, idx))
-    return m
-  }, [allLifts])
-
-  // Group sets by exercise (for the selected date)
-  const liftsByExerciseForSelectedDate = liftsForSelectedDate.reduce((acc, lift) => {
-    if (!acc[lift.exercise]) acc[lift.exercise] = []
-    acc[lift.exercise].push(lift)
+  // Group sets by exercise (single group per exercise)
+  const liftsByExerciseForSelectedDate = useMemo(() => {
+    const acc: Record<string, GymLift[]> = {}
+    for (const lift of liftsForSelectedDate) {
+      (acc[lift.exercise] ||= []).push(lift)
+    }
     return acc
-  }, {} as Record<string, GymLift[]>)
+  }, [liftsForSelectedDate])
 
-  // Ensure sets within each exercise render in their natural (older→newer) order using global index,
-  // and then sort the exercise groups themselves by the most recent set they contain (newest→oldest).
+  // Sets in each exercise: chronological; groups: newest latest-set first (so revisiting floats to top)
   const exerciseGroupsChrono = useMemo(() => {
     return Object.entries(liftsByExerciseForSelectedDate)
       .map(([exercise, sets]) => {
-        const setsChrono = [...sets].sort(
-          (a, b) => (globalOrderIndex.get(a.id) ?? 0) - (globalOrderIndex.get(b.id) ?? 0)
-        )
-        const latestIdx = Math.max(...sets.map(s => globalOrderIndex.get(s.id) ?? -1))
+        const setsChrono = [...sets].sort((a, b) => {
+          const ta = Date.parse(a.timestamp)
+          const tb = Date.parse(b.timestamp)
+          if (ta === tb) return a.id.localeCompare(b.id)
+          return ta - tb
+        })
+        const latestTs = Date.parse(setsChrono[setsChrono.length - 1]?.timestamp ?? '')
         const exerciseVolume = sets.reduce((sum, s) => sum + s.weight * s.reps, 0)
-        return { exercise, sets: setsChrono, latestIdx, exerciseVolume }
+        return { exercise, sets: setsChrono, latestTs, exerciseVolume }
       })
-      .sort((a, b) => b.latestIdx - a.latestIdx) // newest group first
-  }, [liftsByExerciseForSelectedDate, globalOrderIndex])
+      .sort((a, b) => b.latestTs - a.latestTs) // newest group on top
+  }, [liftsByExerciseForSelectedDate])
 
   const totalVolumeForSelectedDate = liftsForSelectedDate.reduce((sum, lift) => sum + (lift.weight * lift.reps), 0)
   const dayTagForSelectedDate = (formData.dayTag || '').trim()
@@ -343,7 +352,6 @@ export default function GymEntryForm() {
   const handleCloseDayInfo = () => {
     setShowDayInfo(false)
     if (flowPending) {
-      // allow the sheet to unmount before opening the next one
       setTimeout(() => setShowBodyParts(true), 60)
     }
   }
@@ -568,7 +576,7 @@ export default function GymEntryForm() {
           </div>
         </form>
 
-        {/* ===================== Workout History (newest → oldest) ===================== */}
+        {/* ===================== Workout History (newest exercise group first) ===================== */}
         <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full">
           {/* Centered header + subheader */}
           <h3 className="text-lg font-semibold text-white mb-2 text-center">
