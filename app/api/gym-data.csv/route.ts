@@ -38,6 +38,7 @@ const csvEscape = (v: unknown) => {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
+  const day = searchParams.get('day') // NEW: single day
   const from = searchParams.get('from')
   const to = searchParams.get('to')
   const exclude = (searchParams.get('exclude') || '')
@@ -46,8 +47,12 @@ export async function GET(req: Request) {
     .filter(Boolean)
 
   let rows = enrich(await getGymLifts())
-  if (from) rows = rows.filter(r => r.date >= from)
-  if (to)   rows = rows.filter(r => r.date <= to)
+  if (day) {
+    rows = rows.filter(r => r.date === day)
+  } else {
+    if (from) rows = rows.filter(r => r.date >= from)
+    if (to)   rows = rows.filter(r => r.date <= to)
+  }
 
   const baseHeaders = rows[0]
     ? Object.keys(rows[0])
@@ -67,7 +72,7 @@ export async function GET(req: Request) {
   return new NextResponse(csv, {
     headers: {
       'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': 'attachment; filename="gym-lifts.csv"',
+      'content-disposition': `attachment; filename="${day ? `gym-lifts-${day}` : 'gym-lifts'}.csv"`,
       'cache-control': 'no-store',
     },
   })

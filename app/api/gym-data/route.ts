@@ -33,8 +33,9 @@ function enrich(lifts: GymLift[]): OutRow[] {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
-  const from = searchParams.get('from') // YYYY-MM-DD (optional)
-  const to = searchParams.get('to')     // YYYY-MM-DD (optional)
+  const day = searchParams.get('day')     // NEW: single day (YYYY-MM-DD)
+  const from = searchParams.get('from')   // YYYY-MM-DD (optional)
+  const to = searchParams.get('to')       // YYYY-MM-DD (optional)
   const exclude = (searchParams.get('exclude') || '')
     .split(',')
     .map(s => s.trim())
@@ -42,8 +43,13 @@ export async function GET(req: Request) {
 
   let rows = enrich(await getGymLifts())
 
-  if (from) rows = rows.filter(r => r.date >= from)
-  if (to)   rows = rows.filter(r => r.date <= to)
+  // If ?day is present, override from/to to that single date
+  if (day) {
+    rows = rows.filter(r => r.date === day)
+  } else {
+    if (from) rows = rows.filter(r => r.date >= from)
+    if (to)   rows = rows.filter(r => r.date <= to)
+  }
 
   if (exclude.length && rows.length) {
     rows = rows.map(r => {
@@ -58,14 +64,14 @@ export async function GET(req: Request) {
       count: rows.length,
       generated_at: new Date().toISOString(),
       fields: Object.keys(rows[0] ?? {}),
-      filter: { from, to },
+      filter: day ? { day } : { from, to },
       note: 'Wide export with raw + derived fields (includes dayTag, isUnilateral, equipment; excludes bodyParts).',
     },
     data: rows,
   }, null, 2), {
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'content-disposition': 'attachment; filename="gym-lifts.json"',
+      'content-disposition': `attachment; filename="${day ? `gym-lifts-${day}` : 'gym-lifts'}.json"`,
       'cache-control': 'no-store',
     },
   })
