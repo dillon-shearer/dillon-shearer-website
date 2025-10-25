@@ -1,4 +1,3 @@
-// app/demos/gym-dashboard/ui/UtilityCard.tsx
 'use client'
 
 import React from 'react'
@@ -34,7 +33,7 @@ export default function UtilityCard({
         <div className="flex-1 min-w-[260px] flex items-center justify-end gap-3">
           <div>{downloadButton}</div>
           <div className="text-xs text-gray-500 text-right whitespace-nowrap">
-            Last modified:{' '}
+            Last modified{' '}
             <span className="font-medium text-gray-700 dark:text-gray-300">
               {lastModified}
             </span>

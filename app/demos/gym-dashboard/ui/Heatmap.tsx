@@ -1,7 +1,7 @@
 // app/demos/gym-dashboard/ui/Heatmap.tsx
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 type Mode = 'week' | 'month' | 'year'
 type Cell = { date: string; volume: number; label?: string }
@@ -9,12 +9,14 @@ type Cell = { date: string; volume: number; label?: string }
 export default function Heatmap({
   data,
   mode = 'month',
-  height = 120,        // fixed visual height (px) — same box for all modes
-  gap = 4,             // px gap between segments
-  padding = 12,        // px inner padding
-  naColor = '#3b4351', // neutral base for 0-volume days
-  naOpacity = 0.12,    // make 0-volume days barely visible
-  minYearSegWidth = 10 // minimum segment width for YEAR; component will wrap to new rows to respect this
+  height = 120,        // used when autoGrow = false AND fillParent = false
+  gap = 4,
+  padding = 12,
+  naColor = '#3b4351',
+  naOpacity = 0.12,
+  minYearSegWidth = 10,
+  autoGrow = true,     // grow vertically based on segment size (ignored if fillParent)
+  fillParent = true,   // NEW: stretch SVG to fill parent's height
 }: {
   data: Cell[]
   mode?: Mode
@@ -24,28 +26,36 @@ export default function Heatmap({
   naColor?: string
   naOpacity?: number
   minYearSegWidth?: number
+  autoGrow?: boolean
+  fillParent?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [w, setW] = useState<number>(600) // measured container width
+  const [w, setW] = useState<number>(0) // measured container width
+  const [h, setH] = useState<number>(0) // NEW: measured container height
 
-  // === dark tooltip state (cursor-follow) ===
-  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null)
-
-  // responsive: measure container width
-  useEffect(() => {
+  // Measure on mount + on resize
+  useLayoutEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const cw = entry.contentRect.width
-        if (cw > 0) setW(cw)
-      }
-    })
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0) setW(rect.width)
+      if (rect.height > 0) setH(rect.height)
+    }
+
+    measure()
+    const ro = new ResizeObserver(() => measure())
     ro.observe(el)
-    return () => ro.disconnect()
+    window.addEventListener('resize', measure)
+
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
   }, [])
 
-  // how many days should the current mode display?
+  // how many days to display for the mode?
   const N =
     mode === 'week' ? 7 :
     mode === 'month' ? 30 :
@@ -58,19 +68,17 @@ export default function Heatmap({
       : [
           ...Array.from({ length: N - data.length }, (_, i) => ({
             date: `na-${i}`,
-            volume: 0, // treat as NA
+            volume: 0,
           })),
           ...data,
         ]
 
   // ---------- Color scaling ----------
-  // Adaptive thresholds so low-volume days are clearly low, but with a guard for tiny datasets.
   const nonZero = series
     .filter(d => d.volume > 0)
     .map(d => d.volume)
     .sort((a, b) => a - b)
 
-  // Percentile helper
   const quantile = (arr: number[], p: number) => {
     if (!arr.length) return 0
     const idx = (arr.length - 1) * p
@@ -80,20 +88,14 @@ export default function Heatmap({
     return (1 - h) * arr[lo] + h * arr[hi]
   }
 
-  // Guard: with very little data, avoid unfair "low" coloring.
-  const singlePointNeutralBucket = 4 // a friendly lime for a lone day
-
-  // Thresholds at 20/40/60/80% — adaptive to your dataset
+  const singlePointNeutralBucket = 4
   const q20 = quantile(nonZero, 0.2)
   const q40 = quantile(nonZero, 0.4)
   const q60 = quantile(nonZero, 0.6)
   const q80 = quantile(nonZero, 0.8)
 
-  // Palette (bad -> good): deep red → red → orange → yellow → green → deep green
   const RAMP = ['#7f1d1d', '#b91c1c', '#dc2626', '#f59e0b', '#10b981', '#059669']
-
   const isNA = (d: Cell) => d.volume === 0
-
   const bucketFor = (v: number) => {
     if (nonZero.length <= 1) return singlePointNeutralBucket
     if (v <= q20) return 1
@@ -102,14 +104,13 @@ export default function Heatmap({
     if (v <= q80) return 4
     return 5
   }
-
   const colorFor = (d: Cell) => (isNA(d) ? naColor : RAMP[bucketFor(d.volume)])
   const opacityFor = (d: Cell) => (isNA(d) ? naOpacity : 1)
 
-  // fixed outer box
-  const width = w
+  // Outer dimensions from container
+  const width = Math.max(1, w)
+  const heightFromParent = Math.max(1, h)
   const innerW = Math.max(0, width - padding * 2)
-  const innerH = Math.max(0, height - padding * 2)
 
   // layout:
   // - week/month: single row with N columns
@@ -118,11 +119,7 @@ export default function Heatmap({
   let rows: number
 
   if (mode === 'year') {
-    // compute max columns we can fit while honoring minYearSegWidth (considering gaps)
-    const maxCols = Math.max(
-      1,
-      Math.floor((innerW + gap) / (minYearSegWidth + gap))
-    )
+    const maxCols = Math.max(1, Math.floor((innerW + gap) / (minYearSegWidth + gap)))
     cols = Math.max(1, Math.min(N, maxCols))
     rows = Math.max(1, Math.ceil(N / cols))
   } else {
@@ -130,67 +127,63 @@ export default function Heatmap({
     rows = 1
   }
 
-  // recompute actual segment sizes to perfectly tile inner box
+  // Calculate segment sizes
   const totalGapX = Math.max(0, (cols - 1) * gap)
-  const totalGapY = Math.max(0, (rows - 1) * gap)
   const segW = cols > 0 ? (innerW - totalGapX) / cols : 0
-  const segH = rows > 0 ? (innerH - totalGapY) / rows : 0
+
+  // Decide final height and segment height
+  let computedHeight = height
+  const totalGapY = Math.max(0, (rows - 1) * gap)
+  let segH: number
+
+  if (fillParent && heightFromParent > 0) {
+    // FILL STRATEGY: compute segH so that the SVG fills the parent height
+    const innerH = Math.max(0, heightFromParent - padding * 2)
+    segH = rows > 0 ? (innerH - totalGapY) / rows : 0
+    computedHeight = heightFromParent
+  } else if (autoGrow) {
+    // Auto size based on segW (old behavior)
+    const targetSegH =
+      mode === 'week' ? Math.min(segW, 36) :
+      mode === 'month' ? Math.min(segW, 26) :
+      Math.min(segW * 0.85, 28)
+
+    segH = Math.max(8, targetSegH)
+    computedHeight = Math.ceil(padding * 2 + rows * segH + totalGapY)
+  } else {
+    const innerH = Math.max(0, height - padding * 2)
+    segH = rows > 0 ? (innerH - totalGapY) / rows : 0
+  }
+
   const rx = Math.min(6, Math.min(segW, segH) / 4)
 
   return (
-    <div ref={containerRef} className="w-full relative">
-      {/* custom tooltip (matches chart style) */}
-      {tip && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{ left: tip.x + 12, top: tip.y + 12 }}
-        >
-          <div className="rounded-md border shadow-lg px-3 py-2 text-xs bg-[#1f2937] border-[#374151] text-white">
-            {tip.text}
-          </div>
-        </div>
-      )}
-
+    <div ref={containerRef} className="w-full h-full relative">
       <svg
         width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
+        height={computedHeight}
+        viewBox={`0 0 ${width} ${computedHeight}`}
         role="img"
         aria-label="Volume heatmap"
-        onMouseLeave={() => setTip(null)}
+        className="block"
       >
         {series.map((d, i) => {
           const r = Math.floor(i / cols)
           const c = i % cols
           const x = padding + c * (segW + gap)
           const y = padding + r * (segH + gap)
-
-          const text = isNA(d)
-            ? `${d.date} • no sets`
-            : `${d.date} • ${d.volume.toLocaleString()} lbs`
-
           return (
-            <g
+            <rect
               key={`${d.date}-${i}`}
-              onMouseMove={(e) => {
-                setTip({
-                  x: e.clientX,
-                  y: e.clientY,
-                  text,
-                })
-              }}
-            >
-              <rect
-                x={x}
-                y={y}
-                width={segW}
-                height={segH}
-                rx={rx}
-                ry={rx}
-                fill={colorFor(d)}
-                opacity={opacityFor(d)}
-              />
-            </g>
+              x={x}
+              y={y}
+              width={segW}
+              height={segH}
+              rx={rx}
+              ry={rx}
+              fill={colorFor(d)}
+              opacity={opacityFor(d)}
+            />
           )
         })}
       </svg>

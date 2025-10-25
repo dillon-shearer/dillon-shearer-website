@@ -15,14 +15,13 @@ const formatNum = (n: number) => n.toLocaleString()
 const formatWeight = (lbs: number) => (lbs >= 2000 ? `${(lbs / 2000).toFixed(1)} tons` : `${formatNum(lbs)} lbs`)
 const unique = <T,>(arr: T[]) => Array.from(new Set(arr))
 
-// UTC date helpers to ensure “today” is included reliably
+// UTC date helpers
 const toKeyDate = (d: Date) =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10)
 const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d))
 const addUTCDays = (d: Date, n: number) =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n))
 
-// NEW: day helpers / clamps
 const todayUTCKey = () => toKeyDate(new Date())
 const clampToToday = (ymd: string) => (ymd > todayUTCKey() ? todayUTCKey() : ymd)
 const shiftYMD = (ymd: string, days: number) => {
@@ -34,10 +33,12 @@ function groupBy<T, K extends string | number>(arr: T[], key: (t: T) => K): Map<
   const m = new Map<K, T[]>()
   for (let i = 0; i < arr.length; i++) {
     const item = arr[i]
-    const k = key(item)
-    const bucket = m.get(k)
-    if (bucket) bucket.push(item)
-    else m.set(k, [item])
+    theLoop: {
+      const k = key(item)
+      const bucket = m.get(k)
+      if (bucket) bucket.push(item)
+      else m.set(k, [item])
+    }
   }
   return m
 }
@@ -45,10 +46,7 @@ function groupBy<T, K extends string | number>(arr: T[], key: (t: T) => K): Map<
 function lastNDatesUTC(n: number, until: Date) {
   const end = utc(until.getUTCFullYear(), until.getUTCMonth(), until.getUTCDate())
   const out: string[] = []
-  for (let i = n - 1; i >= 0; i--) {
-    const d = addUTCDays(end, -i)
-    out.push(toKeyDate(d))
-  }
+  for (let i = n - 1; i >= 0; i--) out.push(toKeyDate(addUTCDays(end, -i)))
   return out
 }
 function yearDatesYTDUTC(year: number) {
@@ -69,16 +67,10 @@ function calcDailyVolume(lifts: GymLift[], dates: string[]) {
   })
 }
 
-/* -------------------------- Tooltip (chart-style) -------------------------- */
+/* -------------------------- Tooltip -------------------------- */
 function Tooltip({
-  text,
-  children,
-  offset = 12,
-}: {
-  text: string
-  children: React.ReactNode
-  offset?: number
-}) {
+  text, children, offset = 12,
+}: { text: string; children: React.ReactNode; offset?: number }) {
   const [visible, setVisible] = useState(false)
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const ref = useRef<HTMLSpanElement | null>(null)
@@ -102,10 +94,7 @@ function Tooltip({
         {children}
       </span>
       {visible && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{ left: pos.x + offset, top: pos.y + offset }}
-        >
+        <div className="fixed z-50 pointer-events-none" style={{ left: pos.x + offset, top: pos.y + offset }}>
           <div className="rounded-md border shadow-lg px-3 py-2 text-xs bg-[#1f2937] border-[#374151] text-white">
             {text}
           </div>
@@ -115,57 +104,35 @@ function Tooltip({
   )
 }
 
-/* -------------------------- date-time & title helpers -------------------------- */
+/* -------------------------- format helpers -------------------------- */
 function formatYMDHM_EST(d?: Date | null) {
   if (!d) return ''
-
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: 'numeric', minute: '2-digit', hour12: true,
   })
-
   const parts = formatter.formatToParts(d)
   const lookup = Object.fromEntries(parts.map(p => [p.type, p.value]))
   return `${lookup.year}-${lookup.month}-${lookup.day} ${lookup.hour}:${lookup.minute}${lookup.dayPeriod?.toLowerCase() || ''} EST`
 }
-
 function formatLongDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
-
 function titleCaseTag(tag?: string | null) {
   if (!tag) return ''
   return tag.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())
 }
 
-/* -------------------------- shared pager -------------------------- */
+/* -------------------------- Pager -------------------------- */
 function Pager({
-  page,
-  totalPages,
-  onPrev,
-  onNext,
-  className = '',
-}: {
-  page: number
-  totalPages: number
-  onPrev: () => void
-  onNext: () => void
-  className?: string
-}) {
+  page, totalPages, onPrev, onNext, className = '',
+}: { page: number; totalPages: number; onPrev: () => void; onNext: () => void; className?: string }) {
   return (
     <div className={`grid grid-cols-3 items-center ${className}`}>
       <div className="justify-self-start">
-        <button
-          disabled={page <= 1}
-          onClick={onPrev}
-          className="text-xs text-gray-300 disabled:text-gray-600 hover:underline"
-        >
+        <button disabled={page <= 1} onClick={onPrev} className="text-xs text-gray-300 disabled:text-gray-600 hover:underline">
           ← Prev
         </button>
       </div>
@@ -173,11 +140,7 @@ function Pager({
         Page {page} / {Math.max(1, totalPages)}
       </div>
       <div className="justify-self-end">
-        <button
-          disabled={page >= totalPages}
-          onClick={onNext}
-          className="text-xs text-gray-300 disabled:text-gray-600 hover:underline"
-        >
+        <button disabled={page >= totalPages} onClick={onNext} className="text-xs text-gray-300 disabled:text-gray-600 hover:underline">
           Next →
         </button>
       </div>
@@ -187,10 +150,10 @@ function Pager({
 
 /* -------------------------- component -------------------------- */
 export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
-  // default to WEEK
   const [mode, setMode] = useState<RangeMode>('day')
+  const [prevMode, setPrevMode] = useState<RangeMode | null>(null)
 
-  // years present in data (desc), capped by current year
+  // years present in data
   const allYears = useMemo(
     () => unique(lifts.map(l => new Date(l.date).getUTCFullYear())).sort((a, b) => b - a),
     [lifts]
@@ -199,7 +162,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const initialYear = Math.min(currentYear, allYears[0] ?? currentYear)
   const [year, setYear] = useState<number>(initialYear)
 
-  // NEW: selected day
+  // selected day
   const [dayDate, setDayDate] = useState<string>(() => {
     if (!lifts.length) return todayUTCKey()
     const latest = lifts.reduce((m, l) => (l.date > m ? l.date : m), lifts[0].date)
@@ -208,7 +171,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   const now = new Date()
 
-  // Filtered date window
+  // date window
   const dateWindow = useMemo<string[]>(() => {
     if (mode === 'day')   return [dayDate]
     if (mode === 'week')  return lastNDatesUTC(7, now)
@@ -216,11 +179,10 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     return yearDatesYTDUTC(year)
   }, [mode, year, dayDate])
 
-  // cap year at current year
   const decYear = () => setYear(y => Math.max(1970, Math.min(currentYear, y - 1)))
   const incYear = () => setYear(y => Math.max(1970, Math.min(currentYear, y + 1)))
 
-  // Filtered lifts in current window
+  // filtered lifts
   const filtered = useMemo<GymLift[]>(() => {
     const setDates = new Set(dateWindow)
     return lifts.filter(l => setDates.has(l.date))
@@ -228,20 +190,17 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   const hasData = filtered.length > 0
 
-  // Last modified
+  // last modified
   const lastModified = useMemo(() => {
     if (!lifts.length) return null
     const ts = Math.max(...lifts.map(l => new Date(l.timestamp).getTime()))
     return new Date(ts)
   }, [lifts])
-
   const lastModifiedStr = lastModified ? formatYMDHM_EST(lastModified) : ''
 
-  // Metrics
+  // metrics
   const daily = useMemo(() => calcDailyVolume(filtered, dateWindow), [filtered, dateWindow])
   const totalVolume = useMemo(() => daily.reduce((s: number, d: any) => s + d.volume, 0), [daily])
-
-  const gymDaysCount = useMemo(() => unique(filtered.map(l => l.date)).length, [filtered])
   const exerciseVariety = useMemo(() => unique(filtered.map(l => l.exercise)).length, [filtered])
 
   const topMover = useMemo(() => {
@@ -300,7 +259,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     setPrsPage(1)
   }
 
-  // Recent sessions (paginated, click → modal)
+  // recent sessions
   const recentSessionsAll = useMemo(() => {
     const byDate = groupBy(filtered, l => l.date)
     const recentDates = Array.from(byDate.keys()).sort((a, b) => (a < b ? 1 : -1))
@@ -317,7 +276,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         for (const t of tags) counts.set(t, (counts.get(t) || 0) + 1)
         dayTag = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0]
       }
-
       return { date, volume, exercises, sets, lifts: day, dayTag }
     })
   }, [filtered])
@@ -331,27 +289,18 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     return { rows: recentSessionsAll.slice(start, start + sessPageSize), totalPages, page, total: recentSessionsAll.length }
   }, [recentSessionsAll, sessPage])
 
-  const [openDay, setOpenDay] = useState<null | { date: string; lifts: GymLift[] }>(null)
-
-  // --- Download Modal state ---
+  // download modal
   const [showDownload, setShowDownload] = useState(false)
   const [dlRange, setDlRange] = useState<'current' | 'all'>('current')
   const [dlFormat, setDlFormat] = useState<'json' | 'csv'>('csv')
   const datasetMinDate = useMemo(() => (lifts.length ? lifts.reduce((m, l) => (l.date < m ? l.date : m), lifts[0].date) : ''), [lifts])
   const datasetMaxDate = useMemo(() => (lifts.length ? lifts.reduce((m, l) => (l.date > m ? l.date : m), lifts[0].date) : ''), [lifts])
 
-  // Build URL based on modal selections (no custom) + exclude unwanted fields
   const buildDownloadUrl = () => {
     const base = dlFormat === 'json' ? '/api/gym-data' : '/api/gym-data.csv'
-    let from = ''
-    let to = ''
-    if (dlRange === 'current') {
-      from = dateWindow[0]
-      to = dateWindow[dateWindow.length - 1]
-    } else {
-      from = datasetMinDate
-      to = datasetMaxDate
-    }
+    let from = '', to = ''
+    if (dlRange === 'current') { from = dateWindow[0]; to = dateWindow[dateWindow.length - 1] }
+    else { from = datasetMinDate; to = datasetMaxDate }
     const qs = new URLSearchParams()
     if (from) qs.set('from', from)
     if (to) qs.set('to', to)
@@ -363,13 +312,37 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const e1RMTooltip = 'Estimated 1RM = weight × (1 + reps/30)  (Epley formula)'
   const heatmapTooltip = 'Each column is a day. Darker = more total volume. Empty = no recorded sets.'
 
-  // ---------------------- UtilityCard content ----------------------
-  // LOCKED filter button sizes; pickers pop in a reserved slot that doesn’t shift the buttons.
+  /* ---------------------- Filters (left-pack w/ smart span) ---------------------- */
+  const backVisible = mode === 'day' && !!prevMode
+
   const Filters = (
-    <div className="flex items-center gap-4 w-full">
-      {/* Fixed-width filter buttons block */}
-      <div className="w-[420px]">
-        <div className="grid grid-cols-4 gap-2 w-full">
+    <div
+      className="grid items-center w-full gap-3 grid-cols-[96px_320px_220px] justify-start"
+      aria-label="Dashboard filters"
+    >
+      {/* Back button: only render when needed so modes can occupy col 1 */}
+      {backVisible ? (
+        <div className="col-start-1">
+          <button
+            type="button"
+            title={`Back to ${prevMode}`}
+            aria-label="Back"
+            onClick={() => {
+              if (!prevMode) return
+              setMode(prevMode)
+              setPrevMode(null)
+              if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+            }}
+            className="h-9 w-full rounded-lg border text-[13px] bg-gray-900 border-gray-700 text-gray-200"
+          >
+            ← Back
+          </button>
+        </div>
+      ) : null}
+
+      {/* Mode buttons: span 2 cols if back is hidden, otherwise sit in col 2 */}
+      <div className={backVisible ? 'col-start-2 col-span-1' : 'col-start-1 col-span-2'}>
+        <div className="grid grid-cols-4 gap-1.5 w-full">
           {(['day','week','month','year'] as RangeMode[]).map(k => {
             const active = mode === k
             return (
@@ -379,7 +352,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 onClick={() => setMode(k)}
                 aria-pressed={active}
                 className={[
-                  'h-9 w-full rounded-lg border text-sm transition-colors',
+                  'h-9 w-full rounded-lg border text-[13px] leading-none',
                   'focus:outline-none focus:ring-2 focus:ring-blue-500/40',
                   active
                     ? 'bg-blue-600 border-blue-500 text-white'
@@ -393,8 +366,8 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
       </div>
 
-      {/* Reserved picker slot so buttons never move */}
-      <div className="w-[240px] flex items-center justify-center">
+      {/* Picker: always fixed in the right-most track */}
+      <div className="col-start-3 h-9 flex items-center justify-start">
         {mode === 'day' ? (
           <div className="flex items-center gap-2">
             <button
@@ -405,7 +378,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             >
               ◀
             </button>
-            <div className="min-w-[140px] text-center text-sm text-gray-300">
+            <div className="min-w-[120px] text-center text-[13px] text-gray-300">
               {formatLongDate(dayDate)}
             </div>
             <button
@@ -426,7 +399,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             >
               ◀
             </button>
-            <div className="min-w-[72px] text-center text-sm text-gray-300">{year}</div>
+            <div className="min-w-[64px] text-center text-[13px] text-gray-300">{year}</div>
             <button
               className="h-9 px-2 rounded-lg border bg-gray-900 hover:bg-gray-800 border-gray-700 disabled:opacity-40"
               onClick={incYear}
@@ -437,7 +410,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             </button>
           </div>
         ) : (
-          // Invisible placeholder keeps layout stable when no picker
           <div className="h-9 w-full" />
         )}
       </div>
@@ -461,10 +433,17 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const dateTo = dateWindow[dateWindow.length - 1]
   const insightScope: 'day' | 'week' | 'month' | 'year' = mode
 
+  const jumpToDay = (d: string) => {
+    if (mode !== 'day') setPrevMode(mode)
+    setDayDate(clampToToday(d))
+    setMode('day')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
     <div className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-6 pb-12">
-        {/* Utility Card row (filters | download + last modified) */}
+        {/* Utility Card row */}
         <div className="mt-4 mb-6">
           <UtilityCard
             filters={Filters}
@@ -590,7 +569,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               </div>
 
               {/* Heatmap */}
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Volume Heatmap</h2>
                   <Tooltip text={heatmapTooltip}>
@@ -602,14 +581,15 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     </span>
                   </Tooltip>
                 </div>
-                <Heatmap
-                  mode={mode}
-                  data={daily.map(d => ({
-                    date: d.date,
-                    volume: d.volume,
-                  }))}
-                  naColor="#3b4351"
-                />
+                <div className="flex-1">
+                  <Heatmap
+                    mode={mode}
+                    data={daily.map(d => ({ date: d.date, volume: d.volume }))}
+                    naColor="#3b4351"
+                    autoGrow
+                    fillParent
+                  />
+                </div>
               </div>
             </section>
 
@@ -627,11 +607,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {recentSessions.rows.map((s) => (
-                  <Tooltip key={s.date} text="Click to view session details">
+                  <Tooltip key={s.date} text="Open Daily View">
                     <button
-                      onClick={() => setOpenDay({ date: s.date, lifts: s.lifts })}
+                      onClick={() => jumpToDay(s.date)}
                       className="text-left bg-gray-800/60 hover:bg-gray-800 transition-colors rounded-lg px-4 py-4 border border-gray-700/60 hover:border-gray-600 group w-full"
-                      aria-label={`Open session for ${s.date}`}
+                      aria-label={`Open daily view for ${s.date}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="font-semibold tracking-wide">
@@ -651,7 +631,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                         </span>
                       </div>
                       <div className="mt-3 text-[11px] italic text-gray-500">
-                        Click to view details
+                        Click to open Daily View
                       </div>
                     </button>
                   </Tooltip>
@@ -661,63 +641,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
           </>
         )}
       </div>
-
-      {/* Session modal */}
-      {openDay && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-2xl w-full">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-              <h3 className="text-lg font-semibold">
-                {(() => {
-                  const tagCandidates = openDay.lifts.map(l => (l.dayTag ?? '').trim()).filter(Boolean)
-                  const tag = tagCandidates.length ? titleCaseTag(tagCandidates[0]) : ''
-                  return `Session Details — ${formatLongDate(openDay.date)}${tag ? `: ${tag}` : ''}`
-                })()}
-              </h3>
-              <button onClick={() => setOpenDay(null)} className="text-gray-400 hover:text-gray-200" aria-label="Close">
-                ✕
-              </button>
-            </div>
-            <div className="p-5 overflow-x-auto">
-              {openDay.lifts.length === 0 ? (
-                <div className="text-gray-400 italic">Not Available</div>
-              ) : (
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-400 border-b border-gray-800">
-                      <th className="py-2 pr-4">Exercise</th>
-                      <th className="py-2 pr-4">Set</th>
-                      <th className="py-2 pr-4">Weight (lbs)</th>
-                      <th className="py-2 pr-4">Reps</th>
-                      <th className="py-2 pr-4">Unilateral</th>
-                      <th className="py-2 pr-4">Volume</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...openDay.lifts]
-                      .sort((a, b) => (a.exercise === b.exercise ? a.setNumber - b.setNumber : a.exercise.localeCompare(b.exercise)))
-                      .map((r) => (
-                        <tr key={r.id} className="border-b border-gray-800/60">
-                          <td className="py-2 pr-4">{r.exercise}</td>
-                          <td className="py-2 pr-4">{r.setNumber}</td>
-                          <td className="py-2 pr-4">{r.weight}</td>
-                          <td className="py-2 pr-4">{r.reps}</td>
-                          <td className="py-2 pr-4">{r.isUnilateral ? 'true' : 'false'}</td>
-                          <td className="py-2 pr-4">{(r.weight * r.reps).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div className="px-5 py-4 border-t border-gray-800 flex justify-end">
-              <button onClick={() => setOpenDay(null)} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Download modal */}
       {showDownload && (
