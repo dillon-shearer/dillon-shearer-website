@@ -16,7 +16,8 @@ export default function Heatmap({
   naOpacity = 0.12,
   minYearSegWidth = 10,
   autoGrow = true,     // grow vertically based on segment size (ignored if fillParent)
-  fillParent = true,   // NEW: stretch SVG to fill parent's height
+  fillParent = true,   // stretch SVG to fill parent's height
+  highIsGreen = true,  // <<< flip control: true => high volume = green; false => high = red
 }: {
   data: Cell[]
   mode?: Mode
@@ -28,10 +29,11 @@ export default function Heatmap({
   minYearSegWidth?: number
   autoGrow?: boolean
   fillParent?: boolean
+  highIsGreen?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [w, setW] = useState<number>(0) // measured container width
-  const [h, setH] = useState<number>(0) // NEW: measured container height
+  const [h, setH] = useState<number>(0) // measured container height
 
   // Measure on mount + on resize
   useLayoutEffect(() => {
@@ -84,17 +86,21 @@ export default function Heatmap({
     const idx = (arr.length - 1) * p
     const lo = Math.floor(idx)
     const hi = Math.ceil(idx)
-    const h = idx - lo
-    return (1 - h) * arr[lo] + h * arr[hi]
+    const t = idx - lo
+    return (1 - t) * arr[lo] + t * arr[hi]
   }
 
-  const singlePointNeutralBucket = 4
+  const singlePointNeutralBucket = 4 // center-ish (greenish when highIsGreen=true)
   const q20 = quantile(nonZero, 0.2)
   const q40 = quantile(nonZero, 0.4)
   const q60 = quantile(nonZero, 0.6)
   const q80 = quantile(nonZero, 0.8)
 
-  const RAMP = ['#7f1d1d', '#b91c1c', '#dc2626', '#f59e0b', '#10b981', '#059669']
+  // Palettes:
+  // index 0..5 — increasing "intensity"
+  const PALETTE_LOW_RED_HIGH_GREEN = ['#7f1d1d', '#b91c1c', '#dc2626', '#f59e0b', '#10b981', '#059669']
+  const PALETTE_LOW_GREEN_HIGH_RED = [...PALETTE_LOW_RED_HIGH_GREEN].reverse()
+
   const isNA = (d: Cell) => d.volume === 0
   const bucketFor = (v: number) => {
     if (nonZero.length <= 1) return singlePointNeutralBucket
@@ -104,7 +110,12 @@ export default function Heatmap({
     if (v <= q80) return 4
     return 5
   }
-  const colorFor = (d: Cell) => (isNA(d) ? naColor : RAMP[bucketFor(d.volume)])
+
+  const colorFor = (d: Cell) => {
+    if (isNA(d)) return naColor
+    const palette = highIsGreen ? PALETTE_LOW_RED_HIGH_GREEN : PALETTE_LOW_GREEN_HIGH_RED
+    return palette[bucketFor(d.volume)]
+  }
   const opacityFor = (d: Cell) => (isNA(d) ? naOpacity : 1)
 
   // Outer dimensions from container

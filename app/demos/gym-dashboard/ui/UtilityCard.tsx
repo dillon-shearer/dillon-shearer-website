@@ -22,16 +22,23 @@ export default function UtilityCard({
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8">
       <div
-        className="bg-surface-1 dark:bg-surface-1-dark border border-gray-800/10 dark:border-gray-700/30 rounded-xl shadow-sm p-3 sm:p-4
-                   flex items-center gap-3"
-        style={{ minHeight: 64 }} // keeps a constant bar height across modes
+        className="
+          relative isolate z-20                  /* <-- ensure this whole bar is on top */
+          bg-surface-1 dark:bg-surface-1-dark
+          border border-gray-800/10 dark:border-gray-700/30
+          rounded-xl shadow-sm p-3 sm:p-4
+          flex items-center gap-3
+        "
+        style={{ minHeight: 64 }}
       >
-        {/* Left: filters */}
-        <div className="flex-1 min-w-[220px] flex items-center">{filters}</div>
+        {/* Left: filters (date picker, prev/next, etc.) */}
+        <div className="flex-1 min-w-[220px] flex items-center relative z-30 pointer-events-auto">
+          {filters}
+        </div>
 
         {/* Right: download + last modified */}
         <div className="flex-1 min-w-[260px] flex items-center justify-end gap-3">
-          <div>{downloadButton}</div>
+          <div className="pointer-events-auto">{downloadButton}</div>
           <div className="text-xs text-gray-500 text-right whitespace-nowrap">
             Last modified{' '}
             <span className="font-medium text-gray-700 dark:text-gray-300">

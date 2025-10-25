@@ -2,13 +2,18 @@
 'use client'
 
 /**
- * Body Focus 3D — plate-driven highlighting
- * This rev:
- * - Feet: custom extruded rounded-rectangle soles (smooth + wide).
- * - Hips: side-only plates.
- * - Shoulders: bubble-like capsule plates embedded on the OUTSIDE of the upper arms.
- * - Back plate rectangular; calves/hamstrings smaller; glutes color the base.
- * - **BLACK GLASSES restored on the head.**
+ * Body Focus 3D — Split-aware thresholds (per-body-part, matches your PPL map)
+ *
+ * Thresholds scale by how many times the *relevant split* (Push/Pull/Legs)
+ * happened in the current window.
+ *
+ * Example with greenAt=8, yellowAt=5:
+ *  - If there was 1 Push day in-range → targets: green=8, yellow=5
+ *  - If there were 2 Push days in-range → targets: green=16, yellow=10
+ *  This applies per split and therefore per body part, using your mapping:
+ *    Push: chest, biceps, shoulders
+ *    Pull: back, triceps, core, forearms
+ *    Legs: quads, hamstrings, glutes, calves, hips
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -22,18 +27,25 @@ export type BodyPart =
   | 'glutes' | 'calves' | 'hips'
 
 type Stats = Partial<Record<BodyPart, { volume: number; sets: number }>>
-type Metric = 'sets' | 'volume'
+type SplitKey = 'Push' | 'Pull' | 'Legs'
 
 export default function BodyDiagram({
   stats,
   className = '',
-  metric = 'sets',
+  greenAt = 5,
+  yellowAt = 3,
+  splitFactor = 1,
+  splitCounts,
 }: {
   stats: Stats
   className?: string
-  metric?: Metric
+  greenAt?: number
+  yellowAt?: number
+  splitFactor?: number
+  splitCounts?: Partial<Record<SplitKey, number>>
 }) {
   const [webglOK, setWebglOK] = useState(true)
+
   useEffect(() => {
     try {
       const c = document.createElement('canvas')
@@ -44,61 +56,84 @@ export default function BodyDiagram({
     }
   }, [])
 
-  const ALL_PARTS: BodyPart[] = useMemo(
-    () => ['biceps','chest','shoulders','back','triceps','quads','hamstrings','forearms','core','glutes','calves','hips'],
-    [],
-  )
-
-  const maxVal = useMemo(() => {
-    const vals = ALL_PARTS
-      .map(p => (metric === 'sets' ? stats?.[p]?.sets : stats?.[p]?.volume))
-      .filter((v): v is number => typeof v === 'number' && v > 0)
-    return Math.max(1, ...(vals.length ? vals : [1]))
-  }, [stats, metric, ALL_PARTS])
-
-  const hasPart = (p: BodyPart) => stats && Object.prototype.hasOwnProperty.call(stats, p)
-  const valueFor = (p: BodyPart) => (metric === 'sets' ? (stats?.[p]?.sets ?? 0) : (stats?.[p]?.volume ?? 0))
-
-  const GAMMA = 1.6
-  const intensity = (p: BodyPart) => {
-    const v = valueFor(p)
-    const lin = Math.max(0, Math.min(1, v / maxVal))
-    return Math.pow(lin, GAMMA)
+  // ---- PPL bucket map (MATCHES your server defaults) -----------------------
+  const splitBucketFor = (p: BodyPart): SplitKey => {
+    if (p === 'chest' || p === 'biceps' || p === 'shoulders') return 'Push'
+    if (p === 'back' || p === 'triceps' || p === 'core' || p === 'forearms') return 'Pull'
+    return 'Legs'
   }
 
-  const hslToHex = (h: number, s: number, l: number) => {
-    s /= 100; l /= 100
-    const k = (n: number) => (n + h / 30) % 12
-    const a = s * Math.min(l, 1 - l)
-    const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
-    const toHex = (x: number) => Math.round(255 * x).toString(16).padStart(2, '0')
-    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`
+  const splitsForPart = (p: BodyPart) => {
+    const bucket = splitBucketFor(p)
+    const base = Math.max(1, Number(splitCounts?.[bucket] ?? 1))
+    const sf = Number.isFinite(splitFactor) && splitFactor > 0 ? splitFactor : 1
+    return base * sf
   }
 
-  const colorFor = (i: number) => {
-    const hue = 120 * i
-    const sat = 64
-    const lig = 48 + 6 * i
-    return hslToHex(hue, sat, lig)
-  }
+  const rawSets = (p: BodyPart) => (stats?.[p]?.sets ?? 0)
 
+  const GREEN = '#22c55e'
+  const YELLOW = '#eab308'
+  const RED = '#ef4444'
   const BASE_WHITE = '#f7f9fc'
-  const DEEP_RED   = '#b11226'
-  const baseMat = <meshStandardMaterial color={BASE_WHITE} roughness={0.85} metalness={0.03} />
-  const plateMatFor = (p: BodyPart) => {
-    if (!hasPart(p)) {
-      return <meshStandardMaterial color={DEEP_RED} roughness={0.55} metalness={0.05} />
-    }
-    const i = intensity(p)
-    const color = valueFor(p) <= 0 ? DEEP_RED : (i < 0.12 ? '#c41a1a' : colorFor(i))
-    return <meshStandardMaterial color={color} roughness={0.55} metalness={0.05} />
+
+  const colorFor = (p: BodyPart) => {
+    const s = rawSets(p)
+    if (s <= 0) return RED
+    const k = splitsForPart(p)
+    const targetGreen = greenAt * k
+    const targetYellow = yellowAt * k
+    if (s > targetGreen) return GREEN
+    if (s >= targetYellow) return YELLOW
+    return RED
   }
+
+  const baseMat = <meshStandardMaterial color={BASE_WHITE} roughness={0.85} metalness={0.03} />
+  const badgeMatFor = (p: BodyPart) => <meshStandardMaterial color={colorFor(p)} roughness={0.55} metalness={0.05} />
 
   return (
     <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col ${className}`}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2">
         <h3 className="text-lg font-semibold">Body Focus</h3>
-        <div className="text-[11px] text-gray-400">Red = neglected · Green = worked</div>
+        <InfoTooltip>
+          <div className="max-w-[320px] space-y-2">
+            <div className="text-[11px] uppercase tracking-wide text-gray-300">Color Formula</div>
+
+            <div className="text-xs text-gray-200">
+              <div className="font-semibold mb-0.5">Gym bro version</div>
+              <div>
+                More days working a split = the target moves up for those body parts. You need to beat{' '}
+                <span className="font-semibold">greenAt × splitDays</span> to go green, hit at least{' '}
+                <span className="font-semibold">yellowAt × splitDays</span> to be yellow; otherwise you’re red.
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-300/90">
+              <div className="font-semibold mb-0.5">Technical version</div>
+              <div className="space-y-1.5">
+                <div>
+                  For each body part <code>p</code>, let <code>splitDays(p)</code> be the count of days in-range whose
+                  majority tag matches <code>p</code>’s split (Push/Pull/Legs). Let{' '}
+                  <code>k = splitDays(p) × splitFactor</code> (with <code>splitFactor</code> ≥ 1 by default).
+                </div>
+                <div>
+                  Targets: <code>greenTarget = greenAt × k</code>, <code>yellowTarget = yellowAt × k</code>.
+                </div>
+                <div>
+                  Coloring: if <code>sets(p) &gt; greenTarget</code> → <span style={{color: GREEN}}>green</span>; else if{' '}
+                  <code>sets(p) ≥ yellowTarget</code> → <span style={{color: YELLOW}}>yellow</span>; else{' '}
+                  <span style={{color: RED}}>red</span>. Zero sets is always red.
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-gray-400/90">
+              Current params: <code>greenAt={greenAt}</code>, <code>yellowAt={yellowAt}</code>,{' '}
+              <code>splitFactor={splitFactor}</code>; splitDays = Push:{splitCounts?.Push ?? 0} /
+              Pull:{splitCounts?.Pull ?? 0} / Legs:{splitCounts?.Legs ?? 0}
+            </div>
+          </div>
+        </InfoTooltip>
       </div>
 
       <div className="relative flex-1 rounded-lg border border-gray-800 bg-gray-950 aspect-[5/9] min-h-[360px] md:min-h-[440px] lg:min-h-[520px]">
@@ -110,7 +145,7 @@ export default function BodyDiagram({
             <Environment preset="city" environmentIntensity={0.3} />
 
             <AutoSpin>
-              <FigurePlatesOnly plate={plateMatFor} base={baseMat} />
+              <FigureSolidEmbedded badge={badgeMatFor} base={baseMat} />
             </AutoSpin>
 
             <OrbitControls
@@ -138,7 +173,6 @@ function AutoSpin({ children, paused = false }: { children: React.ReactNode; pau
 }
 
 /* ------------------------- helpers: rounded foot ------------------------- */
-
 function makeRoundedRectShape(w: number, h: number, r: number) {
   const shape = new THREE.Shape()
   const rr = Math.min(r, w / 2, h / 2)
@@ -157,11 +191,7 @@ function makeRoundedRectShape(w: number, h: number, r: number) {
 }
 
 function useFootGeometry() {
-  // Width (X) x Length (Z) x Thickness (Y)
-  const w = 0.3
-  const l = 0.55
-  const t = 0.18
-  const r = 0.14
+  const w = 0.3, l = 0.55, t = 0.18, r = 0.14
   return useMemo(() => {
     const shape = makeRoundedRectShape(w, l, r)
     const geom = new THREE.ExtrudeGeometry(shape, {
@@ -172,54 +202,40 @@ function useFootGeometry() {
       bevelSegments: 4,
       curveSegments: 24,
     })
-    geom.rotateX(Math.PI / 2) // thickness along Y, length along Z
+    geom.rotateX(Math.PI / 2)
     geom.center()
     return geom
   }, [])
 }
 
 /* --------------------------------- Figure --------------------------------- */
-
-function FigurePlatesOnly({
-  plate,
+function FigureSolidEmbedded({
+  badge,
   base,
 }: {
-  plate: (p: BodyPart) => JSX.Element
+  badge: (p: BodyPart) => JSX.Element
   base: JSX.Element
 }) {
-  // Plate offsets
-  const Z_TORSO   = 0.281
-  const Z_ARM_F   = 0.191
-  const Z_ARM_B   = -0.191
-  const Z_THIGH_F = 0.241
-  const Z_THIGH_B = -0.241
-  const Z_SHIN_B  = -0.205 // calves moved to back
-
+  const Z_TORSO = 0.18
   const footGeom = useFootGeometry()
 
   return (
     <group position={[0, 0, 0]} scale={0.98}>
-      {/* HEAD / NECK */}
+      {/* HEAD / NECK + GLASSES */}
       <group position={[0, 1.78, 0]}>
         <RoundedBox args={[0.44, 0.44, 0.44]} radius={0.1} smoothness={6} castShadow receiveShadow>
           {base}
         </RoundedBox>
-
-        {/* ==== BLACK GLASSES ==== */}
         <group position={[0, -0.02, 0.26]}>
-          {/* left lens */}
           <RoundedBox args={[0.16, 0.10, 0.02]} radius={0.05} position={[-0.12, 0, 0]}>
             <meshStandardMaterial color="#000000" roughness={0.15} metalness={0.1} opacity={0.95} transparent />
           </RoundedBox>
-          {/* right lens */}
           <RoundedBox args={[0.16, 0.10, 0.02]} radius={0.05} position={[0.12, 0, 0]}>
             <meshStandardMaterial color="#000000" roughness={0.15} metalness={0.1} opacity={0.95} transparent />
           </RoundedBox>
-          {/* bridge */}
           <RoundedBox args={[0.06, 0.02, 0.02]} radius={0.01}>
             <meshStandardMaterial color="#000000" />
           </RoundedBox>
-          {/* temples */}
           <RoundedBox args={[0.02, 0.02, 0.08]} radius={0.01} position={[-0.20, 0, -0.01]}>
             <meshStandardMaterial color="#000000" />
           </RoundedBox>
@@ -227,9 +243,9 @@ function FigurePlatesOnly({
             <meshStandardMaterial color="#000000" />
           </RoundedBox>
         </group>
-        {/* ======================= */}
       </group>
 
+      {/* COLLAR */}
       <group position={[0, 1.53, 0]}>
         <RoundedBox args={[0.22, 0.18, 0.22]} radius={0.06} castShadow receiveShadow>
           {base}
@@ -243,33 +259,33 @@ function FigurePlatesOnly({
         </RoundedBox>
 
         {/* CHEST */}
-        <group position={[-0.26, 0.17, Z_TORSO]}>
-          <RoundedBox args={[0.56, 0.34, 0.06]} radius={0.08} smoothness={6} castShadow receiveShadow>
-            {plate('chest')}
+        <group position={[-0.25, 0.22, Z_TORSO]}>
+          <RoundedBox args={[0.47, 0.30, 0.30]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('chest')}
           </RoundedBox>
         </group>
-        <group position={[0.26, 0.17, Z_TORSO]}>
-          <RoundedBox args={[0.56, 0.34, 0.06]} radius={0.08} smoothness={6} castShadow receiveShadow>
-            {plate('chest')}
+        <group position={[0.25, 0.22, Z_TORSO]}>
+          <RoundedBox args={[0.47, 0.30, 0.30]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('chest')}
           </RoundedBox>
         </group>
 
         {/* CORE */}
-        <group position={[0, -0.18, Z_TORSO]}>
-          <RoundedBox args={[0.50, 0.42, 0.06]} radius={0.08} smoothness={6} castShadow receiveShadow>
-            {plate('core')}
+        <group position={[0, -0.16, Z_TORSO]}>
+          <RoundedBox args={[0.46, 0.53, 0.30]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('core')}
           </RoundedBox>
         </group>
 
-        {/* BACK — rectangular plate */}
-        <group position={[0, 0.0, -Z_TORSO]}>
-          <RoundedBox args={[1.02, 0.72, 0.06]} radius={0.08} smoothness={6} castShadow receiveShadow>
-            {plate('back')}
+        {/* BACK */}
+        <group position={[0, 0.02, -Z_TORSO]}>
+          <RoundedBox args={[0.92, 0.62, 0.30]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('back')}
           </RoundedBox>
         </group>
       </group>
 
-      {/* SHOULDERS — white caps ONLY */}
+      {/* SHOULDERS — base caps */}
       <group position={[-0.70, 1.28, 0]}>
         <RoundedBox args={[0.30, 0.24, 0.40]} radius={0.10} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
       </group>
@@ -277,66 +293,53 @@ function FigurePlatesOnly({
         <RoundedBox args={[0.30, 0.24, 0.40]} radius={0.10} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
       </group>
 
-      {/* UPPER ARMS with plates */}
-      {/* LEFT */}
+      {/* UPPER ARMS — badges */}
       <group position={[-0.98, 1.0, 0]}>
         <RoundedBox args={[0.36, 0.82, 0.36]} radius={0.12} smoothness={6} castShadow receiveShadow>{base}</RoundedBox>
-
-        {/* Bubble shoulder plate on OUTSIDE of upper arm (lateral delt) */}
-        <group position={[-0.185, 0.22, 0]}>
+        <group position={[-0.185, 0.20, 0]}>
           <mesh scale={[1, 1, 0.72]} castShadow receiveShadow>
             <capsuleGeometry args={[0.125, 0.125, 25, 22]} />
-            {plate('shoulders')}
+            {badge('shoulders')}
           </mesh>
         </group>
-
-        {/* Biceps mid-front */}
-        <group position={[0, 0.00, Z_ARM_F]}>
-          <RoundedBox args={[0.28, 0.46, 0.05]} radius={0.08} smoothness={5} castShadow receiveShadow>
-            {plate('biceps')}
+        <group position={[0, 0.00, 0.16]}>
+          <RoundedBox args={[0.26, 0.46, 0.26]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('biceps')}
           </RoundedBox>
         </group>
-        {/* Triceps rear */}
-        <group position={[0, 0.04, Z_ARM_B]}>
-          <RoundedBox args={[0.28, 0.56, 0.05]} radius={0.08} smoothness={5} castShadow receiveShadow>
-            {plate('triceps')}
+        <group position={[0, 0.04, -0.16]}>
+          <RoundedBox args={[0.26, 0.56, 0.26]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('triceps')}
           </RoundedBox>
         </group>
       </group>
-
-      {/* RIGHT */}
       <group position={[0.98, 1.0, 0]}>
         <RoundedBox args={[0.36, 0.82, 0.36]} radius={0.12} smoothness={6} castShadow receiveShadow>{base}</RoundedBox>
-
-        {/* Bubble shoulder plate on OUTSIDE of upper arm (lateral delt) */}
-        <group position={[0.185, 0.22, 0]}>
+        <group position={[0.185, 0.20, 0]}>
           <mesh scale={[1, 1, 0.72]} castShadow receiveShadow>
             <capsuleGeometry args={[0.125, 0.125, 25, 22]} />
-            {plate('shoulders')}
+            {badge('shoulders')}
           </mesh>
         </group>
-
-        <group position={[0, 0.00, Z_ARM_F]}>
-          <RoundedBox args={[0.28, 0.46, 0.05]} radius={0.08} smoothness={5} castShadow receiveShadow>
-            {plate('biceps')}
+        <group position={[0, 0.00, 0.16]}>
+          <RoundedBox args={[0.26, 0.46, 0.26]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('biceps')}
           </RoundedBox>
         </group>
-        <group position={[0, 0.04, Z_ARM_B]}>
-          <RoundedBox args={[0.28, 0.56, 0.05]} radius={0.08} smoothness={5} castShadow receiveShadow>
-            {plate('triceps')}
+        <group position={[0, 0.04, -0.16]}>
+          <RoundedBox args={[0.26, 0.56, 0.26]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('triceps')}
           </RoundedBox>
         </group>
       </group>
 
-      {/* FOREARMS — base only */}
+      {/* FOREARMS / HANDS */}
       <group position={[-0.98, 0.42, 0]}>
         <RoundedBox args={[0.32, 0.72, 0.32]} radius={0.12} smoothness={6} castShadow receiveShadow>{base}</RoundedBox>
       </group>
       <group position={[0.98, 0.42, 0]}>
         <RoundedBox args={[0.32, 0.72, 0.32]} radius={0.12} smoothness={6} castShadow receiveShadow>{base}</RoundedBox>
       </group>
-
-      {/* HANDS */}
       <group position={[-0.98, -0.02, 0]}>
         <RoundedBox args={[0.34, 0.22, 0.34]} radius={0.10} castShadow receiveShadow>{base}</RoundedBox>
       </group>
@@ -344,78 +347,63 @@ function FigurePlatesOnly({
         <RoundedBox args={[0.34, 0.22, 0.34]} radius={0.10} castShadow receiveShadow>{base}</RoundedBox>
       </group>
 
-      {/* HIPS — side-only plates */}
+      {/* HIPS */}
       <group position={[0, 0.52, 0]}>
         <RoundedBox args={[1.06, 0.30, 0.50]} radius={0.12} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
-
-        {/* Left side */}
-        <group position={[-0.62, 0.12, 0]} rotation={[0, Math.PI / 2, 0]}>
-          <RoundedBox args={[0.60, 0.22, 0.05]} radius={0.09} smoothness={6} castShadow receiveShadow>
-            {plate('hips')}
+        <group position={[-0.55, 0.10, 0]}>
+          <RoundedBox args={[0.26, 0.26, 0.40]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('hips')}
           </RoundedBox>
         </group>
-        {/* Right side */}
-        <group position={[0.62, 0.12, 0]} rotation={[0, Math.PI / 2, 0]}>
-          <RoundedBox args={[0.60, 0.22, 0.05]} radius={0.09} smoothness={6} castShadow receiveShadow>
-            {plate('hips')}
+        <group position={[0.55, 0.10, 0]}>
+          <RoundedBox args={[0.26, 0.26, 0.40]} radius={0.12} smoothness={6} castShadow receiveShadow>
+            {badge('hips')}
           </RoundedBox>
         </group>
-      </group>
-
-      {/* GLUTES */}
-      <group position={[-0.28, 0.24, -0.26]}>
-        <RoundedBox args={[0.44, 0.34, 0.30]} radius={0.14} smoothness={6} castShadow receiveShadow>
-          {plate('glutes')}
-        </RoundedBox>
-      </group>
-      <group position={[0.28, 0.24, -0.26]}>
-        <RoundedBox args={[0.44, 0.34, 0.30]} radius={0.14} smoothness={6} castShadow receiveShadow>
-          {plate('glutes')}
-        </RoundedBox>
       </group>
 
       {/* THIGHS */}
       <group position={[-0.40, 0.02, 0]}>
         <RoundedBox args={[0.46, 1.12, 0.46]} radius={0.14} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
-        <group position={[0, -0.06, Z_THIGH_F]}>
-          <RoundedBox args={[0.42, 1.00, 0.06]} radius={0.10} smoothness={6} castShadow receiveShadow>
-            {plate('quads')}
+        <group position={[0, -0.06, 0.18]}>
+          <RoundedBox args={[0.36, 0.96, 0.28]} radius={0.14} smoothness={6} castShadow receiveShadow>
+            {badge('quads')}
           </RoundedBox>
         </group>
-        <group position={[0, 0, Z_THIGH_B]}>
-          <RoundedBox args={[0.294, 0.756, 0.06]} radius={0.10} smoothness={6} castShadow receiveShadow>
-            {plate('hamstrings')}
+        <group position={[0, 0.00, -0.18]}>
+          <RoundedBox args={[0.30, 0.74, 0.28]} radius={0.14} smoothness={6} castShadow receiveShadow>
+            {badge('hamstrings')}
           </RoundedBox>
         </group>
       </group>
       <group position={[0.40, 0.02, 0]}>
         <RoundedBox args={[0.46, 1.12, 0.46]} radius={0.14} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
-        <group position={[0, -0.06, Z_THIGH_F]}>
-          <RoundedBox args={[0.42, 1.00, 0.06]} radius={0.10} smoothness={6} castShadow receiveShadow>
-            {plate('quads')}
+        <group position={[0, -0.06, 0.18]}>
+          <RoundedBox args={[0.36, 0.96, 0.28]} radius={0.14} smoothness={6} castShadow receiveShadow>
+            {badge('quads')}
           </RoundedBox>
         </group>
-        <group position={[0, 0, Z_THIGH_B]}>
-          <RoundedBox args={[0.294, 0.756, 0.06]} radius={0.10} smoothness={6} castShadow receiveShadow>
-            {plate('hamstrings')}
+        <group position={[0, 0.00, -0.18]}>
+          <RoundedBox args={[0.30, 0.74, 0.28]} radius={0.14} smoothness={6} castShadow receiveShadow>
+            {badge('hamstrings')}
           </RoundedBox>
         </group>
       </group>
 
-      {/* CALVES — back plates */}
+      {/* CALVES */}
       <group position={[-0.40, -0.86, 0]}>
         <RoundedBox args={[0.38, 0.92, 0.38]} radius={0.14} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
-        <group position={[0, 0, Z_SHIN_B]}>
-          <RoundedBox args={[0.238, 0.602, 0.04]} radius={0.10} smoothness={6} castShadow receiveShadow>
-            {plate('calves')}
+        <group position={[0, 0, -0.15]}>
+          <RoundedBox args={[0.28, 0.70, 0.32]} radius={0.14} smoothness={6} castShadow receiveShadow>
+            {badge('calves')}
           </RoundedBox>
         </group>
       </group>
       <group position={[0.40, -0.86, 0]}>
         <RoundedBox args={[0.38, 0.92, 0.38]} radius={0.14} smoothness={7} castShadow receiveShadow>{base}</RoundedBox>
-        <group position={[0, 0, Z_SHIN_B]}>
-          <RoundedBox args={[0.238, 0.602, 0.04]} radius={0.10} smoothness={6} castShadow receiveShadow>
-            {plate('calves')}
+        <group position={[0, 0, -0.15]}>
+          <RoundedBox args={[0.28, 0.70, 0.32]} radius={0.14} smoothness={6} castShadow receiveShadow>
+            {badge('calves')}
           </RoundedBox>
         </group>
       </group>
@@ -435,8 +423,95 @@ function FigurePlatesOnly({
   )
 }
 
-/* ------------------------------ Fallback ------------------------------ */
+/* ------------------------------ Popover Tooltip (anchored, left-first) ------------------------------ */
+function InfoTooltip({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const [style, setStyle] = useState<{ left: number; top: number } | null>(null)
+  const [side, setSide] = useState<'left' | 'right'>('left')
+  const anchorRef = useRef<HTMLSpanElement | null>(null)
+  const tipRef = useRef<HTMLDivElement | null>(null)
 
+  const GAP = 12
+  const PADDING = 8 // viewport padding to avoid clipping
+
+  function positionPopover(sidePref: 'left' | 'right' = 'left') {
+    const anchor = anchorRef.current
+    const tip = tipRef.current
+    if (!anchor || !tip) return
+
+    const rect = anchor.getBoundingClientRect()
+    const tipRect = tip.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+
+    let sideFinal: 'left' | 'right' = sidePref
+
+    // Try preferred side; if it overflows, flip.
+    if (sidePref === 'left' && rect.left - GAP - tipRect.width < PADDING) {
+      sideFinal = 'right'
+    } else if (sidePref === 'right' && rect.right + GAP + tipRect.width > vw - PADDING) {
+      sideFinal = 'left'
+    }
+
+    let left =
+      sideFinal === 'left'
+        ? rect.left - tipRect.width - GAP
+        : rect.right + GAP
+
+    // Clamp within viewport horizontally
+    left = Math.max(PADDING, Math.min(left, vw - tipRect.width - PADDING))
+
+    // Vertically center on the icon, then clamp
+    let top = rect.top + rect.height / 2 - tipRect.height / 2
+    top = Math.max(PADDING, Math.min(top, vh - tipRect.height - PADDING))
+
+    setSide(sideFinal)
+    setStyle({ left, top })
+  }
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className="inline-flex items-center justify-center h-5 w-5 rounded-full border border-gray-600 text-[10px] leading-none text-gray-200 cursor-default select-none"
+        aria-label="Info"
+        onMouseEnter={() => {
+          setOpen(true)
+          // Wait a tick so the tooltip exists, then measure and position.
+          requestAnimationFrame(() => positionPopover('left'))
+        }}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => {
+          setOpen(true)
+          requestAnimationFrame(() => positionPopover('left'))
+        }}
+        onBlur={() => setOpen(false)}
+        role="button"
+        tabIndex={0}
+      >
+        i
+      </span>
+
+      {open && (
+        <div
+          ref={tipRef}
+          className={`fixed z-50 pointer-events-none ${side === 'left' ? 'origin-right' : 'origin-left'} transition-transform`}
+          style={{
+            left: style?.left ?? -9999,
+            top: style?.top ?? -9999,
+          }}
+          onMouseEnter={() => setOpen(true)}
+        >
+          <div className="rounded-md border shadow-lg px-3 py-2 text-xs bg-[#1f2937] border-[#374151] text-white max-w-[320px]">
+            {children}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ------------------------------ Fallback ------------------------------ */
 function SvgFallback() {
   return (
     <div className="absolute inset-0 flex items-center justify-center">
@@ -449,7 +524,7 @@ function SvgFallback() {
         </defs>
         <rect x="0" y="0" width="200" height="320" fill="url(#g)" rx="16" />
         <rect x="78" y="26" width="44" height="44" rx="10" fill="#f7f9fc" />
-        <rect x="50" y="78" width="100" height="84" rx="14" fill="#b11226" />
+        <rect x="50" y="78" width="100" height="84" rx="14" fill="#ef4444" />
         <text x="100" y="300" textAnchor="middle" fontSize="10" fill="#9ca3af">WebGL unavailable – static body</text>
       </svg>
     </div>

@@ -41,9 +41,7 @@ const fmtWeekdayShort = (d: Date) =>
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 
 /* ================= Exercise → BodyPart mapping =================
-   Keep this in lockstep with the catalog in app/demos/gym-dashboard/form/page.tsx
-   We also add a tiny normalizer so small text differences (plural S, punctuation)
-   won’t break the mapping. */
+   Keep this in lockstep with the catalog in app/demos/gym-dashboard/form/page.tsx */
 const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
   biceps:     ['Preacher Curl', 'Hammer Curl', 'Bayesian Curl', 'Incline Curl'],
   chest:      ['Incline Press', 'Flat Press', 'Decline Press', 'Chest Fly', 'Bench Press'],
@@ -61,17 +59,17 @@ const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
 
 const normalize = (s: string) =>
   s.toLowerCase()
-   .replace(/[^a-z0-9\s]/g, '')     // drop punctuation
+   .replace(/[^a-z0-9\s]/g, '')
    .replace(/\s+/g, ' ')
    .trim()
-   .replace(/s\b/, '')              // naive singularize trailing s
+   .replace(/s\b/, '')
 
 const EX_TO_BP = (() => {
   const m = new Map<string, BodyPart>()
   ;(Object.keys(EXERCISES_BY_BODY_PART) as BodyPart[]).forEach((bp) => {
     EXERCISES_BY_BODY_PART[bp].forEach((ex) => m.set(normalize(ex), bp))
   })
-  // a couple of common alternates
+  // alternates
   m.set(normalize('RDL'), 'hamstrings')
   m.set(normalize('Hip Thrusts'), 'glutes')
   m.set(normalize('Pull Up'), 'back')
@@ -86,8 +84,7 @@ const bodyPartForExercise = (ex: string): BodyPart | 'other' =>
 export default function DailyView({ lifts, date, onChangeDate }: Props) {
   const dayLifts = useMemo(() => lifts.filter(l => l.date === date), [lifts, date])
 
-  // still fetch the explicitly selected body parts for this date (used elsewhere),
-  // but DO NOT restrict the donut by this anymore — it caused the “only one slice” bug
+  // keep loading explicit tags (used elsewhere), but donut is data-driven
   const [selectedBodyParts, setSelectedBodyParts] = useState<BodyPart[]>([])
   useEffect(() => {
     let mounted = true
@@ -107,10 +104,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
   const totalReps = useMemo(() => dayLifts.reduce((s, l) => s + l.reps, 0), [dayLifts])
   const exerciseCount = useMemo(() => new Set(dayLifts.map(l => l.exercise)).size, [dayLifts])
 
-  /* ================= Donut data (FIX) =================
-     Always compute from actual exercises, regardless of selectedBodyParts.
-     This fixes the issue where only a single body part (e.g., “Glutes”)
-     showed up when the day’s ‘selected’ list had only one item. */
+  /* ================= Donut data ================= */
   const byBodyPart = useMemo(() => {
     const vols = new Map<BodyPart, number>()
     const sets = new Map<BodyPart, number>()
@@ -133,24 +127,33 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
 
   const topBodyPart = byBodyPart[0]?.name ?? '—'
 
-  /* ================= Week strip ================= */
-  const weekStrip = useMemo(() => {
-    const d = parseYMD(date)
-    const dow = d.getUTCDay() // 0=Sun ... 6=Sat
-    const sunday = new Date(d)
-    sunday.setUTCDate(d.getUTCDate() - dow)
-    const days: { ymd: string; label: string; trained: boolean }[] = []
+  /* ================= Last 7 days strip (RIGHT = today) =================
+     - Always renders the past 6 days + today (UTC), rightmost is today.
+     - Buttons are ALWAYS clickable (even with no data) so you can navigate back/forward.
+     - No navigation beyond today because we do not render future slots. */
+  const last7 = useMemo(() => {
+    const now = new Date()
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    const days: { ymd: string; label: string; hasData: boolean; isToday: boolean }[] = []
+    // map of volume presence by date for quick lookup
     const volMap = new Map<string, number>()
     for (const l of lifts) volMap.set(l.date, (volMap.get(l.date) || 0) + l.weight * l.reps)
-    for (let i = 0; i < 7; i++) {
-      const cur = new Date(sunday)
-      cur.setUTCDate(sunday.getUTCDate() + i)
-      const k = ymd(cur)
-      const label = `${fmtWeekdayShort(cur)} | ${fmtShortMD(cur)}`
-      days.push({ ymd: k, label, trained: (volMap.get(k) ?? 0) > 0 })
+
+    // produce oldest→newest so the far right is today
+    for (let offset = -6; offset <= 0; offset++) {
+      const d = new Date(todayUTC)
+      d.setUTCDate(todayUTC.getUTCDate() + offset)
+      const k = ymd(d)
+      const label = `${fmtWeekdayShort(d)} | ${fmtShortMD(d)}`
+      days.push({
+        ymd: k,
+        label,
+        hasData: (volMap.get(k) ?? 0) > 0,
+        isToday: offset === 0,
+      })
     }
     return days
-  }, [date, lifts])
+  }, [lifts])
 
   /* ================= Cumulative series ================= */
   type Point = { idx: number; cumVol: number; bp: BodyPart | 'other'; ex: string }
@@ -197,34 +200,33 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Week (Sun→Sat) */}
+      {/* Last 7 days (Sun→Sat replaced with rolling 7 ending today) */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
         <div className="mb-3 text-center">
-          <h2 className="text-lg font-semibold text-white">This week</h2>
+          <h2 className="text-lg font-semibold text-white">Last 7 days</h2>
         </div>
         <div className="grid grid-cols-7 gap-2">
-          {weekStrip.map((d) => {
+          {last7.map((d) => {
             const isSelected = d.ymd === date
-            const disabled = !d.trained
             const base = [
-              'flex flex-col items-center rounded border py-2 px-2',
-              disabled
-                ? 'bg-transparent border-gray-800 text-gray-600 cursor-not-allowed opacity-40'
-                : (isSelected
-                    ? 'bg-green-500/70 border-green-400'
-                    : 'bg-transparent border-gray-700 hover:bg-gray-800/40')
+              'flex flex-col items-center rounded border py-2 px-2 transition-colors',
+              isSelected
+                ? 'bg-green-500/70 border-green-400 text-white'
+                : (d.hasData
+                    ? 'bg-transparent border-gray-700 text-gray-200 hover:bg-gray-800/40'
+                    : 'bg-transparent border-gray-800 text-gray-500 hover:bg-gray-800/30 opacity-80')
             ].join(' ')
             return (
               <button
                 key={d.ymd}
-                onClick={() => { if (!disabled) onChangeDate?.(d.ymd) }}
-                disabled={disabled}
+                onClick={() => onChangeDate?.(d.ymd)}
                 className={base}
-                title={d.label}
-                aria-label={d.label}
-                aria-disabled={disabled}
+                title={d.label + (d.isToday ? ' (Today)' : '')}
+                aria-label={d.label + (d.isToday ? ' (Today)' : '')}
               >
-                <div className="text-[11px] text-gray-200">{d.label}</div>
+                <div className="text-[11px]">
+                  {d.isToday ? 'Today' : d.label}
+                </div>
               </button>
             )
           })}
@@ -354,7 +356,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
           </div>
         </div>
 
-        {/* Donut: Volume by Body Part (FIXED to always reflect data) */}
+        {/* Donut: Volume by Body Part */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <h2 className="text-lg font-semibold">Volume by Body Part</h2>
           <div className="h-72 w-full">

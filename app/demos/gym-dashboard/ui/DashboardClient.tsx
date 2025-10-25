@@ -152,59 +152,6 @@ const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
 const EXERCISE_TO_BODY: Record<string, BodyPart> = Object.entries(EXERCISES_BY_BODY_PART)
   .reduce((acc, [bp, arr]) => { for (const ex of arr) acc[ex] = bp as BodyPart; return acc }, {} as Record<string, BodyPart>)
 
-const EXERCISE_TO_BODY_LOWER: Record<string, BodyPart> = Object.fromEntries(
-  Object.entries(EXERCISE_TO_BODY).map(([k, v]) => [k.toLowerCase(), v])
-)
-
-/** NEW: fuzzy fallback recognizer so sets don’t all zero out */
-function getBodyPartForExercise(rawName: string): BodyPart | undefined {
-  const name = (rawName || '').trim()
-  if (!name) return undefined
-  const lower = name.toLowerCase()
-
-  // exact / lower maps first
-  if (EXERCISE_TO_BODY[name]) return EXERCISE_TO_BODY[name]
-  if (EXERCISE_TO_BODY_LOWER[lower]) return EXERCISE_TO_BODY_LOWER[lower]
-
-  // forearms first (to avoid matching generic "curl")
-  if (/wrist/.test(lower)) return 'forearms'
-
-  // chest
-  if (/\bbench\b|chest|fly\b/.test(lower)) return 'chest'
-
-  // shoulders
-  if (/\bohp\b|overhead press|shoulder|lateral raise|rear delt|delt/.test(lower)) return 'shoulders'
-
-  // triceps
-  if (/tricep|skull ?crush|pushdown|extension\b/.test(lower)) return 'triceps'
-
-  // biceps
-  if (/\bbicep|curl/.test(lower)) return 'biceps'
-
-  // back (make sure "lat" is tied to back movements, not "lateral")
-  if (/lat(?!eral)|pulldown|pull[- ]?down|row\b|pull[- ]?up|pullup|pullover/.test(lower)) return 'back'
-
-  // quads
-  if (/squat\b(?!.*(split|bulgarian))|hack|pendulum|leg press|leg extension/.test(lower)) return 'quads'
-
-  // hamstrings
-  if (/rdl|romanian|leg curl|hamstring|good ?morning/.test(lower)) return 'hamstrings'
-
-  // glutes
-  if (/hip thrust|glute/.test(lower)) return 'glutes'
-
-  // calves
-  if (/calf/.test(lower)) return 'calves'
-
-  // core
-  if (/crunch|leg raise|plank|sit[- ]?up|ab(?!duction)/.test(lower)) return 'core'
-
-  // hips
-  if (/abduction|adduction/.test(lower)) return 'hips'
-
-  return undefined
-}
-
 /* -------------------------- Small UI atoms -------------------------- */
 function StatChip({ label, value, sub, className }: {
   label: string; value: number | string; sub?: string; className?: string
@@ -218,7 +165,6 @@ function StatChip({ label, value, sub, className }: {
   )
 }
 
-/** Compact chip with optional sizes for tight layouts */
 function CompactChip({
   label, count, className = '', size = 'md'
 }: { label: string; count: number; className?: string; size?: 'xs' | 'sm' | 'md' }) {
@@ -245,7 +191,6 @@ function CompactChip({
   )
 }
 
-/** Split tile (always show all 3) */
 function SplitTile({ name, count }: { name: 'Push'|'Pull'|'Legs'; count: number }) {
   return (
     <div className="h-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2.5 flex items-center justify-between">
@@ -288,7 +233,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const [mode, setMode] = useState<RangeMode>('day')
   const [prevMode, setPrevMode] = useState<RangeMode | null>(null)
 
-  // years present in data
   const allYears = useMemo(
     () => unique(lifts.map(l => new Date(l.date).getUTCFullYear())).sort((a, b) => b - a),
     [lifts]
@@ -297,7 +241,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const initialYear = Math.min(currentYear, allYears[0] ?? currentYear)
   const [year, setYear] = useState<number>(initialYear)
 
-  // selected day
   const [dayDate, setDayDate] = useState<string>(() => {
     if (!lifts.length) return todayUTCKey()
     const latest = lifts.reduce((m, l) => (l.date > m ? l.date : m), lifts[0].date)
@@ -306,7 +249,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   const now = new Date()
 
-  // date window
   const dateWindow = useMemo<string[]>(() => {
     if (mode === 'day')   return [dayDate]
     if (mode === 'week')  return lastNDatesUTC(7, now)
@@ -317,7 +259,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const decYear = () => setYear(y => Math.max(1970, Math.min(currentYear, y - 1)))
   const incYear = () => setYear(y => Math.max(1970, Math.min(currentYear, y + 1)))
 
-  // filtered lifts
   const filtered = useMemo<GymLift[]>(() => {
     const setDates = new Set(dateWindow)
     return lifts.filter(l => setDates.has(l.date))
@@ -325,7 +266,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   const hasData = filtered.length > 0
 
-  // last modified
   const lastModified = useMemo(() => {
     if (!lifts.length) return null
     const ts = Math.max(...lifts.map(l => new Date(l.timestamp).getTime()))
@@ -333,38 +273,27 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   }, [lifts])
   const lastModifiedStr = lastModified ? formatYMDHM_EST(lastModified) : ''
 
-  // metrics
   const daily = useMemo(() => calcDailyVolume(filtered, dateWindow), [filtered, dateWindow])
   const totalVolume = useMemo(() => daily.reduce((s: number, d: any) => s + d.volume, 0), [daily])
   const exerciseVariety = useMemo(() => unique(filtered.map(l => l.exercise)).length, [filtered])
 
-  // Body part stats (now with fuzzy fallback)
+  // Body part stats — STRICT mapping (no regex or fuzzy)
   const bodyStats = useMemo(() => {
     const base: Record<BodyPart, { volume: number; sets: number }> = {
       biceps:{volume:0,sets:0}, chest:{volume:0,sets:0}, shoulders:{volume:0,sets:0}, back:{volume:0,sets:0},
       triceps:{volume:0,sets:0}, quads:{volume:0,sets:0}, hamstrings:{volume:0,sets:0}, forearms:{volume:0,sets:0},
       core:{volume:0,sets:0}, glutes:{volume:0,sets:0}, calves:{volume:0,sets:0}, hips:{volume:0,sets:0},
     }
-
     for (const s of filtered) {
-      const raw = (s.exercise ?? '').trim()
-      const bp =
-        (EXERCISE_TO_BODY[raw] as BodyPart | undefined) ??
-        (EXERCISE_TO_BODY_LOWER[raw.toLowerCase()] as BodyPart | undefined) ??
-        getBodyPartForExercise(raw)
+      const bp = EXERCISE_TO_BODY[s.exercise] // exact, hard-coded names only
       if (!bp) continue
-      const v = s.weight * s.reps
-      base[bp].volume += v
+      base[bp].volume += s.weight * s.reps
       base[bp].sets += 1
     }
-
     return base
   }, [filtered])
 
-
   /* -------------------------- Split & Body-part frequency -------------------------- */
-
-  // Normalize P/P/L-ish tags
   function normalizeSplitTag(raw?: string | null) {
     const t = (raw || '').trim().toLowerCase()
     if (!t) return ''
@@ -374,7 +303,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     return ''
   }
 
-  // PPL-only counts (exactly 3 tiles shown)
+  // Count how many Push/Pull/Legs DAYS in-range (majority tag per day)
   const splitCountsPPL = useMemo(() => {
     const byDate = groupBy(filtered, (l: GymLift) => l.date)
     const counts = { Push: 0, Pull: 0, Legs: 0 } as Record<'Push'|'Pull'|'Legs', number>
@@ -516,16 +445,12 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   }
 
   const e1RMTooltip = 'Estimated 1RM = weight × (1 + reps/30)  (Epley formula)'
-  const heatmapTooltip = 'Each column is a day. Darker = more total volume. Empty = no recorded sets.'
+  const heatmapTooltip = 'Each column is a day. Green = more total volume. Red = less total volume. Empty = no recorded sets.'
 
-  /* ---------------------- Filters ---------------------- */
   const backVisible = mode === 'day' && !!prevMode
 
   const Filters = (
-    <div
-      className="grid items-center w-full gap-3 grid-cols-[96px_320px_220px] justify-start"
-      aria-label="Dashboard filters"
-    >
+    <div className="grid items-center w-full gap-3 grid-cols-[96px_320px_220px] justify-start" aria-label="Dashboard filters">
       {backVisible ? (
         <div className="col-start-1">
           <button
@@ -563,7 +488,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     : 'bg-gray-900 border-gray-700 text-gray-200 hover:bg-gray-800'
                 ].join(' ')}
               >
-                {k === 'day' ? 'Day' : k === 'week' ? 'Week' : k === 'month' ? 'Month' : 'Year'}
+                {k === 'day' ? 'Day' : k === 'week' ? '7d' : k === 'month' ? '30d' : 'YTD'}
               </button>
             )
           })}
@@ -643,7 +568,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // KPI & small card height — unify d
   const KPI_CARD_HEIGHT = 'h-[150px]'
   const SMALL_CARD_HEIGHT = KPI_CARD_HEIGHT
 
@@ -656,12 +580,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             filters={Filters}
             downloadButton={DownloadButton}
             lastModified={lastModifiedStr}
-            insightContext={{
-              scope: insightScope,
-              selectedExercises,
-              dateFrom,
-              dateTo
-            }}
+            insightContext={{ scope: insightScope, selectedExercises, dateFrom, dateTo }}
           />
         </div>
 
@@ -670,11 +589,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             <p className="text-gray-300">No data in this range.</p>
           </div>
         ) : mode === 'day' ? (
-          <DailyView
-            lifts={lifts}
-            date={dayDate}
-            onChangeDate={(newDate) => setDayDate(clampToToday(newDate))}
-          />
+          <DailyView lifts={lifts} date={dayDate} onChangeDate={(newDate) => setDayDate(clampToToday(newDate))} />
         ) : (
           <>
             {/* KPI row + chart + body */}
@@ -683,24 +598,16 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 {/* LEFT: KPI row + chart */}
                 <div className="lg:col-span-3 lg:row-start-1 lg:row-end-2 grid grid-rows-[auto_1fr] gap-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* TOTAL VOLUME — 3-stack, but balanced with others */}
+                    {/* TOTAL VOLUME */}
                     <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
-                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-                        Total Volume
-                      </div>
-                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)] mb-2">
-                        {formatNum(totalVolume)}
-                      </div>
-                      <div className="text-xs sm:text-sm tracking-wide text-gray-400">
-                        lbs
-                      </div>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Total Volume</div>
+                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)] mb-2">{formatNum(totalVolume)}</div>
+                      <div className="text-xs sm:text-sm tracking-wide text-gray-400">lbs</div>
                     </div>
 
-                    {/* GYM DAYS — 2-stack but same total density */}
+                    {/* GYM DAYS */}
                     <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
-                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-                        Gym Days
-                      </div>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Gym Days</div>
                       <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">
                         {unique(filtered.map(l => l.date)).length}
                         <span className="mx-1 text-gray-500">/</span>
@@ -708,16 +615,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                       </div>
                     </div>
 
-                    {/* EXERCISE VARIETY — 2-stack */}
+                    {/* EXERCISE VARIETY */}
                     <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
-                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
-                        Exercise Variety
-                      </div>
-                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">
-                        {exerciseVariety}
-                      </div>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Exercise Variety</div>
+                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">{exerciseVariety}</div>
                     </div>
-
                   </div>
 
                   <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -728,15 +630,16 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                   </div>
                 </div>
 
-                {/* RIGHT: Body diagram (fills both rows on the right) */}
+                {/* RIGHT: Body diagram */}
                 <BodyDiagram
                   stats={bodyStats}
+                  splitCounts={splitCountsPPL}
                   className="lg:col-start-4 lg:row-span-2 h-full"
                 />
 
-                {/* ROW 2 LEFT: Split (3 tiles) + Body-part frequency */}
+                {/* ROW 2 LEFT: Split + Body-part frequency */}
                 <div className="lg:col-span-3 lg:row-start-2 lg:row-end-3 grid lg:grid-cols-2 gap-4">
-                  {/* Split Frequency — EXACTLY 3 tiles, stretch to full card height */}
+                  {/* Split Frequency — EXACTLY 3 tiles */}
                   <div className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 ${SMALL_CARD_HEIGHT} flex flex-col`}>
                     <div className="flex items-center justify-between mb-2">
                       <h2 className="text-sm font-semibold">Split Frequency</h2>
@@ -744,7 +647,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                         {dateWindow[0]} – {dateWindow[dateWindow.length - 1]}
                       </div>
                     </div>
-                    {/* Make the tiles fill the vertical space of the card */}
                     <div className="mt-1 grid grid-cols-3 gap-2 auto-rows-[1fr] items-stretch flex-1 min-h-0">
                       <SplitTile name="Push"  count={splitCountsPPL.Push} />
                       <SplitTile name="Pull"  count={splitCountsPPL.Pull} />
@@ -766,12 +668,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     ) : (
                       <div className="mt-1 grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-1.5">
                         {bodyPartsPaged.rows.map(({ bp, sets }) => (
-                          <CompactChip
-                            key={bp}
-                            label={bp.charAt(0).toUpperCase() + bp.slice(1)}
-                            count={sets}
-                            size="xs"
-                          />
+                          <CompactChip key={bp} label={bp.charAt(0).toUpperCase() + bp.slice(1)} count={sets} size="xs" />
                         ))}
                       </div>
                     )}
@@ -794,31 +691,18 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Exercise PRs</h2>
                   <Tooltip text={e1RMTooltip}>
-                    <span
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none"
-                      aria-label="Estimated 1RM formula info"
-                    >
-                      i
-                    </span>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none" aria-label="Estimated 1RM formula info">i</span>
                   </Tooltip>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-400 border-b border-gray-800 select-none">
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('exercise')}>
-                          Exercise {sortKey === 'exercise' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                        </th>
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('bestWeight')}>
-                          Best Weight {sortKey === 'bestWeight' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                        </th>
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('best1RM')}>
-                          Best 1RM (est) {sortKey === 'best1RM' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                        </th>
+                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('exercise')}>Exercise {sortKey === 'exercise' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
+                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('bestWeight')}>Best Weight {sortKey === 'bestWeight' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
+                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('best1RM')}>Best 1RM (est) {sortKey === 'best1RM' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
                         <th className="py-2 pr-4">Best Set</th>
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('bestSetDate')}>
-                          Date {sortKey === 'bestSetDate' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
-                        </th>
+                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('bestSetDate')}>Date {sortKey === 'bestSetDate' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -827,12 +711,8 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                           <td className="py-2 pr-4">{row.exercise}</td>
                           <td className="py-2 pr-4">{row.bestWeight} lbs</td>
                           <td className="py-2 pr-4">{row.best1RM} lbs</td>
-                          <td className="py-2 pr-4 text-gray-300">
-                            {row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}
-                          </td>
-                          <td className="py-2 pr-4">
-                            {row.bestSetDate}
-                          </td>
+                          <td className="py-2 pr-4 text-gray-300">{row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}</td>
+                          <td className="py-2 pr-4">{row.bestSetDate}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -851,21 +731,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Volume Heatmap</h2>
                   <Tooltip text={heatmapTooltip}>
-                    <span
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none"
-                      aria-label="Heatmap info"
-                    >
-                      i
-                    </span>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none" aria-label="Heatmap info">i</span>
                   </Tooltip>
                 </div>
                 <div className="flex-1">
-                  <Heatmap
-                    mode={mode as 'week' | 'month' | 'year'}
-                    data={daily.map(d => ({ date: d.date, volume: d.volume }))}
-                    naColor="#3b4351"
-                    autoGrow
-                  />
+                  <Heatmap mode={mode as 'week' | 'month' | 'year'} data={daily.map(d => ({ date: d.date, volume: d.volume }))} naColor="#3b4351" autoGrow />
                 </div>
               </div>
             </section>
@@ -907,9 +777,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                           {s.sets} set{s.sets === 1 ? '' : 's'}
                         </span>
                       </div>
-                      <div className="mt-3 text-[11px] italic text-gray-500">
-                        Click to open Daily View
-                      </div>
+                      <div className="mt-3 text-[11px] italic text-gray-500">Click to open Daily View</div>
                     </button>
                   </Tooltip>
                 ))}
@@ -918,7 +786,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
           </>
         )}
       </div>
-
       {/* Download modal */}
       {showDownload && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
