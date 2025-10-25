@@ -1,4 +1,6 @@
 // app/demos/mobile-warning/page.tsx
+'use client'
+
 export default function MobileWarningPage() {
   return (
     <main className="fixed inset-0 z-[9999] bg-black text-white">
