@@ -281,14 +281,37 @@ export default function GymEntryForm() {
   }
 
   const liftsForSelectedDate = allLifts.filter(l => l.date === formData.date)
+
+  // Build a stable global order map based on the fetch order of allLifts.
+  // Higher index === more recently logged (top of history).
+  const globalOrderIndex = useMemo(() => {
+    const m = new Map<string, number>()
+    allLifts.forEach((l, idx) => m.set(l.id, idx))
+    return m
+  }, [allLifts])
+
+  // Group sets by exercise (for the selected date)
   const liftsByExerciseForSelectedDate = liftsForSelectedDate.reduce((acc, lift) => {
     if (!acc[lift.exercise]) acc[lift.exercise] = []
     acc[lift.exercise].push(lift)
     return acc
   }, {} as Record<string, GymLift[]>)
-  Object.keys(liftsByExerciseForSelectedDate).forEach(ex => {
-    liftsByExerciseForSelectedDate[ex].sort((a, b) => a.setNumber - b.setNumber)
-  })
+
+  // Ensure sets within each exercise render in their natural (older→newer) order using global index,
+  // and then sort the exercise groups themselves by the most recent set they contain (newest→oldest).
+  const exerciseGroupsChrono = useMemo(() => {
+    return Object.entries(liftsByExerciseForSelectedDate)
+      .map(([exercise, sets]) => {
+        const setsChrono = [...sets].sort(
+          (a, b) => (globalOrderIndex.get(a.id) ?? 0) - (globalOrderIndex.get(b.id) ?? 0)
+        )
+        const latestIdx = Math.max(...sets.map(s => globalOrderIndex.get(s.id) ?? -1))
+        const exerciseVolume = sets.reduce((sum, s) => sum + s.weight * s.reps, 0)
+        return { exercise, sets: setsChrono, latestIdx, exerciseVolume }
+      })
+      .sort((a, b) => b.latestIdx - a.latestIdx) // newest group first
+  }, [liftsByExerciseForSelectedDate, globalOrderIndex])
+
   const totalVolumeForSelectedDate = liftsForSelectedDate.reduce((sum, lift) => sum + (lift.weight * lift.reps), 0)
   const dayTagForSelectedDate = (formData.dayTag || '').trim()
 
@@ -529,7 +552,7 @@ export default function GymEntryForm() {
                 type="number"
                 value={formData.reps}
                 onChange={(e) => setFormData({ ...formData, reps: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg"
                 min="1"
                 required
               />
@@ -545,7 +568,7 @@ export default function GymEntryForm() {
           </div>
         </form>
 
-        {/* ===================== Workout History ===================== */}
+        {/* ===================== Workout History (newest → oldest) ===================== */}
         <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full">
           {/* Centered header + subheader */}
           <h3 className="text-lg font-semibold text-white mb-2 text-center">
@@ -570,61 +593,58 @@ export default function GymEntryForm() {
             <p className="text-gray-400 text-sm text-center">No sets yet for this date.</p>
           ) : (
             <div className="space-y-3">
-              {Object.entries(liftsByExerciseForSelectedDate).map(([exercise, sets]) => {
-                const exerciseVolume = sets.reduce((sum, set) => sum + (set.weight * set.reps), 0)
-                return (
-                  <div key={exercise} className="bg-gray-850 rounded-lg p-3">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-white font-medium">{exercise}</span>
-                      <span className="text-gray-400 text-sm">{exerciseVolume.toLocaleString()} lbs</span>
-                    </div>
-                    <div className="space-y-1">
-                      {sets.map((set) => (
-                        <div
-                          key={set.id}
-                          className="flex justify-between items-center text-sm bg-gray-800 rounded px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-300">
-                              Set {set.setNumber}: {set.weight} lbs × {set.reps} reps
-                            </span>
-                            {set.equipment ? (
-                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-700">
-                                {set.equipment}
-                              </span>
-                            ) : null}
-                            {set.isUnilateral ? (
-                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-700 uppercase tracking-wide">
-                                UNI
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setEditingLift(set)}
-                              className="text-blue-400 hover:text-blue-300 transition-colors"
-                              title="Edit"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleDelete(set.id)}
-                              className="text-red-400 hover:text-red-300 transition-colors"
-                              title="Delete"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              {exerciseGroupsChrono.map(({ exercise, sets, exerciseVolume }) => (
+                <div key={exercise} className="bg-gray-850 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-white font-medium">{exercise}</span>
+                    <span className="text-gray-400 text-sm">{exerciseVolume.toLocaleString()} lbs</span>
                   </div>
-                )
-              })}
+                  <div className="space-y-1">
+                    {sets.map((set) => (
+                      <div
+                        key={set.id}
+                        className="flex justify-between items-center text-sm bg-gray-800 rounded px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-300">
+                            Set {set.setNumber}: {set.weight} lbs × {set.reps} reps
+                          </span>
+                          {set.equipment ? (
+                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-700">
+                              {set.equipment}
+                            </span>
+                          ) : null}
+                          {set.isUnilateral ? (
+                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-700 uppercase tracking-wide">
+                              UNI
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingLift(set)}
+                            className="text-blue-400 hover:text-blue-300 transition-colors"
+                            title="Edit"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(set.id)}
+                            className="text-red-400 hover:text-red-300 transition-colors"
+                            title="Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

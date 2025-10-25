@@ -1,3 +1,4 @@
+// app/demos/gym-dashboard/ui/DashboardClient.tsx
 'use client'
 
 import { useMemo, useState, useRef, useEffect } from 'react'
@@ -6,13 +7,13 @@ import VolumeChart from './VolumeChart'
 import Heatmap from './Heatmap'
 import DailyView from './DailyView'
 import UtilityCard from './UtilityCard'
+import BodyDiagram, { BodyPart } from './BodyDiagram'
 
 type RangeMode = 'day' | 'month' | 'week' | 'year'
 type SortKey = 'exercise' | 'bestWeight' | 'best1RM' | 'bestSetDate'
 
 /* -------------------------- tiny helpers -------------------------- */
 const formatNum = (n: number) => n.toLocaleString()
-const formatWeight = (lbs: number) => (lbs >= 2000 ? `${(lbs / 2000).toFixed(1)} tons` : `${formatNum(lbs)} lbs`)
 const unique = <T,>(arr: T[]) => Array.from(new Set(arr))
 
 // UTC date helpers
@@ -33,12 +34,10 @@ function groupBy<T, K extends string | number>(arr: T[], key: (t: T) => K): Map<
   const m = new Map<K, T[]>()
   for (let i = 0; i < arr.length; i++) {
     const item = arr[i]
-    theLoop: {
-      const k = key(item)
-      const bucket = m.get(k)
-      if (bucket) bucket.push(item)
-      else m.set(k, [item])
-    }
+    const k = key(item)
+    const bucket = m.get(k)
+    if (bucket) bucket.push(item)
+    else m.set(k, [item])
   }
   return m
 }
@@ -59,7 +58,7 @@ function yearDatesYTDUTC(year: number) {
   return out
 }
 function calcDailyVolume(lifts: GymLift[], dates: string[]) {
-  const byDate = groupBy(lifts, l => l.date)
+  const byDate = groupBy(lifts, (l: GymLift) => l.date)
   return dates.map(date => {
     const day = byDate.get(date) ?? []
     const volume = day.reduce((sum: number, l: GymLift) => sum + l.weight * l.reps, 0)
@@ -113,8 +112,9 @@ function formatYMDHM_EST(d?: Date | null) {
     hour: 'numeric', minute: '2-digit', hour12: true,
   })
   const parts = formatter.formatToParts(d)
-  const lookup = Object.fromEntries(parts.map(p => [p.type, p.value]))
-  return `${lookup.year}-${lookup.month}-${lookup.day} ${lookup.hour}:${lookup.minute}${lookup.dayPeriod?.toLowerCase() || ''} EST`
+  const lookup: Record<string, string> = Object.fromEntries(parts.map(p => [p.type, p.value]))
+  const ampm = (lookup as any).dayPeriod ? (lookup as any).dayPeriod.toLowerCase() : ''
+  return `${lookup.year}-${lookup.month}-${lookup.day} ${lookup.hour}:${lookup.minute}${ampm} EST`
 }
 function formatLongDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
@@ -123,6 +123,141 @@ function formatLongDate(dateStr: string) {
 function titleCaseTag(tag?: string | null) {
   if (!tag) return ''
   return tag.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())
+}
+function cleanTag(s?: string | null) {
+  return (s ?? '')
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/* -------------------------- Exercise → BodyPart map -------------------------- */
+const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
+  biceps:     ['Preacher Curl', 'Hammer Curl', 'Bayesian Curl', 'Incline Curl'],
+  chest:      ['Incline Press', 'Flat Press', 'Decline Press', 'Chest Fly', 'Bench Press'],
+  shoulders:  ['Lateral Raise', 'Overhead Press', 'Rear Delt Fly', 'Rear Delt Xs'],
+  back:       ['Lat Pulldown', 'High Row', 'Low Row', 'Pull Ups', 'Pull Overs'],
+  triceps:    ['Tricep Pushdowns', 'Tricep Extensions', 'Skull Crushers', 'Tricep Kickbacks', 'Dips'],
+  quads:      ['Leg Press', 'Hack Squat', 'Pendelum Squat', 'Squat', 'Leg Extensions', 'Split Squat'],
+  hamstrings: ['RDLs', 'Seated Leg Curl', 'Lying Leg Curl', 'Hamstrick Kickback'],
+  forearms:   ['Wrist Curl','Reverse Curl', 'Reverse Wrist Curl'],
+  core:       ['Hanging Leg Raise','Decline Crunch','Flat Crunch', 'Incline Crunch', 'Oblique Twist'],
+  glutes:     ['Hip Thrust', 'Glute Kickback'],
+  calves:     ['Standing Calf Raise','Seated Calf Raise'],
+  hips:       ['Abduction Machine','Adduction Machine'],
+}
+const EXERCISE_TO_BODY: Record<string, BodyPart> = Object.entries(EXERCISES_BY_BODY_PART)
+  .reduce((acc, [bp, arr]) => { for (const ex of arr) acc[ex] = bp as BodyPart; return acc }, {} as Record<string, BodyPart>)
+
+const EXERCISE_TO_BODY_LOWER: Record<string, BodyPart> = Object.fromEntries(
+  Object.entries(EXERCISE_TO_BODY).map(([k, v]) => [k.toLowerCase(), v])
+)
+
+/** NEW: fuzzy fallback recognizer so sets don’t all zero out */
+function getBodyPartForExercise(rawName: string): BodyPart | undefined {
+  const name = (rawName || '').trim()
+  if (!name) return undefined
+  const lower = name.toLowerCase()
+
+  // exact / lower maps first
+  if (EXERCISE_TO_BODY[name]) return EXERCISE_TO_BODY[name]
+  if (EXERCISE_TO_BODY_LOWER[lower]) return EXERCISE_TO_BODY_LOWER[lower]
+
+  // forearms first (to avoid matching generic "curl")
+  if (/wrist/.test(lower)) return 'forearms'
+
+  // chest
+  if (/\bbench\b|chest|fly\b/.test(lower)) return 'chest'
+
+  // shoulders
+  if (/\bohp\b|overhead press|shoulder|lateral raise|rear delt|delt/.test(lower)) return 'shoulders'
+
+  // triceps
+  if (/tricep|skull ?crush|pushdown|extension\b/.test(lower)) return 'triceps'
+
+  // biceps
+  if (/\bbicep|curl/.test(lower)) return 'biceps'
+
+  // back (make sure "lat" is tied to back movements, not "lateral")
+  if (/lat(?!eral)|pulldown|pull[- ]?down|row\b|pull[- ]?up|pullup|pullover/.test(lower)) return 'back'
+
+  // quads
+  if (/squat\b(?!.*(split|bulgarian))|hack|pendulum|leg press|leg extension/.test(lower)) return 'quads'
+
+  // hamstrings
+  if (/rdl|romanian|leg curl|hamstring|good ?morning/.test(lower)) return 'hamstrings'
+
+  // glutes
+  if (/hip thrust|glute/.test(lower)) return 'glutes'
+
+  // calves
+  if (/calf/.test(lower)) return 'calves'
+
+  // core
+  if (/crunch|leg raise|plank|sit[- ]?up|ab(?!duction)/.test(lower)) return 'core'
+
+  // hips
+  if (/abduction|adduction/.test(lower)) return 'hips'
+
+  return undefined
+}
+
+/* -------------------------- Small UI atoms -------------------------- */
+function StatChip({ label, value, sub, className }: {
+  label: string; value: number | string; sub?: string; className?: string
+}) {
+  return (
+    <div className={['rounded-xl border border-gray-800 bg-gray-900 px-4 py-3 flex flex-col gap-1', className].join(' ')}>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-2xl font-semibold leading-none">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      {sub ? <div className="text-[11px] text-gray-500">{sub}</div> : null}
+    </div>
+  )
+}
+
+/** Compact chip with optional sizes for tight layouts */
+function CompactChip({
+  label, count, className = '', size = 'md'
+}: { label: string; count: number; className?: string; size?: 'xs' | 'sm' | 'md' }) {
+  const sizeClasses =
+    size === 'xs'
+      ? 'h-6 min-w-[104px] px-2 text-[10px]'
+      : size === 'sm'
+      ? 'h-7 min-w-[120px] px-3 text-[11px]'
+      : 'h-8 min-w-[140px] px-3 text-xs'
+  const badgePad = size === 'xs' ? 'px-1.5 py-[1px] text-[10px]' : size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2 py-0.5 text-[11px]'
+  return (
+    <div
+      className={[
+        'inline-flex items-center justify-between rounded-full border border-gray-700 bg-gray-900',
+        'whitespace-nowrap overflow-hidden', sizeClasses, className
+      ].join(' ')}
+      title={`${label} ${count}`}
+    >
+      <span className="font-medium text-gray-200 truncate">{label}</span>
+      <span className={`ml-2 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-800 ${badgePad} leading-none text-gray-300`}>
+        {count}
+      </span>
+    </div>
+  )
+}
+
+/** Split tile (always show all 3) */
+function SplitTile({ name, count }: { name: 'Push'|'Pull'|'Legs'; count: number }) {
+  return (
+    <div className="h-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2.5 flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-600" />
+        <span className="text-sm font-medium text-gray-200">{name}</span>
+      </div>
+      <span className="inline-flex items-center justify-center rounded-full border border-gray-700 bg-gray-800 h-6 min-w-[26px] text-[11px] px-2 text-gray-300">
+        {count}
+      </span>
+    </div>
+  )
 }
 
 /* -------------------------- Pager -------------------------- */
@@ -203,19 +338,88 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const totalVolume = useMemo(() => daily.reduce((s: number, d: any) => s + d.volume, 0), [daily])
   const exerciseVariety = useMemo(() => unique(filtered.map(l => l.exercise)).length, [filtered])
 
-  const topMover = useMemo(() => {
-    const byEx = groupBy(filtered, l => l.exercise)
-    let top = { exercise: '—', volume: 0 }
-    for (const [exercise, arr] of Array.from(byEx.entries())) {
-      const v = arr.reduce((s: number, l: GymLift) => s + l.weight * l.reps, 0)
-      if (v > top.volume) top = { exercise, volume: v }
+  // Body part stats (now with fuzzy fallback)
+  const bodyStats = useMemo(() => {
+    const base: Record<BodyPart, { volume: number; sets: number }> = {
+      biceps:{volume:0,sets:0}, chest:{volume:0,sets:0}, shoulders:{volume:0,sets:0}, back:{volume:0,sets:0},
+      triceps:{volume:0,sets:0}, quads:{volume:0,sets:0}, hamstrings:{volume:0,sets:0}, forearms:{volume:0,sets:0},
+      core:{volume:0,sets:0}, glutes:{volume:0,sets:0}, calves:{volume:0,sets:0}, hips:{volume:0,sets:0},
     }
-    return top
+
+    for (const s of filtered) {
+      const raw = (s.exercise ?? '').trim()
+      const bp =
+        (EXERCISE_TO_BODY[raw] as BodyPart | undefined) ??
+        (EXERCISE_TO_BODY_LOWER[raw.toLowerCase()] as BodyPart | undefined) ??
+        getBodyPartForExercise(raw)
+      if (!bp) continue
+      const v = s.weight * s.reps
+      base[bp].volume += v
+      base[bp].sets += 1
+    }
+
+    return base
   }, [filtered])
+
+
+  /* -------------------------- Split & Body-part frequency -------------------------- */
+
+  // Normalize P/P/L-ish tags
+  function normalizeSplitTag(raw?: string | null) {
+    const t = (raw || '').trim().toLowerCase()
+    if (!t) return ''
+    if (t.startsWith('push')) return 'Push'
+    if (t.startsWith('pull')) return 'Pull'
+    if (t.startsWith('leg'))  return 'Legs'
+    return ''
+  }
+
+  // PPL-only counts (exactly 3 tiles shown)
+  const splitCountsPPL = useMemo(() => {
+    const byDate = groupBy(filtered, (l: GymLift) => l.date)
+    const counts = { Push: 0, Pull: 0, Legs: 0 } as Record<'Push'|'Pull'|'Legs', number>
+    const entries: Array<[string, GymLift[]]> = Array.from(byDate.entries())
+    for (let i = 0; i < entries.length; i++) {
+      const [, sets] = entries[i]
+      const tags = (sets as GymLift[]).map((s: GymLift) => (cleanTag(s.dayTag) ?? '').trim()).filter(Boolean) as string[]
+      if (!tags.length) continue
+      const tally = new Map<string, number>()
+      for (let j = 0; j < tags.length; j++) {
+        const t = tags[j]
+        tally.set(t, (tally.get(t) || 0) + 1)
+      }
+      const winner = Array.from(tally.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]
+      const key = normalizeSplitTag(winner) as 'Push'|'Pull'|'Legs'|''
+      if (key) counts[key] += 1
+    }
+    return counts
+  }, [filtered])
+
+  const bodyPartsList = useMemo(() => {
+    return (Object.keys(bodyStats) as BodyPart[])
+      .map((bp) => ({ bp, sets: bodyStats[bp].sets, volume: bodyStats[bp].volume }))
+      .filter(x => x.sets > 0 || x.volume > 0)
+      .sort((a, b) => (b.sets - a.sets) || (b.volume - a.volume))
+  }, [bodyStats])
+
+  // Pagination for body parts — 6/page
+  const [bpPage, setBpPage] = useState(1)
+  const bpPageSize = 6
+  const bodyPartsPaged = useMemo(() => {
+    const totalPages = Math.max(1, Math.ceil(bodyPartsList.length / bpPageSize))
+    const page = Math.max(1, Math.min(bpPage, totalPages))
+    const start = (page - 1) * bpPageSize
+    return {
+      rows: bodyPartsList.slice(start, start + bpPageSize),
+      totalPages,
+      page,
+      total: bodyPartsList.length
+    }
+  }, [bodyPartsList, bpPage])
 
   // PRs table rows
   const prsAll = useMemo(() => {
-    const byEx = groupBy(filtered, l => l.exercise)
+    const byEx = groupBy(filtered, (l: GymLift) => l.exercise)
     return Array.from(byEx.entries()).map(([exercise, sets]) => {
       let bestWeight = 0
       let best1RM = 0
@@ -234,7 +438,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     })
   }, [filtered])
 
-  // PRs sorting + pagination
   const [sortKey, setSortKey] = useState<SortKey>('best1RM')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [prsPage, setPrsPage] = useState(1)
@@ -261,19 +464,22 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   // recent sessions
   const recentSessionsAll = useMemo(() => {
-    const byDate = groupBy(filtered, l => l.date)
+    const byDate = groupBy(filtered, (l: GymLift) => l.date)
     const recentDates = Array.from(byDate.keys()).sort((a, b) => (a < b ? 1 : -1))
     return recentDates.map(date => {
       const day = byDate.get(date) || []
       const volume = day.reduce((s: number, l: GymLift) => s + l.weight * l.reps, 0)
-      const exercises = unique(day.map(l => l.exercise))
+      const exercises = unique(day.map((l: GymLift) => l.exercise))
       const sets = day.length
 
-      const tags = day.map(l => (l.dayTag ?? '').trim()).filter(Boolean) as string[]
+      const tags = day.map((l: GymLift) => cleanTag(l.dayTag)).filter(Boolean)
       let dayTag: string | null = null
       if (tags.length) {
         const counts = new Map<string, number>()
-        for (const t of tags) counts.set(t, (counts.get(t) || 0) + 1)
+        for (let i = 0; i < tags.length; i++) {
+          const t = tags[i]
+          counts.set(t, (counts.get(t) || 0) + 1)
+        }
         dayTag = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0]
       }
       return { date, volume, exercises, sets, lifts: day, dayTag }
@@ -312,7 +518,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const e1RMTooltip = 'Estimated 1RM = weight × (1 + reps/30)  (Epley formula)'
   const heatmapTooltip = 'Each column is a day. Darker = more total volume. Empty = no recorded sets.'
 
-  /* ---------------------- Filters (left-pack w/ smart span) ---------------------- */
+  /* ---------------------- Filters ---------------------- */
   const backVisible = mode === 'day' && !!prevMode
 
   const Filters = (
@@ -320,7 +526,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
       className="grid items-center w-full gap-3 grid-cols-[96px_320px_220px] justify-start"
       aria-label="Dashboard filters"
     >
-      {/* Back button: only render when needed so modes can occupy col 1 */}
       {backVisible ? (
         <div className="col-start-1">
           <button
@@ -340,7 +545,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
       ) : null}
 
-      {/* Mode buttons: span 2 cols if back is hidden, otherwise sit in col 2 */}
       <div className={backVisible ? 'col-start-2 col-span-1' : 'col-start-1 col-span-2'}>
         <div className="grid grid-cols-4 gap-1.5 w-full">
           {(['day','week','month','year'] as RangeMode[]).map(k => {
@@ -366,7 +570,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
       </div>
 
-      {/* Picker: always fixed in the right-most track */}
       <div className="col-start-3 h-9 flex items-center justify-start">
         {mode === 'day' ? (
           <div className="flex items-center gap-2">
@@ -440,6 +643,10 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // KPI & small card height — unify d
+  const KPI_CARD_HEIGHT = 'h-[150px]'
+  const SMALL_CARD_HEIGHT = KPI_CARD_HEIGHT
+
   return (
     <div className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-6 pb-12">
@@ -470,47 +677,119 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
           />
         ) : (
           <>
-            {/* KPIs */}
+            {/* KPI row + chart + body */}
             <section className="mb-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
-                  <div className="text-sm text-gray-400">Total Volume</div>
-                  <div className="text-2xl font-semibold mt-2">{formatNum(totalVolume)} lbs</div>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
-                  <div className="text-sm text-gray-400">Gym Days</div>
-                  <div className="text-2xl font-semibold mt-2">
-                    {unique(filtered.map(l => l.date)).length}/{dateWindow.length}
+              <div className="grid lg:grid-cols-[1fr_1fr_1fr_0.85fr] lg:grid-rows-[auto_auto] gap-x-4 gap-y-4">
+                {/* LEFT: KPI row + chart */}
+                <div className="lg:col-span-3 lg:row-start-1 lg:row-end-2 grid grid-rows-[auto_1fr] gap-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* TOTAL VOLUME — 3-stack, but balanced with others */}
+                    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+                        Total Volume
+                      </div>
+                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)] mb-2">
+                        {formatNum(totalVolume)}
+                      </div>
+                      <div className="text-xs sm:text-sm tracking-wide text-gray-400">
+                        lbs
+                      </div>
+                    </div>
+
+                    {/* GYM DAYS — 2-stack but same total density */}
+                    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+                        Gym Days
+                      </div>
+                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">
+                        {unique(filtered.map(l => l.date)).length}
+                        <span className="mx-1 text-gray-500">/</span>
+                        {dateWindow.length}
+                      </div>
+                    </div>
+
+                    {/* EXERCISE VARIETY — 2-stack */}
+                    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">
+                        Exercise Variety
+                      </div>
+                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">
+                        {exerciseVariety}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-lg font-semibold">Daily Volume</h2>
+                    </div>
+                    <VolumeChart data={daily.map(d => ({ date: d.date, volume: d.volume }))} height={236} />
                   </div>
                 </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
-                  <div className="text-sm text-gray-400">Top Mover</div>
-                  <div className="text-2xl font-semibold mt-2">{topMover.exercise}</div>
-                  <div className="text-xs text-gray-500 mt-1">{formatWeight(topMover.volume)} moved</div>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
-                  <div className="text-sm text-gray-400">Exercise Variety</div>
-                  <div className="text-2xl font-semibold mt-2">{exerciseVariety}</div>
-                </div>
-              </div>
-            </section>
 
-            {/* Daily volume chart */}
-            <section className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold">Daily Volume</h2>
+                {/* RIGHT: Body diagram (fills both rows on the right) */}
+                <BodyDiagram
+                  stats={bodyStats}
+                  className="lg:col-start-4 lg:row-span-2 h-full"
+                />
+
+                {/* ROW 2 LEFT: Split (3 tiles) + Body-part frequency */}
+                <div className="lg:col-span-3 lg:row-start-2 lg:row-end-3 grid lg:grid-cols-2 gap-4">
+                  {/* Split Frequency — EXACTLY 3 tiles, stretch to full card height */}
+                  <div className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 ${SMALL_CARD_HEIGHT} flex flex-col`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-sm font-semibold">Split Frequency</h2>
+                      <div className="text-[11px] text-gray-400">
+                        {dateWindow[0]} – {dateWindow[dateWindow.length - 1]}
+                      </div>
+                    </div>
+                    {/* Make the tiles fill the vertical space of the card */}
+                    <div className="mt-1 grid grid-cols-3 gap-2 auto-rows-[1fr] items-stretch flex-1 min-h-0">
+                      <SplitTile name="Push"  count={splitCountsPPL.Push} />
+                      <SplitTile name="Pull"  count={splitCountsPPL.Pull} />
+                      <SplitTile name="Legs"  count={splitCountsPPL.Legs} />
+                    </div>
+                  </div>
+
+                  {/* Body-part Frequency — micro chips */}
+                  <div className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 ${SMALL_CARD_HEIGHT} flex flex-col`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h2 className="text-sm font-semibold">Body-part Frequency</h2>
+                      <span className="text-[11px] text-gray-400">
+                        {bodyPartsPaged.total} groups
+                      </span>
+                    </div>
+
+                    {bodyPartsPaged.rows.length === 0 ? (
+                      <div className="text-xs text-gray-400 mt-auto mb-auto">No sets in this range.</div>
+                    ) : (
+                      <div className="mt-1 grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-1.5">
+                        {bodyPartsPaged.rows.map(({ bp, sets }) => (
+                          <CompactChip
+                            key={bp}
+                            label={bp.charAt(0).toUpperCase() + bp.slice(1)}
+                            count={sets}
+                            size="xs"
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <Pager
+                      page={bodyPartsPaged.page}
+                      totalPages={bodyPartsPaged.totalPages}
+                      onPrev={() => setBpPage(p => Math.max(1, p - 1))}
+                      onNext={() => setBpPage(p => Math.min(bodyPartsPaged.totalPages, p + 1))}
+                      className="mt-auto"
+                    />
+                  </div>
+                </div>
               </div>
-              <VolumeChart
-                data={daily.map((d): { date: string; volume: number } => ({
-                  date: d.date,
-                  volume: d.volume,
-                }))}
-              />
             </section>
 
             {/* PRs + Heatmap */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* PRs */}
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Exercise PRs</h2>
@@ -568,7 +847,6 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 />
               </div>
 
-              {/* Heatmap */}
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
                   <h2 className="text-lg font-semibold">Volume Heatmap</h2>
@@ -583,11 +861,10 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 </div>
                 <div className="flex-1">
                   <Heatmap
-                    mode={mode}
+                    mode={mode as 'week' | 'month' | 'year'}
                     data={daily.map(d => ({ date: d.date, volume: d.volume }))}
                     naColor="#3b4351"
                     autoGrow
-                    fillParent
                   />
                 </div>
               </div>
@@ -616,7 +893,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                       <div className="flex items-center justify-between">
                         <div className="font-semibold tracking-wide">
                           {formatLongDate(s.date)}
-                          {s.dayTag ? `: ${titleCaseTag(s.dayTag)}` : ''}
+                          {s.dayTag ? `: ${titleCaseTag(cleanTag(s.dayTag))}` : ''}
                         </div>
                         <div className="text-xs text-gray-400 group-hover:text-gray-300">
                           {formatNum(s.volume)} lbs

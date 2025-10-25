@@ -1,3 +1,4 @@
+// app/demos/gym-dashboard/ui/DailyView.tsx
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
@@ -12,7 +13,6 @@ import {
 type Props = {
   lifts: GymLift[]
   date: string
-  /** Optional: parent controls the selected date. */
   onChangeDate?: (newDate: string) => void
 }
 
@@ -29,7 +29,7 @@ const COLORS_BP: Record<BodyPart | 'other', string> = {
 
 const toTitle = (s: string) => s.replace(/\b\w/g, c => c.toUpperCase())
 
-// --- UTC helpers so YYYY-MM-DD never drifts ---
+/* ================= UTC helpers ================= */
 const parseYMD = (s: string) => {
   const [y, m, d] = s.split('-').map(n => parseInt(n, 10))
   return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1))
@@ -40,7 +40,10 @@ const fmtWeekdayShort = (d: Date) =>
   d.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' })
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 
-// Exercise→Body Part mapping
+/* ================= Exercise → BodyPart mapping =================
+   Keep this in lockstep with the catalog in app/demos/gym-dashboard/form/page.tsx
+   We also add a tiny normalizer so small text differences (plural S, punctuation)
+   won’t break the mapping. */
 const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
   biceps:     ['Preacher Curl', 'Hammer Curl', 'Bayesian Curl', 'Incline Curl'],
   chest:      ['Incline Press', 'Flat Press', 'Decline Press', 'Chest Fly', 'Bench Press'],
@@ -55,50 +58,67 @@ const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
   calves:     ['Standing Calf Raise','Seated Calf Raise'],
   hips:       ['Abduction Machine','Adduction Machine'],
 }
+
+const normalize = (s: string) =>
+  s.toLowerCase()
+   .replace(/[^a-z0-9\s]/g, '')     // drop punctuation
+   .replace(/\s+/g, ' ')
+   .trim()
+   .replace(/s\b/, '')              // naive singularize trailing s
+
 const EX_TO_BP = (() => {
-  const m = new Map<string, BodyPart>(); // keep semicolon
-  (Object.keys(EXERCISES_BY_BODY_PART) as BodyPart[]).forEach((bp: BodyPart) => {
-    EXERCISES_BY_BODY_PART[bp].forEach((ex: string) => m.set(ex.toLowerCase(), bp))
+  const m = new Map<string, BodyPart>()
+  ;(Object.keys(EXERCISES_BY_BODY_PART) as BodyPart[]).forEach((bp) => {
+    EXERCISES_BY_BODY_PART[bp].forEach((ex) => m.set(normalize(ex), bp))
   })
+  // a couple of common alternates
+  m.set(normalize('RDL'), 'hamstrings')
+  m.set(normalize('Hip Thrusts'), 'glutes')
+  m.set(normalize('Pull Up'), 'back')
+  m.set(normalize('Pull Over'), 'back')
   return m
 })()
-const bodyPartForExercise = (ex: string): BodyPart | 'other' =>
-  EX_TO_BP.get(ex.toLowerCase()) ?? 'other'
 
-// === component ===
+const bodyPartForExercise = (ex: string): BodyPart | 'other' =>
+  EX_TO_BP.get(normalize(ex)) ?? 'other'
+
+/* ================= Component ================= */
 export default function DailyView({ lifts, date, onChangeDate }: Props) {
-  // unify day filtering by UTC
   const dayLifts = useMemo(() => lifts.filter(l => l.date === date), [lifts, date])
 
-  // pull selected body parts for the date from your store
+  // still fetch the explicitly selected body parts for this date (used elsewhere),
+  // but DO NOT restrict the donut by this anymore — it caused the “only one slice” bug
   const [selectedBodyParts, setSelectedBodyParts] = useState<BodyPart[]>([])
   useEffect(() => {
     let mounted = true
-    getBodyPartsForDate(date).then((parts) => {
-      if (!mounted) return
-      const clean = (Array.isArray(parts) ? parts : []).filter(Boolean) as BodyPart[]
-      setSelectedBodyParts(clean)
-    }).catch(() => setSelectedBodyParts([]))
+    getBodyPartsForDate(date)
+      .then((parts) => {
+        if (!mounted) return
+        const clean = (Array.isArray(parts) ? parts : []).filter(Boolean) as BodyPart[]
+        setSelectedBodyParts(clean)
+      })
+      .catch(() => setSelectedBodyParts([]))
     return () => { mounted = false }
   }, [date])
 
-  // --- KPIs ---
+  /* ================= KPIs ================= */
   const totalVolume = useMemo(() => dayLifts.reduce((s, l) => s + l.weight * l.reps, 0), [dayLifts])
   const totalSets = dayLifts.length
   const totalReps = useMemo(() => dayLifts.reduce((s, l) => s + l.reps, 0), [dayLifts])
   const exerciseCount = useMemo(() => new Set(dayLifts.map(l => l.exercise)).size, [dayLifts])
 
-  // Volume by body part — restricted to selected body parts
-  // Also compute per-body-part SETS count for donut tooltip
+  /* ================= Donut data (FIX) =================
+     Always compute from actual exercises, regardless of selectedBodyParts.
+     This fixes the issue where only a single body part (e.g., “Glutes”)
+     showed up when the day’s ‘selected’ list had only one item. */
   const byBodyPart = useMemo(() => {
     const vols = new Map<BodyPart, number>()
     const sets = new Map<BodyPart, number>()
     for (const l of dayLifts) {
       const bp = bodyPartForExercise(l.exercise)
       if (bp === 'other') continue
-      if (selectedBodyParts.length && !selectedBodyParts.includes(bp)) continue
       vols.set(bp, (vols.get(bp) || 0) + l.weight * l.reps)
-      sets.set(bp, (sets.get(bp) || 0) + 1) // each lift entry = one set
+      sets.set(bp, (sets.get(bp) || 0) + 1)
     }
     return Array.from(vols.entries())
       .map(([bp, volume]) => ({
@@ -109,11 +129,11 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
         color: COLORS_BP[bp],
       }))
       .sort((a, b) => b.volume - a.volume)
-  }, [dayLifts, selectedBodyParts])
+  }, [dayLifts])
 
   const topBodyPart = byBodyPart[0]?.name ?? '—'
 
-  // --- Week strip (Sun→Sat for the week containing `date`) ---
+  /* ================= Week strip ================= */
   const weekStrip = useMemo(() => {
     const d = parseYMD(date)
     const dow = d.getUTCDay() // 0=Sun ... 6=Sat
@@ -132,7 +152,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
     return days
   }, [date, lifts])
 
-  // --- Hero cumulative data (simplified body-part colors) ---
+  /* ================= Cumulative series ================= */
   type Point = { idx: number; cumVol: number; bp: BodyPart | 'other'; ex: string }
   const cumSeries: Point[] = useMemo(() => {
     let cum = 0
@@ -150,13 +170,12 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
     })
   }, [dayLifts])
 
-  // gradients by body part (kept simple: same palette for stroke & fill with low opacity)
   const bpStops = useMemo(() => {
     const out: { key: string; offset: number; color: string }[] = []
     if (cumSeries.length === 0) return out
     const n = cumSeries.length
     let prevBP = cumSeries[0].bp
-    out.push({ key: `start-${0}`, offset: 0, color: COLORS_BP[prevBP] || COLORS_BP.other })
+    out.push({ key: `start-0`, offset: 0, color: COLORS_BP[prevBP] || COLORS_BP.other })
     for (let i = 1; i < n; i++) {
       const cur = cumSeries[i].bp
       if (cur !== prevBP) {
@@ -170,28 +189,6 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
     return out
   }, [cumSeries])
 
-  // --- Flow groups (reading order). Numbered cells; no arrows. ---
-  type FlowItem = { exercise: string; sets: number }
-  const flowGroups: FlowItem[] = useMemo(() => {
-    const seq = [...dayLifts].sort((a,b)=>{
-      const ta=new Date(a.timestamp).getTime()||0
-      const tb=new Date(b.timestamp).getTime()||0
-      if(ta!==tb) return ta-tb
-      if(a.exercise!==b.exercise) return a.exercise.localeCompare(b.exercise)
-      return a.setNumber-b.setNumber
-    })
-    const out: FlowItem[] = []
-    for (let i=0;i<seq.length;i++){
-      const ex=seq[i].exercise
-      let j=i, sets=0
-      while(j<seq.length && seq[j].exercise===ex){ sets++; j++ }
-      out.push({ exercise: ex, sets })
-      i=j-1
-    }
-    return out
-  }, [dayLifts])
-
-  // Legend for cumulative volume (body parts present today)
   const legendBPs = useMemo(() => {
     const set = new Set<BodyPart | 'other'>()
     for (const p of cumSeries) set.add(p.bp)
@@ -200,10 +197,9 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* This week (Sun→Sat) */}
+      {/* Week (Sun→Sat) */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
         <div className="mb-3 text-center">
-          {/* Match Exercise Flow header style: bigger white text */}
           <h2 className="text-lg font-semibold text-white">This week</h2>
         </div>
         <div className="grid grid-cols-7 gap-2">
@@ -221,10 +217,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
             return (
               <button
                 key={d.ymd}
-                onClick={() => {
-                  if (disabled) return
-                  onChangeDate?.(d.ymd)
-                }}
+                onClick={() => { if (!disabled) onChangeDate?.(d.ymd) }}
                 disabled={disabled}
                 className={base}
                 title={d.label}
@@ -273,12 +266,10 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Hero: simpler body-part coloring + LEGEND */}
+        {/* Cumulative Volume */}
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Cumulative Volume (by body part)</h2>
-
-            {/* Legend (colors reflect body parts present today) */}
             <div className="hidden md:flex flex-wrap gap-3">
               {legendBPs.map((bp) => (
                 <div key={bp} className="flex items-center gap-1 text-xs text-gray-300">
@@ -352,7 +343,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
             </ResponsiveContainer>
           </div>
 
-          {/* Mobile legend fallback */}
+          {/* Mobile legend */}
           <div className="mt-3 flex md:hidden flex-wrap gap-3">
             {legendBPs.map((bp) => (
               <div key={bp} className="flex items-center gap-1 text-xs text-gray-300">
@@ -363,7 +354,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
           </div>
         </div>
 
-        {/* Donut: volume by body part (matches colors) — outlines removed + sets in tooltip */}
+        {/* Donut: Volume by Body Part (FIXED to always reflect data) */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <h2 className="text-lg font-semibold">Volume by Body Part</h2>
           <div className="h-72 w-full">
@@ -376,7 +367,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
                   innerRadius={60}
                   outerRadius={90}
                   paddingAngle={2}
-                  stroke="none"              /* remove white outline */
+                  stroke="none"
                 >
                   {byBodyPart.map((entry) => (
                     <Cell key={entry.name} fill={entry.color} stroke="none" />
@@ -391,8 +382,8 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
                 <RTooltip
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null
-                    const p: any = payload[0]        // recharts payload wrapper
-                    const datum = p?.payload || {}   // our data object { name, volume, sets, ... }
+                    const p: any = payload[0]
+                    const datum = p?.payload || {}
                     const v = Number(p.value || 0)
                     const total = byBodyPart.reduce((s, d) => s + d.volume, 0) || 1
                     const pct = Math.round((v / total) * 100)
@@ -410,37 +401,65 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
         </div>
       </div>
 
-      {/* Exercise Flow — NUMBERED cells, auto width, tighter bubble spacing */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-lg font-semibold mb-3">Exercise Flow</h2>
+      {/* Exercise Flow */}
+      <ExerciseFlow lifts={dayLifts} />
+    </div>
+  )
+}
 
-        {/* Wrap naturally, cells shrink to content; consistent gaps */}
-        <div className="flex flex-wrap gap-3">
-          {flowGroups.map((g, i) => {
-            const color = COLORS_BP[bodyPartForExercise(g.exercise)]
-            return (
-              <div
-                key={`${g.exercise}-${i}`}
-                className="inline-flex items-center rounded-md border border-gray-700 bg-gray-800/60 px-3 py-2"
-                title={`${g.exercise} • ${g.sets} set${g.sets>1?'s':''}`}
-              >
-                {/* Number badge */}
-                <span className="mr-2 inline-flex items-center justify-center rounded-full text-[11px] font-semibold bg-gray-700 text-white w-5 h-5">
-                  {i + 1}
-                </span>
+/* ============== small, local component for the flow chips ============== */
+function ExerciseFlow({ lifts }: { lifts: GymLift[] }) {
+  const COLORS_BP = {
+    biceps:'#f59e0b', chest:'#f87171', shoulders:'#60a5fa', back:'#22d3ee',
+    triceps:'#fb7185', quads:'#34d399', hamstrings:'#84cc16', forearms:'#fbbf24',
+    core:'#a78bfa', glutes:'#f472b6', calves:'#10b981', hips:'#38bdf8', other:'#9ca3af'
+  } as const
 
-                {/* Name + compact set dots */}
-                <span className="font-medium text-sm whitespace-nowrap">{g.exercise}</span>
-                <span className="inline-block w-3" />
-                <div className="flex gap-1">
-                  {Array.from({ length: g.sets }).map((_, idx) => (
-                    <span key={idx} className="inline-block w-2 h-2 rounded" style={{ background: color }} />
-                  ))}
-                </div>
+  const flowGroups = useMemo(() => {
+    const seq = [...lifts].sort((a,b)=>{
+      const ta=new Date(a.timestamp).getTime()||0
+      const tb=new Date(b.timestamp).getTime()||0
+      if(ta!==tb) return ta-tb
+      if(a.exercise!==b.exercise) return a.exercise.localeCompare(b.exercise)
+      return a.setNumber-b.setNumber
+    })
+    const out: { exercise: string; sets: number }[] = []
+    for (let i=0;i<seq.length;i++){
+      const ex=seq[i].exercise
+      let j=i, sets=0
+      while(j<seq.length && seq[j].exercise===ex){ sets++; j++ }
+      out.push({ exercise: ex, sets })
+      i=j-1
+    }
+    return out
+  }, [lifts])
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 className="text-lg font-semibold mb-3">Exercise Flow</h2>
+      <div className="flex flex-wrap gap-3">
+        {flowGroups.map((g, i) => {
+          const bp = bodyPartForExercise(g.exercise)
+          const color = (COLORS_BP as any)[bp] || (COLORS_BP as any).other
+          return (
+            <div
+              key={`${g.exercise}-${i}`}
+              className="inline-flex items-center rounded-md border border-gray-700 bg-gray-800/60 px-3 py-2"
+              title={`${g.exercise} • ${g.sets} set${g.sets>1?'s':''}`}
+            >
+              <span className="mr-2 inline-flex items-center justify-center rounded-full text-[11px] font-semibold bg-gray-700 text-white w-5 h-5">
+                {i + 1}
+              </span>
+              <span className="font-medium text-sm whitespace-nowrap">{g.exercise}</span>
+              <span className="inline-block w-3" />
+              <div className="flex gap-1">
+                {Array.from({ length: g.sets }).map((_, idx) => (
+                  <span key={idx} className="inline-block w-2 h-2 rounded" style={{ background: color }} />
+                ))}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
