@@ -59,12 +59,6 @@ export default function MobileWarningPage() {
         {/* Actions */}
         <div className="mt-8 flex flex-col sm:flex-row gap-3">
           <a
-            href="/demos/gym-dashboard/form"
-            className="inline-flex items-center justify-center rounded-lg px-5 py-3 bg-white text-black font-medium hover:bg-neutral-200 transition"
-          >
-            Open mobile data-entry form
-          </a>
-          <a
             href="/demos"
             className="inline-flex items-center justify-center rounded-lg px-5 py-3 border border-white/30 hover:border-white/60 transition"
           >
