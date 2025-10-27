@@ -2,6 +2,17 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+
+// Prevent background scroll when any modal is open (mobile fix)
+function useLockBody(locked: boolean) {
+  // lock <html> not just <body> for iOS Safari reliability
+  useEffect(() => {
+    const el = document.documentElement
+    const prev = el.style.overflow
+    if (locked) el.style.overflow = 'hidden'
+    return () => { el.style.overflow = prev }
+  }, [locked])
+}
 import {
   addGymLift,
   getGymLifts,
@@ -81,6 +92,7 @@ export default function GymEntryForm() {
   const [mgrTab, setMgrTab] = useState<'filtered' | 'all'>('filtered')
   const [mgrBusyId, setMgrBusyId] = useState<string | null>(null)
 
+
   
   // DB-backed exercise options for the selected body parts
   const [exerciseOptions, setExerciseOptions] = useState<string[]>([])
@@ -102,6 +114,8 @@ export default function GymEntryForm() {
   // Menus (mobile-friendly sheets)
   const [showDayInfo, setShowDayInfo] = useState(false)
   const [showBodyParts, setShowBodyParts] = useState(false)
+  // Lock body scroll while any sheet/modal is open (moved below declarations to satisfy TS)
+  useLockBody(showManageEx || showAddEx || showDayInfo || showBodyParts)
 
   // First-run flow controller (Day Info → Body Parts)
   const [flowPending, setFlowPending] = useState(false)
@@ -966,10 +980,10 @@ useEffect(() => {
     <div className="absolute inset-0 flex items-stretch justify-center">
       <div
         className={[
-          "bg-gray-900 border border-gray-800 w-full h-full",          // mobile: full-screen
-          "sm:h-[90vh] sm:my-6 sm:max-w-3xl sm:rounded-xl",             // desktop: centered panel
-          "flex flex-col"                                               // column layout
-        ].join(" ")}
+          'bg-gray-900 border border-gray-800 w-full h-full',
+          'sm:h-[90vh] sm:my-6 sm:max-w-3xl sm:rounded-xl',
+          'flex flex-col'
+        ].join(' ')}
         role="dialog"
         aria-modal="true"
         aria-label="Manage Exercises"
@@ -986,123 +1000,123 @@ useEffect(() => {
           </button>
         </div>
 
-        {/* Tabs (fixed) */}
-        <div className="shrink-0 px-5 pt-4">
-          <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
-            <button
-              className={`px-3 py-1.5 text-sm ${mgrTab === 'filtered' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
-              onClick={() => setMgrTab('filtered')}
-            >
-              Filtered ({exerciseRows.length})
-            </button>
-            <button
-              className={`px-3 py-1.5 text-sm ${mgrTab === 'all' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
-              onClick={() => setMgrTab('all')}
-            >
-              All ({allExRows.length})
-            </button>
-          </div>
-        </div>
+        {/* Scrollable content wrapper (ensures modal scrolls, page behind doesn't) */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="px-5 py-4 w-full max-w-2xl mx-auto">
+            {/* ===== Add New Exercise (moved to top) ===== */}
+            <div className="mb-6">
+              <div className="text-sm text-gray-400 mb-2">Add a new exercise to your catalog.</div>
+              <AddExerciseInline
+                allParts={ALL_BODY_PARTS}
+                onAdd={async ({ name, bodyPartKey }) => {
+                  await upsertExercise({ name: name.trim(), bodyPartKey: bodyPartKey as BodyPartKey, isActive: true })
+                  try {
+                    const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                    setExerciseRows(filtered)
+                    setExerciseOptions(filtered.map(r => r.name))
+                  } catch {}
+                  try {
+                    const all = await listExercises()
+                    setAllExRows(all)
+                    setAllExOptions(all.map(e => e.name))
+                  } catch {}
+                }}
+              />
+            </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 min-h-0 px-5 py-4 overflow-y-auto">
-          <div className="overflow-x-auto border border-gray-800 rounded">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-850 sticky top-0 z-10">
-                <tr className="text-left text-gray-400 border-b border-gray-800">
-                  <th className="py-2 px-3">Name</th>
-                  <th className="py-2 px-3 w-40">Body Part</th>
-                  <th className="py-2 px-3 w-36">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(mgrTab === 'filtered' ? exerciseRows : allExRows).map((row) => (
-                  <ManageExerciseRow
-                    key={row.id}
-                    row={row}
-                    allParts={ALL_BODY_PARTS}
-                    onSave={async (updated) => {
-                      try {
-                        setMgrBusyId(row.id)
-                        await upsertExercise({
-                          id: row.id,
-                          name: updated.name.trim(),
-                          bodyPartKey: updated.bodyPartKey as BodyPartKey,
-                          isActive: true,
-                        })
-                        // refresh lists
-                        try {
-                          const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                          setExerciseRows(filtered)
-                          setExerciseOptions(filtered.map(r => r.name))
-                        } catch {}
-                        try {
-                          const all = await listExercises()
-                          setAllExRows(all)
-                          setAllExOptions(all.map(e => e.name))
-                        } catch {}
-                        setFormData(fd => {
-                          if (fd.exercise && fd.exercise === row.name && updated.name.trim() !== row.name) {
-                            return { ...fd, exercise: updated.name.trim(), weight: '' }
-                          }
-                          return fd
-                        })
-                      } finally {
-                        setMgrBusyId(null)
-                      }
-                    }}
-                    onDelete={async () => {
-                      if (!confirm(`Delete "${row.name}"? This will hide it from all dropdowns.`)) return
-                      try {
-                        setMgrBusyId(row.id)
-                        await softDeleteExercise(row.id)
-                        // refresh lists
-                        try {
-                          const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                          setExerciseRows(filtered)
-                          setExerciseOptions(filtered.map(r => r.name))
-                        } catch {}
-                        try {
-                          const all = await listExercises()
-                          setAllExRows(all)
-                          setAllExOptions(all.map(e => e.name))
-                        } catch {}
-                        setFormData(fd => (fd.exercise === row.name ? { ...fd, exercise: '', weight: '' } : fd))
-                      } finally {
-                        setMgrBusyId(null)
-                      }
-                    }}
-                    busy={mgrBusyId === row.id}
-                  />
-                ))}
-                {((mgrTab === 'filtered' ? exerciseRows : allExRows).length === 0) && (
-                  <tr>
-                    <td className="py-4 px-3 text-gray-400" colSpan={3}>
-                      No exercises to show.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+            {/* Divider */}
+            <div className="border-t border-gray-800 my-6" />
 
-          {/* Add new row */}
-          <AddExerciseInline
-            allParts={ALL_BODY_PARTS}
-            onAdd={async ({ name, bodyPartKey }) => {
-              await upsertExercise({ name: name.trim(), bodyPartKey: bodyPartKey as BodyPartKey, isActive: true })
-              try {
-                const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                setExerciseRows(filtered)
-                setExerciseOptions(filtered.map(r => r.name))
-              } catch {}
-              try {
-                const all = await listExercises()
-                setAllExRows(all)
-                setAllExOptions(all.map(e => e.name))
-              } catch {}
-            }}
-          />
+            {/* ===== Modify Existing Exercises ===== */}
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-gray-200">Modify Existing Exercises</div>
+                <div className="text-xs text-gray-400">Edit names or body parts.</div>
+              </div>
+              {/* Tabs */}
+              <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
+                <button
+                  className={`px-3 py-1.5 text-sm ${mgrTab === 'filtered' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                  onClick={() => setMgrTab('filtered')}
+                >
+                  Filtered ({exerciseRows.length})
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm ${mgrTab === 'all' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                  onClick={() => setMgrTab('all')}
+                >
+                  All ({allExRows.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Responsive list (same width as Add section) */}
+            <div className="space-y-3">
+              {(mgrTab === 'filtered' ? exerciseRows : allExRows).map((row) => (
+                <ManageExerciseRow
+                  key={row.id}
+                  row={row}
+                  allParts={ALL_BODY_PARTS}
+                  onSave={async (updated) => {
+                    try {
+                      setMgrBusyId(row.id)
+                      await upsertExercise({
+                        id: row.id,
+                        name: updated.name.trim(),
+                        bodyPartKey: updated.bodyPartKey as BodyPartKey,
+                        isActive: true,
+                      })
+                      // refresh lists
+                      try {
+                        const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                        setExerciseRows(filtered)
+                        setExerciseOptions(filtered.map(r => r.name))
+                      } catch {}
+                      try {
+                        const all = await listExercises()
+                        setAllExRows(all)
+                        setAllExOptions(all.map(e => e.name))
+                      } catch {}
+                      setFormData(fd => {
+                        if (fd.exercise && fd.exercise === row.name && updated.name.trim() !== row.name) {
+                          return { ...fd, exercise: updated.name.trim(), weight: '' }
+                        }
+                        return fd
+                      })
+                    } finally {
+                      setMgrBusyId(null)
+                    }
+                  }}
+                  onDelete={async () => {
+                    if (!confirm(`Delete "${row.name}"? This will hide it from all dropdowns.`)) return
+                    try {
+                      setMgrBusyId(row.id)
+                      await softDeleteExercise(row.id)
+                      // refresh lists
+                      try {
+                        const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                        setExerciseRows(filtered)
+                        setExerciseOptions(filtered.map(r => r.name))
+                      } catch {}
+                      try {
+                        const all = await listExercises()
+                        setAllExRows(all)
+                        setAllExOptions(all.map(e => e.name))
+                      } catch {}
+                      setFormData(fd => (fd.exercise === row.name ? { ...fd, exercise: '', weight: '' } : fd))
+                    } finally {
+                      setMgrBusyId(null)
+                    }
+                  }}
+                  busy={mgrBusyId === row.id}
+                />
+              ))}
+
+              {((mgrTab === 'filtered' ? exerciseRows : allExRows).length === 0) && (
+                <div className="text-gray-400 text-sm">No exercises to show.</div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Footer (fixed) */}
@@ -1266,44 +1280,46 @@ function ManageExerciseRow({
   const [bp, setBp] = useState<BodyPart>((row.bodyPartKey as BodyPart) ?? 'chest')
 
   return (
-    <tr className="border-b border-gray-800">
-      <td className="py-2 px-3">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-3">
+      {/* Row 1: Exercise | Body Part (on one line) */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px]">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-2 py-1 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          className="w-full px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          placeholder="Exercise name"
         />
-      </td>
-      <td className="py-2 px-3">
         <select
           value={bp}
           onChange={(e) => setBp(e.target.value as BodyPart)}
-          className="w-full px-2 py-1 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          className="w-full px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
         >
           {allParts.map(p => (
             <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
           ))}
         </select>
-      </td>
-      <td className="py-2 px-3">
+      </div>
+
+      {/* Row 2: Save | Delete */}
+      <div className="mt-2 flex items-center justify-between">
         <div className="flex gap-2">
           <button
             disabled={busy || !name.trim()}
             onClick={() => onSave({ name, bodyPartKey: bp })}
-            className="px-2 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
+            className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
           <button
             disabled={busy}
             onClick={onDelete}
-            className="px-2 py-1 text-xs rounded bg-red-700 hover:bg-red-600 disabled:bg-gray-600"
+            className="px-3 py-1.5 text-sm rounded bg-red-700 hover:bg-red-600 disabled:bg-gray-600"
           >
             {busy ? '…' : 'Delete'}
           </button>
         </div>
-      </td>
-    </tr>
+      </div>
+    </div>
   )
 }
 
@@ -1319,9 +1335,8 @@ function AddExerciseInline({
   const [busy, setBusy] = useState(false)
 
   return (
-    <div className="mt-4 border-t border-gray-800 pt-4">
-      <div className="text-sm text-gray-300 mb-2 font-medium">Add New Exercise</div>
-      <div className="grid grid-cols-[1fr_160px_auto] gap-2">
+    <div className="rounded-lg border border-gray-800 p-3 bg-gray-900">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_auto]">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
