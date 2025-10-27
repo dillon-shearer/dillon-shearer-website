@@ -15,6 +15,15 @@ import {
   type GymLift
 } from './actions'
 
+import {
+  listExercisesForParts,
+  listExercises,
+  upsertExercise,
+  softDeleteExercise,
+  type BodyPartKey,
+  type Exercise,
+} from '../catalog'
+
 type BodyPart =
   | 'biceps' | 'chest' | 'shoulders' | 'back' | 'triceps'
   | 'quads' | 'hamstrings' | 'forearms' | 'core'
@@ -37,21 +46,7 @@ const EQUIPMENT_OPTIONS = [
 ] as const
 type Equipment = typeof EQUIPMENT_OPTIONS[number]
 
-// Exercise catalog
-const EXERCISES_BY_BODY_PART: Record<BodyPart, string[]> = {
-  biceps:     ['Preacher Curl', 'Hammer Curl', 'Bayesian Curl', 'Incline Curl'],
-  chest:      ['Incline Press', 'Flat Press', 'Decline Press', 'Chest Fly', 'Bench Press'],
-  shoulders:  ['Lateral Raise', 'Overhead Press', 'Rear Delt Fly', 'Rear Delt Xs'],
-  back:       ['Lat Pulldown', 'High Row', 'Low Row', 'Pull Ups', 'Pull Overs'],
-  triceps:    ['Tricep Pushdowns', 'Tricep Extensions', 'Skull Crushers', 'Tricep Kickbacks', 'Dips'],
-  quads:      ['Leg Press', 'Hack Squat', 'Pendelum Squat', 'Squat', 'Leg Extensions', 'Split Squat'],
-  hamstrings: ['RDLs', 'Seated Leg Curl', 'Lying Leg Curl', 'Hamstrick Kickback'],
-  forearms:   ['Wrist Curl','Reverse Curl', 'Reverse Wrist Curl'],
-  core:       ['Hanging Leg Raise','Decline Crunch','Flat Crunch', 'Incline Crunch', 'Oblique Twist'],
-  glutes:     ['Hip Thrust', 'Glute Kickback'],
-  calves:     ['Standing Calf Raise','Seated Calf Raise'],
-  hips:       ['Abduction Machine','Adduction Machine'],
-}
+
 
 // DayTag → default body parts
 const DAYTAG_DEFAULTS: Record<string, BodyPart[]> = {
@@ -74,6 +69,31 @@ export default function GymEntryForm() {
     isUnilateral: false,
     equipment: '' as '' | Equipment,
   })
+
+  // DB-backed exercise options (filtered + all)
+  const [exerciseRows, setExerciseRows] = useState<Exercise[]>([]) // filtered rows (for selected parts)
+
+  // Global list used by Edit modal + manager “All” tab
+  const [allExRows, setAllExRows] = useState<Exercise[]>([])
+
+  // Manage modal
+  const [showManageEx, setShowManageEx] = useState(false)
+  const [mgrTab, setMgrTab] = useState<'filtered' | 'all'>('filtered')
+  const [mgrBusyId, setMgrBusyId] = useState<string | null>(null)
+
+  
+  // DB-backed exercise options for the selected body parts
+  const [exerciseOptions, setExerciseOptions] = useState<string[]>([])
+
+  // Full list used by the Edit modal dropdown
+  const [allExOptions, setAllExOptions] = useState<string[]>([])
+
+  // Add-exercise modal state
+  const [showAddEx, setShowAddEx] = useState(false)
+  const [newExName, setNewExName] = useState('')
+  const [newExBP, setNewExBP] = useState<BodyPart>('chest')
+  const [newExAliases, setNewExAliases] = useState('')
+  const [addExBusy, setAddExBusy] = useState(false)
 
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [allLifts, setAllLifts] = useState<GymLift[]>([])
@@ -109,6 +129,21 @@ export default function GymEntryForm() {
 
   async function bootstrap() {
     await Promise.all([fetchAllLifts(), fetchDayTags(), fetchDayInfoFor(formData.date)])
+    // Load global exercise list (full rows + names)
+    try {
+      const all = await listExercises()
+      setAllExRows(all)
+      setAllExOptions(all.map(e => e.name))
+    } catch (e) {
+      console.warn('Could not listExercises (optional):', e)
+    }
+    // Load global exercise list (for Edit modal, etc.)
+    try {
+      const all = await listExercises()
+      setAllExOptions(all.map(e => e.name))
+    } catch (e) {
+      console.warn('Could not listExercises (optional):', e)
+    }
     // First-run workflow: if not seen for this date, open Day Info → Body Parts
     if (typeof window !== 'undefined') {
       const key = `gymFlowSeenForDate:${formData.date}`
@@ -177,34 +212,43 @@ export default function GymEntryForm() {
     if (recognized && lastAppliedDayTagRef.current !== normalized) {
       setSelectedBodyParts(recognized)
       lastAppliedDayTagRef.current = normalized
-      setFormData(fd => {
-        const filtered = getFilteredExercises(recognized)
-        return filtered.includes(fd.exercise) ? fd : { ...fd, exercise: '', weight: '' }
-      })
     }
   }, [formData.dayTag])
 
+  // Refresh exercise options whenever selected body parts change
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const rows = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+        if (!mounted) return
+        setExerciseRows(rows)
+        setExerciseOptions(rows.map(r => r.name))
+      } catch (e) {
+        console.warn('listExercisesForParts failed:', e)
+        setExerciseRows([])
+        setExerciseOptions([])
+      }
+    })()
+    return () => { mounted = false }
+  }, [selectedBodyParts])
+
+
+// If current exercise is no longer available, clear it
+useEffect(() => {
+  setFormData(fd => {
+    if (!fd.exercise) return fd
+    return exerciseOptions.includes(fd.exercise) ? fd : { ...fd, exercise: '', weight: '' }
+  })
+}, [exerciseOptions, setFormData])
+
   const toggleBodyPart = (bp: BodyPart) => {
-    setSelectedBodyParts(curr => {
-      const next = curr.includes(bp) ? curr.filter(x => x !== bp) : [...curr, bp]
-      setFormData(fd => {
-        const filtered = getFilteredExercises(next)
-        return filtered.includes(fd.exercise) ? fd : { ...fd, exercise: '', weight: '' }
-      })
-      return next
-    })
+    setSelectedBodyParts(curr =>
+      curr.includes(bp) ? curr.filter(x => x !== bp) : [...curr, bp]
+    )
   }
 
-  const getFilteredExercises = (parts: BodyPart[] | BodyPart[]): string[] => {
-    const set = new Set<string>()
-    parts.forEach(p => EXERCISES_BY_BODY_PART[p]?.forEach(ex => set.add(ex)))
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }
-  const filteredExercises = useMemo(
-    () => getFilteredExercises(selectedBodyParts),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedBodyParts]
-  )
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -491,7 +535,21 @@ export default function GymEntryForm() {
             {/* Exercise */}
             <div className="w-full">
               <label className="block text-sm font-medium text-gray-300 mb-1 text-center">Exercise *</label>
-              <div className="text-xs text-gray-500 mb-2 text-center">{filteredExercises.length} available</div>
+              {/* Manage button (under the select & count) */}
+              <div className="mt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMgrTab('filtered')
+                    setShowManageEx(true)
+                  }}
+                  className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 text-gray-100 hover:bg-gray-700"
+                  title="Manage your exercise catalog"
+                >
+                  Manage Exercises
+                </button>
+              </div>
+            </div>
               <select
                 value={formData.exercise}
                 onChange={(e) => setFormData({ ...formData, exercise: e.target.value, weight: '' })}
@@ -499,13 +557,17 @@ export default function GymEntryForm() {
                 required
               >
                 <option value="">
-                  {filteredExercises.length === 0 ? 'No exercises for current selection' : 'Select exercise'}
+                  {exerciseOptions.length === 0 ? 'No exercises for current selection' : 'Select exercise'}
                 </option>
-                {filteredExercises.map(exercise => (
+                {exerciseOptions.map(exercise => (
                   <option key={exercise} value={exercise}>{exercise}</option>
                 ))}
               </select>
-            </div>
+
+              {/* Count (separate line) */}
+              <div className="text-xs text-gray-500 mt-2 text-center">
+                {exerciseOptions.length} available
+              </div>
 
             {/* Equipment (own row, required) */}
             <div className="w-full">
@@ -808,6 +870,257 @@ export default function GymEntryForm() {
         </div>
       </Sheet>
 
+      {showAddEx && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h3 className="text-lg font-semibold">Add Exercise</h3>
+              <button onClick={() => setShowAddEx(false)} className="text-gray-400 hover:text-gray-200" aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-sm">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Name *</label>
+                <input
+                  value={newExName}
+                  onChange={(e) => setNewExName(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  placeholder="e.g., Cable Fly"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Body Part *</label>
+                <select
+                  value={newExBP}
+                  onChange={(e) => setNewExBP(e.target.value as BodyPart)}
+                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                >
+                  {ALL_BODY_PARTS.map(bp => (
+                    <option key={bp} value={bp}>{bp.charAt(0).toUpperCase() + bp.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Aliases (comma-separated)</label>
+                <input
+                  value={newExAliases}
+                  onChange={(e) => setNewExAliases(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  placeholder="RDL, Pull Up…"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-800 flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddEx(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={addExBusy || !newExName.trim()}
+                onClick={async () => {
+                  try {
+                    setAddExBusy(true)
+                    await upsertExercise({
+                      name: newExName.trim(),
+                      bodyPartKey: newExBP as BodyPartKey,
+                      aliases: newExAliases.split(',').map(s => s.trim()).filter(Boolean),
+                    })
+                    // refresh lists
+                    try {
+                      const rows = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                      setExerciseOptions(rows.map(r => r.name))
+                    } catch {}
+                    try {
+                      const all = await listExercises()
+                      setAllExOptions(all.map(e => e.name))
+                    } catch {}
+                    setFormData(fd => ({ ...fd, exercise: newExName.trim(), weight: '' }))
+                    setShowAddEx(false)
+                  } finally {
+                    setAddExBusy(false)
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg disabled:bg-gray-600"
+              >
+                {addExBusy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showManageEx && (
+  <div className="fixed inset-0 z-50">
+    {/* Backdrop */}
+    <div className="absolute inset-0 bg-black/70" onClick={() => setShowManageEx(false)} />
+
+    {/* Modal frame: full height on mobile, ~90vh on desktop */}
+    <div className="absolute inset-0 flex items-stretch justify-center">
+      <div
+        className={[
+          "bg-gray-900 border border-gray-800 w-full h-full",          // mobile: full-screen
+          "sm:h-[90vh] sm:my-6 sm:max-w-3xl sm:rounded-xl",             // desktop: centered panel
+          "flex flex-col"                                               // column layout
+        ].join(" ")}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Manage Exercises"
+      >
+        {/* Header (fixed) */}
+        <div className="shrink-0 px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Manage Exercises</h3>
+          <button
+            onClick={() => setShowManageEx(false)}
+            className="text-gray-400 hover:text-gray-200"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Tabs (fixed) */}
+        <div className="shrink-0 px-5 pt-4">
+          <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
+            <button
+              className={`px-3 py-1.5 text-sm ${mgrTab === 'filtered' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+              onClick={() => setMgrTab('filtered')}
+            >
+              Filtered ({exerciseRows.length})
+            </button>
+            <button
+              className={`px-3 py-1.5 text-sm ${mgrTab === 'all' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+              onClick={() => setMgrTab('all')}
+            >
+              All ({allExRows.length})
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 min-h-0 px-5 py-4 overflow-y-auto">
+          <div className="overflow-x-auto border border-gray-800 rounded">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-850 sticky top-0 z-10">
+                <tr className="text-left text-gray-400 border-b border-gray-800">
+                  <th className="py-2 px-3">Name</th>
+                  <th className="py-2 px-3 w-40">Body Part</th>
+                  <th className="py-2 px-3 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(mgrTab === 'filtered' ? exerciseRows : allExRows).map((row) => (
+                  <ManageExerciseRow
+                    key={row.id}
+                    row={row}
+                    allParts={ALL_BODY_PARTS}
+                    onSave={async (updated) => {
+                      try {
+                        setMgrBusyId(row.id)
+                        await upsertExercise({
+                          id: row.id,
+                          name: updated.name.trim(),
+                          bodyPartKey: updated.bodyPartKey as BodyPartKey,
+                          isActive: true,
+                        })
+                        // refresh lists
+                        try {
+                          const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                          setExerciseRows(filtered)
+                          setExerciseOptions(filtered.map(r => r.name))
+                        } catch {}
+                        try {
+                          const all = await listExercises()
+                          setAllExRows(all)
+                          setAllExOptions(all.map(e => e.name))
+                        } catch {}
+                        setFormData(fd => {
+                          if (fd.exercise && fd.exercise === row.name && updated.name.trim() !== row.name) {
+                            return { ...fd, exercise: updated.name.trim(), weight: '' }
+                          }
+                          return fd
+                        })
+                      } finally {
+                        setMgrBusyId(null)
+                      }
+                    }}
+                    onDelete={async () => {
+                      if (!confirm(`Delete "${row.name}"? This will hide it from all dropdowns.`)) return
+                      try {
+                        setMgrBusyId(row.id)
+                        await softDeleteExercise(row.id)
+                        // refresh lists
+                        try {
+                          const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                          setExerciseRows(filtered)
+                          setExerciseOptions(filtered.map(r => r.name))
+                        } catch {}
+                        try {
+                          const all = await listExercises()
+                          setAllExRows(all)
+                          setAllExOptions(all.map(e => e.name))
+                        } catch {}
+                        setFormData(fd => (fd.exercise === row.name ? { ...fd, exercise: '', weight: '' } : fd))
+                      } finally {
+                        setMgrBusyId(null)
+                      }
+                    }}
+                    busy={mgrBusyId === row.id}
+                  />
+                ))}
+                {((mgrTab === 'filtered' ? exerciseRows : allExRows).length === 0) && (
+                  <tr>
+                    <td className="py-4 px-3 text-gray-400" colSpan={3}>
+                      No exercises to show.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Add new row */}
+          <AddExerciseInline
+            allParts={ALL_BODY_PARTS}
+            onAdd={async ({ name, bodyPartKey }) => {
+              await upsertExercise({ name: name.trim(), bodyPartKey: bodyPartKey as BodyPartKey, isActive: true })
+              try {
+                const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
+                setExerciseRows(filtered)
+                setExerciseOptions(filtered.map(r => r.name))
+              } catch {}
+              try {
+                const all = await listExercises()
+                setAllExRows(all)
+                setAllExOptions(all.map(e => e.name))
+              } catch {}
+            }}
+          />
+        </div>
+
+        {/* Footer (fixed) */}
+        <div className="shrink-0 px-5 py-4 border-t border-gray-800 flex justify-end">
+          <button
+            onClick={() => setShowManageEx(false)}
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
       {/* Edit Modal */}
       {editingLift && (
         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
@@ -825,12 +1138,12 @@ export default function GymEntryForm() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Exercise</label>
-                <select
+                 <select
                   value={editingLift.exercise}
                   onChange={(e) => setEditingLift({ ...editingLift, exercise: e.target.value })}
                   className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
                 >
-                  {Array.from(new Set(Object.values(EXERCISES_BY_BODY_PART).flat())).sort().map(exercise => (
+                  {allExOptions.map(exercise => (
                     <option key={exercise} value={exercise}>{exercise}</option>
                   ))}
                 </select>
@@ -932,6 +1245,115 @@ export default function GymEntryForm() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ManageExerciseRow({
+  row,
+  allParts,
+  onSave,
+  onDelete,
+  busy,
+}: {
+  row: Exercise
+  allParts: BodyPart[]
+  onSave: (updated: { name: string; bodyPartKey: BodyPart }) => Promise<void>
+  onDelete: () => Promise<void>
+  busy?: boolean
+}) {
+  const [name, setName] = useState(row.name)
+  const [bp, setBp] = useState<BodyPart>((row.bodyPartKey as BodyPart) ?? 'chest')
+
+  return (
+    <tr className="border-b border-gray-800">
+      <td className="py-2 px-3">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-2 py-1 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+        />
+      </td>
+      <td className="py-2 px-3">
+        <select
+          value={bp}
+          onChange={(e) => setBp(e.target.value as BodyPart)}
+          className="w-full px-2 py-1 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+        >
+          {allParts.map(p => (
+            <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+          ))}
+        </select>
+      </td>
+      <td className="py-2 px-3">
+        <div className="flex gap-2">
+          <button
+            disabled={busy || !name.trim()}
+            onClick={() => onSave({ name, bodyPartKey: bp })}
+            className="px-2 py-1 text-xs rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            disabled={busy}
+            onClick={onDelete}
+            className="px-2 py-1 text-xs rounded bg-red-700 hover:bg-red-600 disabled:bg-gray-600"
+          >
+            {busy ? '…' : 'Delete'}
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function AddExerciseInline({
+  allParts,
+  onAdd,
+}: {
+  allParts: BodyPart[]
+  onAdd: (v: { name: string; bodyPartKey: BodyPart }) => Promise<void>
+}) {
+  const [name, setName] = useState('')
+  const [bp, setBp] = useState<BodyPart>('chest')
+  const [busy, setBusy] = useState(false)
+
+  return (
+    <div className="mt-4 border-t border-gray-800 pt-4">
+      <div className="text-sm text-gray-300 mb-2 font-medium">Add New Exercise</div>
+      <div className="grid grid-cols-[1fr_160px_auto] gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Cable Fly"
+          className="px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+        />
+        <select
+          value={bp}
+          onChange={(e) => setBp(e.target.value as BodyPart)}
+          className="px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+        >
+          {allParts.map(p => (
+            <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+          ))}
+        </select>
+        <button
+          disabled={busy || !name.trim()}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await onAdd({ name: name.trim(), bodyPartKey: bp })
+              setName('')
+              setBp('chest')
+            } finally {
+              setBusy(false)
+            }
+          }}
+          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:bg-gray-600 text-sm"
+        >
+          {busy ? 'Adding…' : 'Add'}
+        </button>
+      </div>
     </div>
   )
 }
