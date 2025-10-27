@@ -5,6 +5,7 @@ import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import GitHubWidget from '@/app/components/github-widget'
 import HiddenSnakeButton from '@/app/components/snake-game'
+import Image from 'next/image'
 // (Imported but not currently used; keep if you plan to render posts later)
 // import { BlogPosts } from '@/app/components/posts'
 
@@ -54,9 +55,12 @@ export default function Page() {
         {/* Header Section */}
         <div className="text-center mb-16">
           <div className="flex flex-col items-center mb-8">
-            <img
-              src="ds.jpg"
+            <Image
+              src="/ds.jpg" // must live in /public/ds.jpg
               alt="Dillon Shearer"
+              width={160}
+              height={160}
+              priority
               className="w-40 h-40 rounded-full mb-6 select-none"
               onClick={handleSecretTap}
               onDoubleClick={(e) => e.preventDefault()} // reduce accidental desktop nav
