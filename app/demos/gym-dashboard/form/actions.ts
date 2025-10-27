@@ -18,6 +18,13 @@ export interface GymLift {
   equipment?: string | null
 }
 
+// --- Secure password check (server-side only) ---
+export async function verifyLiftPassword(input: string): Promise<boolean> {
+  'use server'
+  const secret = process.env.LIFT_PASSWORD || ''
+  return input === secret
+}
+
 export interface GymDayMeta {
   date: string
   dayTag: string | null

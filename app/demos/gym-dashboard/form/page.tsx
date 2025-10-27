@@ -24,11 +24,11 @@ import {
   getBodyPartsForDate,
   setBodyPartsForDate,
   getBootstrapData,
+  verifyLiftPassword,
   type GymLift
 } from './actions'
 
 import {
-  listExercisesForParts,
   listExercises,
   upsertExercise,
   softDeleteExercise,
@@ -445,9 +445,10 @@ useEffect(() => {
         <div className="bg-gray-900 rounded-lg border border-gray-700 p-8 max-w-md w-full text-center">
           <h1 className="text-2xl font-bold text-white mb-6">Gym Tracker Access</h1>
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
-              if (password === 'dillonlifts') {
+              const ok = await verifyLiftPassword(password)
+              if (ok) {
                 setIsAuthenticated(true)
                 localStorage.setItem('gymAuth', 'true')
                 bootstrap()
