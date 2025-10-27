@@ -1,12 +1,13 @@
-// app/demos/gym-dashboard/form/actions.ts
 'use server'
 
 import { sql } from '@vercel/postgres'
 import { revalidatePath } from 'next/cache'
+// Pull in your existing catalog action to avoid duplicating SQL
+import { listExercises } from '../catalog'
 
 export interface GymLift {
   id: string
-  date: string            // stored as text or date in DB; we cast defensively below
+  date: string
   exercise: string
   weight: number
   reps: number
@@ -286,10 +287,8 @@ export async function addGymLift(lift: Omit<GymLift, 'id' | 'timestamp'>) {
 }
 
 /**
- * Update a lift. If the exercise or date changes:
- * - Push the row to the END of the target day by setting timestamp to ISO end-of-day ("T23:59:59.999Z"),
- *   so it appends and becomes the last set number after resequencing.
- * Then resequence affected dates (previous and current if changed).
+ * Update a lift. If the exercise or date changes, push to end-of-day so it appends.
+ * Then resequence affected dates.
  */
 export async function updateGymLift(
   id: string,
@@ -313,7 +312,6 @@ export async function updateGymLift(
   const exerciseChanged = previousExercise !== updated.exercise
   const dateChanged = previousDate !== updated.date
 
-  // Always use ISO timestamps so client + DB ordering is consistent
   const isoEndOfDay = `${updated.date}T23:59:59.999Z`
 
   if (exerciseChanged || dateChanged) {
@@ -388,4 +386,24 @@ export async function getRecentLifts(limit: number = 10): Promise<GymLift[]> {
     LIMIT ${limit}
   `
   return rows as GymLift[]
+}
+
+/* ========================= ONE-POST BOOTSTRAP ========================= */
+
+export async function getBootstrapData(date: string): Promise<{
+  lifts: GymLift[]
+  tags: string[]
+  dayTag: string | null
+  bodyParts: string[]
+  allExercises: Awaited<ReturnType<typeof listExercises>>
+}> {
+  const [lifts, tags, dayTag, bodyParts, allExercises] = await Promise.all([
+    getGymLifts(),
+    getDayTags(),
+    getDayTagForDate(date),
+    getBodyPartsForDate(date),
+    listExercises(),
+  ])
+
+  return { lifts, tags, dayTag, bodyParts, allExercises }
 }

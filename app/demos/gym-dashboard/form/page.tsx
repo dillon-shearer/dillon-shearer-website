@@ -23,6 +23,7 @@ import {
   setDayTagForDate,
   getBodyPartsForDate,
   setBodyPartsForDate,
+  getBootstrapData,
   type GymLift
 } from './actions'
 
@@ -132,6 +133,8 @@ export default function GymEntryForm() {
 
   // Avoid reapplying defaults repeatedly
   const lastAppliedDayTagRef = useRef<string>('')
+  // Avoid re-fetching DayInfo immediately after bootstrap
+  const bootstrappedRef = useRef(false)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && localStorage.getItem('gymAuth') === 'true') {
@@ -142,38 +145,61 @@ export default function GymEntryForm() {
   }, [])
 
   async function bootstrap() {
-    await Promise.all([fetchAllLifts(), fetchDayTags(), fetchDayInfoFor(formData.date)])
-    // Load global exercise list (full rows + names)
     try {
-      const all = await listExercises()
-      setAllExRows(all)
-      setAllExOptions(all.map(e => e.name))
-    } catch (e) {
-      console.warn('Could not listExercises (optional):', e)
-    }
-    // Load global exercise list (for Edit modal, etc.)
-    try {
-      const all = await listExercises()
-      setAllExOptions(all.map(e => e.name))
-    } catch (e) {
-      console.warn('Could not listExercises (optional):', e)
-    }
-    // First-run workflow: if not seen for this date, open Day Info → Body Parts
-    if (typeof window !== 'undefined') {
-      const key = `gymFlowSeenForDate:${formData.date}`
-      const seen = localStorage.getItem(key)
-      if (!seen) {
-        setFlowPending(true)
-        setShowDayInfo(true)
+      const { lifts, tags, dayTag, bodyParts, allExercises } = await getBootstrapData(formData.date)
+
+      // Bulk set state from one server POST
+      setAllLifts(lifts)
+      setExistingDayTags(tags)
+      setFormData(fd => ({ ...fd, dayTag: dayTag ?? '' }))
+
+      // Decide active body parts now so we can also prime exercise options
+      let activeParts: BodyPart[] = []
+      if (bodyParts && bodyParts.length) {
+        activeParts = bodyParts as BodyPart[]
+        lastAppliedDayTagRef.current = (dayTag || '').trim().toLowerCase()
+      } else {
+        const normalized = (dayTag || '').trim().toLowerCase()
+        if (normalized && DAYTAG_DEFAULTS[normalized]) {
+          activeParts = DAYTAG_DEFAULTS[normalized]
+          lastAppliedDayTagRef.current = normalized
+        }
       }
+      setSelectedBodyParts(activeParts)
+
+      // Global exercise catalog (use for edit dropdown and client-side filtering)
+      setAllExRows(allExercises)
+      setAllExOptions(allExercises.map(e => e.name))
+
+      // Prime exercise list for current parts (client-side filter)
+      const initialRows = allExercises.filter(r =>
+        activeParts.length ? activeParts.includes(r.bodyPartKey as BodyPart) : true
+      )
+      setExerciseRows(initialRows)
+      setExerciseOptions(initialRows.map(r => r.name))
+
+      // Mark bootstrap complete so the date-change effect doesn't immediately re-fetch
+      bootstrappedRef.current = true
+
+      // First-run workflow: if not seen for this date, open Day Info → Body Parts
+      if (typeof window !== 'undefined') {
+        const key = `gymFlowSeenForDate:${formData.date}`
+        const seen = localStorage.getItem(key)
+        if (!seen) {
+          setFlowPending(true)
+          setShowDayInfo(true)
+        }
+      }
+    } catch (e) {
+      console.warn('bootstrap failed:', e)
     }
   }
 
   // If date changes (via Day Info), refresh its metadata
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchDayInfoFor(formData.date)
-    }
+    if (!isAuthenticated) return
+    if (!bootstrappedRef.current) return
+    fetchDayInfoFor(formData.date)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.date, isAuthenticated])
 
@@ -229,23 +255,14 @@ export default function GymEntryForm() {
     }
   }, [formData.dayTag])
 
-  // Refresh exercise options whenever selected body parts change
+  // Refresh exercise options whenever selected body parts change (client-side filter)
   useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      try {
-        const rows = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-        if (!mounted) return
-        setExerciseRows(rows)
-        setExerciseOptions(rows.map(r => r.name))
-      } catch (e) {
-        console.warn('listExercisesForParts failed:', e)
-        setExerciseRows([])
-        setExerciseOptions([])
-      }
-    })()
-    return () => { mounted = false }
-  }, [selectedBodyParts])
+    const rows = allExRows.filter(r =>
+      selectedBodyParts.includes((r.bodyPartKey as BodyPart))
+    )
+    setExerciseRows(rows)
+    setExerciseOptions(rows.map(r => r.name))
+  }, [selectedBodyParts, allExRows])
 
 
 // If current exercise is no longer available, clear it
@@ -949,12 +966,12 @@ useEffect(() => {
                     })
                     // refresh lists
                     try {
-                      const rows = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                      setExerciseOptions(rows.map(r => r.name))
-                    } catch {}
-                    try {
                       const all = await listExercises()
+                      setAllExRows(all)
                       setAllExOptions(all.map(e => e.name))
+                      const rows = all.filter(r => selectedBodyParts.includes((r.bodyPartKey as BodyPart)))
+                      setExerciseRows(rows)
+                      setExerciseOptions(rows.map(r => r.name))
                     } catch {}
                     setFormData(fd => ({ ...fd, exercise: newExName.trim(), weight: '' }))
                     setShowAddEx(false)
@@ -1011,14 +1028,12 @@ useEffect(() => {
                 onAdd={async ({ name, bodyPartKey }) => {
                   await upsertExercise({ name: name.trim(), bodyPartKey: bodyPartKey as BodyPartKey, isActive: true })
                   try {
-                    const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                    setExerciseRows(filtered)
-                    setExerciseOptions(filtered.map(r => r.name))
-                  } catch {}
-                  try {
                     const all = await listExercises()
                     setAllExRows(all)
                     setAllExOptions(all.map(e => e.name))
+                    const filtered = all.filter(r => selectedBodyParts.includes((r.bodyPartKey as BodyPart)))
+                    setExerciseRows(filtered)
+                    setExerciseOptions(filtered.map(r => r.name))
                   } catch {}
                 }}
               />
@@ -1068,14 +1083,12 @@ useEffect(() => {
                       })
                       // refresh lists
                       try {
-                        const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                        setExerciseRows(filtered)
-                        setExerciseOptions(filtered.map(r => r.name))
-                      } catch {}
-                      try {
                         const all = await listExercises()
                         setAllExRows(all)
                         setAllExOptions(all.map(e => e.name))
+                        const filtered = all.filter(r => selectedBodyParts.includes((r.bodyPartKey as BodyPart)))
+                        setExerciseRows(filtered)
+                        setExerciseOptions(filtered.map(r => r.name))
                       } catch {}
                       setFormData(fd => {
                         if (fd.exercise && fd.exercise === row.name && updated.name.trim() !== row.name) {
@@ -1094,14 +1107,12 @@ useEffect(() => {
                       await softDeleteExercise(row.id)
                       // refresh lists
                       try {
-                        const filtered = await listExercisesForParts(selectedBodyParts as unknown as BodyPartKey[])
-                        setExerciseRows(filtered)
-                        setExerciseOptions(filtered.map(r => r.name))
-                      } catch {}
-                      try {
                         const all = await listExercises()
                         setAllExRows(all)
                         setAllExOptions(all.map(e => e.name))
+                        const filtered = all.filter(r => selectedBodyParts.includes((r.bodyPartKey as BodyPart)))
+                        setExerciseRows(filtered)
+                        setExerciseOptions(filtered.map(r => r.name))
                       } catch {}
                       setFormData(fd => (fd.exercise === row.name ? { ...fd, exercise: '', weight: '' } : fd))
                     } finally {
