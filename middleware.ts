@@ -1,33 +1,34 @@
 // middleware.ts
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 
 export const config = {
+  // Only run on /demos and its children
   matcher: ['/demos/:path*'],
 }
 
-export function middleware(req: Request) {
-  const url = new URL(req.url)
+export function middleware(req: NextRequest) {
+  const url = req.nextUrl
   const ua = req.headers.get('user-agent') || ''
   const path = url.pathname
 
-  // Let crawlers through for SEO & previews
+  // Let crawlers through for SEO & link previews
   const isBot = /bot|crawler|spider|crawling|preview|facebookexternalhit|linkedinbot|twitterbot/i.test(ua)
   if (isBot) return NextResponse.next()
 
+  // Basic mobile detection
   const isMobile = /iphone|ipod|ipad|android|mobile|blackberry|iemobile|opera mini/i.test(ua)
+  if (!isMobile) return NextResponse.next() // always allow desktop
 
-  // Always allow desktop
-  if (!isMobile) return NextResponse.next()
+  // Safety: if we're already on the warning page, do nothing
+  if (path === '/demos/mobile-warning') return NextResponse.next()
 
-  // Allowlist for mobile
-  const allowExact = new Set([
+  // Mobile allowlist
+  const allowExact = new Set<string>([
     '/demos',
     '/demos/mobile-warning',
-    '/demos/gym-dashboard/form', // ← mobile data-entry page
+    '/demos/gym-dashboard/form', // mobile data-entry page
   ])
-  const allowPrefixes = [
-    '/demos/gym-dashboard/form/', // allow any nested routes under the form path
-  ]
+  const allowPrefixes = ['/demos/gym-dashboard/form/'] // nested under form
 
   const isAllowed =
     allowExact.has(path) || allowPrefixes.some((p) => path.startsWith(p))
@@ -36,6 +37,10 @@ export function middleware(req: Request) {
     return NextResponse.next()
   }
 
-  // For any other /demos/* on mobile, serve the warning UI in-place (no redirect loop)
-  return NextResponse.rewrite(new URL('/demos/mobile-warning', url.origin))
+  // For any other /demos/* on mobile, serve the warning UI in-place
+  // (keeps the original URL in the bar; no redirect loops)
+  const rewriteUrl = url.clone()
+  rewriteUrl.pathname = '/demos/mobile-warning'
+  rewriteUrl.search = ''
+  return NextResponse.rewrite(rewriteUrl)
 }

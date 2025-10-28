@@ -1,10 +1,65 @@
+'use client'
+
+import Link from 'next/link'
+import Typewriter from '@/app/components/Typewriter'
+import { useState } from 'react'
+
 export default function NotFound() {
+  const [ready, setReady] = useState(false)
+  const lines = [
+    '>>> print("404 error")',
+    '',
+    '>>> print("the requested page cannot be found")',
+  ]
+
   return (
-    <section>
-      <h1 className="mb-8 text-2xl font-semibold tracking-tighter">
-        404 - Page Not Found
-      </h1>
-      <p className="mb-4">The page you are looking for does not exist.</p>
-    </section>
+    <div className="fixed inset-0 bg-black text-white flex items-center justify-center">
+      <div className="w-full max-w-md mx-6 rounded-2xl border border-white/10 bg-black/70 shadow-2xl">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
+          <span className="inline-block w-3 h-3 rounded-full bg-red-500/80" />
+          <span className="inline-block w-3 h-3 rounded-full bg-yellow-500/80" />
+          <span className="inline-block w-3 h-3 rounded-full bg-green-500/80" />
+          <span className="ml-3 text-sm text-white/70 font-mono">python</span>
+        </div>
+
+        <div className="px-6 py-8">
+          <Typewriter lines={lines} cps={35} onDone={() => setReady(true)} />
+
+          {ready && (
+            <div className="mt-6">
+              <pre className="whitespace-pre-wrap font-mono text-emerald-400 mb-4">
+                {'>>> '}navigate?
+              </pre>
+              <div className="space-y-2">
+                <Link
+                  href="/"
+                  className="block w-full px-4 py-3 rounded-lg border border-white/20 bg-white/5 text-white font-mono text-center hover:bg-white/10 transition-all duration-200"
+                >
+                  {''}home
+                </Link>
+                <Link
+                  href="/contact"
+                  className="block w-full px-4 py-3 rounded-lg border border-white/20 bg-white/5 text-white font-mono text-center hover:bg-white/10 transition-all duration-200"
+                >
+                  contact
+                </Link>
+                <Link
+                  href="/demos"
+                  className="block w-full px-4 py-3 rounded-lg border border-white/20 bg-white/5 text-white font-mono text-center hover:bg-white/10 transition-all duration-200"
+                >
+                  demos
+                </Link>
+                <Link
+                  href="/blog"
+                  className="block w-full px-4 py-3 rounded-lg border border-white/20 bg-white/5 text-white font-mono text-center hover:bg-white/10 transition-all duration-200"
+                >
+                  blog
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
