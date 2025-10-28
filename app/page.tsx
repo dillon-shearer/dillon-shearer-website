@@ -312,7 +312,7 @@ export default function SplashPage() {
                 onClick={proceedHome}
                 className="w-full px-4 py-3 rounded-lg border border-white/20 bg-white/5 text-white font-mono hover:bg-white/10 transition-all duration-200"
               >
-                {'>>> '}enter
+                {''}enter
               </button>
             </div>
           )}
