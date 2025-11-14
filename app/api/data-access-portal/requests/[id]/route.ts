@@ -32,10 +32,8 @@ export async function GET(_req: NextRequest, { params }: PathParams) {
     const { id } = await params;
     let request = await getDarRequestWithRelations(id);
     if (request?.status === 'SUBMITTED') {
-      const inReview = await markDarRequestInReview(id);
-      if (inReview) {
-        request = inReview;
-      }
+      await markDarRequestInReview(id);
+      request = await getDarRequestWithRelations(id);
     }
     if (!request) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
