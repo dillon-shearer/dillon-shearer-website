@@ -4,8 +4,7 @@ export type DarRequestStatus =
   | 'SUBMITTED'
   | 'IN_REVIEW'
   | 'APPROVED'
-  | 'DENIED'
-  | 'REVOKED';
+  | 'DENIED';
 
 export type ExpectedDurationCategory = '<6m' | '6-12m' | '>12m';
 
@@ -19,7 +18,8 @@ export interface DarRequestedDataset {
   id: string;
   requestId: string;
   datasetSlug: GymDatasetSlug | string;
-  level: number;
+  level?: number | null;
+  createdAt?: string;
 }
 
 export interface DarCollaborator {
@@ -27,7 +27,8 @@ export interface DarCollaborator {
   requestId: string;
   name: string;
   email: string;
-  institution?: string | null;
+  phone?: string | null;
+  createdAt?: string;
 }
 
 export interface DarRequest {
@@ -42,7 +43,7 @@ export interface DarRequest {
   institution: string;
   country: string;
 
-  projectTitle: string;
+  projectTitle?: string | null;
   dataUseProposal: string;
   plannedStart?: string | null;
   plannedEnd?: string | null;
@@ -61,6 +62,7 @@ export interface DarRequest {
   revokedBy?: string | null;
 
   apiKeyIssuedAt?: string | null;
+  apiKey?: string | null;
 
   requestedDatasets?: DarRequestedDataset[];
   collaborators?: DarCollaborator[];

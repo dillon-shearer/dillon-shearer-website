@@ -1,16 +1,19 @@
 // app/api/data-access-portal/gym-data/route.ts
-import { NextResponse } from 'next/server';
-import { getRequestFromApiKey } from '@/lib/data-access-portal';
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  getRequestFromApiKey,
+  getDarRequestWithRelations,
+} from '@/lib/data-access-portal';
 import type { GymDatasetSlug } from '@/types/data-access-portal';
+import { fetchDatasetData, rowsToCsv } from '@/lib/gym-data';
 
 /**
  * This route gates access to your gym dataset by API key and scope.
  * Query params:
- *   dataset: 'workout_sessions' | 'set_metrics' | 'body_metrics' | 'aggregates'
- *   level: 1..4
- *   (optional) startDate, endDate, etc. (you wire into your existing gym APIs)
+ *   dataset: 'workout_sessions' | 'set_metrics' | 'aggregates'
+ *   format: 'json' (default) | 'csv'
  */
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const apiKey = req.headers.get('x-api-key') ?? url.searchParams.get('apiKey');
@@ -20,16 +23,14 @@ export async function GET(req: Request) {
     }
 
     const dataset = url.searchParams.get('dataset') as GymDatasetSlug | null;
-    const level = url.searchParams.get('level')
-      ? Number(url.searchParams.get('level'))
-      : null;
-
-    if (!dataset || !level) {
+    if (!dataset) {
       return NextResponse.json(
-        { error: 'dataset and level query params are required' },
+        { error: 'dataset query param is required' },
         { status: 400 },
       );
     }
+
+    const format = (url.searchParams.get('format') ?? 'json').toLowerCase();
 
     const request = await getRequestFromApiKey(apiKey);
     if (!request) {
@@ -43,28 +44,36 @@ export async function GET(req: Request) {
       );
     }
 
-    // You can make this stricter by checking requestedDatasets from getDarRequestWithRelations,
-    // but for demo, we just gate on "approved" + key validity.
-    // If you want strict scopes, swap getRequestFromApiKey for getDarRequestWithRelations.
+    const fullRequest = await getDarRequestWithRelations(request.id);
+    if (!fullRequest) {
+      return NextResponse.json({ error: 'Request not found' }, { status: 404 });
+    }
 
-    // TODO: Wire this into your existing gym data access logic.
-    // E.g.:
-    // const data = await getGymData({ dataset, level, startDate, endDate })
-    // For now, we’ll return a placeholder structure so it’s obvious where to plug in.
+    const allowedDatasets = new Set(
+      (fullRequest.requestedDatasets ?? []).map((entry) => entry.datasetSlug)
+    );
 
-    const dummyData = {
-      dataset,
-      level,
-      note: 'Replace this with real gym data wired from your existing demo.',
-      exampleShape: {
-        rows: [
-          { date: '2025-01-01', exercise: 'Bench Press', setVolume: 5000 },
-          { date: '2025-01-02', exercise: 'Squat', setVolume: 6000 },
-        ],
-      },
-    };
+    if (!allowedDatasets.has(dataset)) {
+      return NextResponse.json(
+        { error: 'This dataset was not approved for the provided key.' },
+        { status: 403 },
+      );
+    }
 
-    return NextResponse.json({ data: dummyData });
+    const payload = await fetchDatasetData(dataset);
+
+    if (format === 'csv') {
+      const csv = rowsToCsv(payload.rows);
+      return new NextResponse(csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${dataset}.csv"`,
+        },
+      });
+    }
+
+    return NextResponse.json({ data: payload });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });

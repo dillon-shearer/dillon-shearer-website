@@ -1,0 +1,178 @@
+import { sql } from '@vercel/postgres';
+import { AVAILABLE_GYM_DATASETS } from './gym-datasets';
+import type { GymDatasetSlug } from '@/types/data-access-portal';
+
+type DatasetRow = Record<string, any>;
+
+export type DatasetPayload = {
+  slug: GymDatasetSlug;
+  label: string;
+  rows: DatasetRow[];
+  meta?: Record<string, any>;
+  description?: string;
+};
+
+const DATASET_LABELS = Object.fromEntries(
+  AVAILABLE_GYM_DATASETS.map((ds) => [ds.slug, ds.label])
+);
+const DATASET_DESCRIPTIONS = Object.fromEntries(
+  AVAILABLE_GYM_DATASETS.map((ds) => [ds.slug, ds.description])
+);
+
+const toNumber = (value: any) => (typeof value === 'number' ? value : Number(value ?? 0));
+
+export function rowsToCsv(rows: DatasetRow[]): string {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const csvRows = [
+    headers.join(','),
+    ...rows.map((row) =>
+      headers
+        .map((key) => {
+          const value = row[key];
+          if (value === null || value === undefined) return '';
+          if (typeof value === 'string') {
+            const escaped = value.replace(/"/g, '""');
+            return `"${escaped}"`;
+          }
+          return `${value}`;
+        })
+        .join(',')
+    ),
+  ];
+  return csvRows.join('\n');
+}
+
+async function fetchWorkoutSessions(): Promise<DatasetPayload> {
+  const { rows } = await sql/* sql */`
+    SELECT
+      date::date                               AS date,
+      COALESCE(day_tag, 'unspecified')         AS "dayTag",
+      COUNT(*)                                 AS "totalSets",
+      COUNT(DISTINCT exercise)                 AS "uniqueExercises",
+      SUM(COALESCE(weight, 0) * COALESCE(reps, 0)) AS volume,
+      MIN(timestamp)::text                     AS "sessionStart",
+      MAX(timestamp)::text                     AS "sessionEnd"
+    FROM gym_lifts
+    GROUP BY date::date, day_tag
+    ORDER BY date::date DESC
+    LIMIT 90
+  `;
+
+  const sessionRows = rows.map((row) => ({
+    date: row.date,
+    dayTag: row.dayTag,
+    totalSets: Number(row.totalSets),
+    uniqueExercises: Number(row.uniqueExercises),
+    volume: Number(row.volume || 0),
+    sessionStart: row.sessionStart,
+    sessionEnd: row.sessionEnd,
+  }));
+
+  return {
+    slug: 'workout_sessions',
+    label: DATASET_LABELS['workout_sessions'],
+    description: DATASET_DESCRIPTIONS['workout_sessions'],
+    rows: sessionRows,
+  };
+}
+
+async function fetchSetMetrics(): Promise<DatasetPayload> {
+  const { rows } = await sql/* sql */`
+    SELECT
+      id,
+      date::date                               AS date,
+      exercise,
+      set_number                               AS "setNumber",
+      weight,
+      reps,
+      (COALESCE(weight, 0) * COALESCE(reps, 0)) AS volume,
+      day_tag                                  AS "dayTag",
+      is_unilateral                            AS "isUnilateral",
+      equipment
+    FROM gym_lifts
+    ORDER BY date::date DESC, (timestamp::timestamptz) DESC
+    LIMIT 500
+  `;
+
+  const rowsFormatted = rows.map((row) => ({
+    id: row.id,
+    date: row.date,
+    exercise: row.exercise,
+    setNumber: Number(row.setNumber),
+    weight: toNumber(row.weight),
+    reps: Number(row.reps),
+    volume: Number(row.volume || 0),
+    dayTag: row.dayTag,
+    isUnilateral: row.isUnilateral,
+    equipment: row.equipment,
+  }));
+
+  return {
+    slug: 'set_metrics',
+    label: DATASET_LABELS['set_metrics'],
+    description: DATASET_DESCRIPTIONS['set_metrics'],
+    rows: rowsFormatted,
+  };
+}
+
+async function fetchAggregates(): Promise<DatasetPayload> {
+  const weekly = await sql/* sql */`
+    SELECT
+      DATE_TRUNC('week', date::date)::date            AS week,
+      COUNT(DISTINCT date::date)                      AS sessions,
+      SUM(COALESCE(weight, 0) * COALESCE(reps, 0))    AS volume,
+      AVG(COALESCE(weight, 0))                        AS "avgWeight"
+    FROM gym_lifts
+    GROUP BY week
+    ORDER BY week DESC
+    LIMIT 26
+  `;
+
+  const monthly = await sql/* sql */`
+    SELECT
+      DATE_TRUNC('month', date::date)::date           AS month,
+      COUNT(DISTINCT date::date)                      AS sessions,
+      SUM(COALESCE(weight, 0) * COALESCE(reps, 0))    AS volume
+    FROM gym_lifts
+    GROUP BY month
+    ORDER BY month DESC
+    LIMIT 12
+  `;
+
+  const weeklyRows = weekly.rows.map((row) => ({
+    week: row.week,
+    sessions: Number(row.sessions),
+    volume: Number(row.volume || 0),
+    avgWeight: Number(row.avgWeight || 0),
+  }));
+
+  const monthlyRows = monthly.rows.map((row) => ({
+    month: row.month,
+    sessions: Number(row.sessions),
+    volume: Number(row.volume || 0),
+  }));
+
+  return {
+    slug: 'aggregates',
+    label: DATASET_LABELS['aggregates'],
+    description: DATASET_DESCRIPTIONS['aggregates'],
+    rows: weeklyRows,
+    meta: {
+      monthly: monthlyRows,
+    },
+  };
+}
+
+export async function fetchDatasetData(slug: GymDatasetSlug): Promise<DatasetPayload> {
+  switch (slug) {
+    case 'workout_sessions':
+      return fetchWorkoutSessions();
+    case 'set_metrics':
+      return fetchSetMetrics();
+    case 'aggregates':
+      return fetchAggregates();
+    default:
+      throw new Error('Dataset not supported yet.');
+  }
+}

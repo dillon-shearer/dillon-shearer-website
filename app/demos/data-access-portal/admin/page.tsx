@@ -144,7 +144,7 @@ export default function AdminRequestsPage() {
               Requests ({filtered.length})
             </div>
             <div className="max-h-[480px] overflow-y-auto overflow-x-hidden">
-              <table className="w-full table-fixed text-xs">
+              <table className="min-w-full table-fixed text-xs">
                 <colgroup>
                   <col className="w-[18%]" />
                   <col className="w-[34%]" />
@@ -167,7 +167,7 @@ export default function AdminRequestsPage() {
                   {loading && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={6}
                         className="px-4 py-6 text-center text-[11px] text-zinc-500"
                       >
                         Loading requests...
@@ -177,7 +177,7 @@ export default function AdminRequestsPage() {
                   {!loading && filtered.length === 0 && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={6}
                         className="px-4 py-6 text-center text-[11px] text-zinc-500"
                       >
                         No requests match the current filters.
@@ -197,11 +197,11 @@ export default function AdminRequestsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-2 align-top">
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-medium text-zinc-100 truncate">
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate font-medium text-zinc-100">
                             {r.piName}
                           </span>
-                          <span className="font-mono text-[10px] text-zinc-500 truncate">
+                          <span className="truncate font-mono text-[10px] text-zinc-500">
                             {r.piEmail}
                           </span>
                         </div>
@@ -216,12 +216,12 @@ export default function AdminRequestsPage() {
                           {r.country}
                         </span>
                       </td>
-                      <td className="px-4 py-2 align-top whitespace-nowrap">
+                      <td className="whitespace-nowrap px-4 py-2 align-top">
                         <span className="text-[11px] text-zinc-400">
                           {new Date(r.createdAt).toLocaleDateString()}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <td className="whitespace-nowrap px-4 py-2 text-right align-top">
                         <Link
                           href={`/demos/data-access-portal/admin/${r.id}`}
                           className="text-[11px] text-sky-400 hover:text-sky-300"
@@ -239,9 +239,21 @@ export default function AdminRequestsPage() {
           <div className="flex w-full flex-col gap-4 xl:min-h-[480px]">
             <div className="grid grid-cols-2 gap-3">
               <SummaryCard label="Total requests" value={totalRequests} />
-              <SummaryCard label="Approved" value={statusSummary.APPROVED ?? 0} accent="text-emerald-300" />
-              <SummaryCard label="In review" value={statusSummary.IN_REVIEW ?? 0} accent="text-sky-300" />
-              <SummaryCard label="Denied" value={statusSummary.DENIED ?? 0} accent="text-red-300" />
+              <SummaryCard
+                label="Approved"
+                value={statusSummary.APPROVED ?? 0}
+                accent="text-emerald-300"
+              />
+              <SummaryCard
+                label="In review"
+                value={statusSummary.IN_REVIEW ?? 0}
+                accent="text-sky-300"
+              />
+              <SummaryCard
+                label="Denied"
+                value={statusSummary.DENIED ?? 0}
+                accent="text-red-300"
+              />
             </div>
             <div className="flex h-full flex-col rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
               <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
@@ -287,7 +299,9 @@ export default function AdminRequestsPage() {
                 <div>
                   <p className="mb-1 text-zinc-500">Approvals vs denials</p>
                   {completedTotal === 0 ? (
-                    <p className="text-center text-zinc-500">No completed decisions yet.</p>
+                    <p className="text-center text-zinc-500">
+                      No completed decisions yet.
+                    </p>
                   ) : (
                     <>
                       <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-900">
@@ -330,7 +344,9 @@ function SummaryCard({
 }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950/70 px-3 py-4 text-center">
-      <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+      <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+        {label}
+      </p>
       <p className={`mt-2 text-2xl font-semibold text-zinc-50 ${accent ?? ''}`}>
         {value.toLocaleString()}
       </p>

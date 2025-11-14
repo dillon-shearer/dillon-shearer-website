@@ -2,6 +2,29 @@ import { Demo } from '@/types/demo'
 
 const demos: Demo[] = [
   {
+    slug: 'data-access-portal',
+    title: 'Data Access Workflow Portal',
+    description:
+      'End to end data access workflow that mirrors how research teams request, review, and retrieve scoped API keys. Includes requester intake, admin triage with approvals, and gated API delivery backed by live data.',
+    image: '/images/demos/data-access-portal-preview.jpg',
+    techStack: ['Next.js', 'TypeScript', 'Tailwind CSS', 'Vercel Postgres', 'Resend'],
+    category: 'fullstack',
+    complexity: 'intermediate',
+    buildTime: '6 days',
+    status: 'live',
+    featured: true,
+    githubUrl:
+      'https://github.com/dillon-shearer/dillon-shearer-website/tree/main/app/demos/data-access-portal',
+    liveUrl: 'https://www.datawithdillon.com/demos/data-access-portal',
+    highlights: [
+      'Requester intake form that validates metadata, collaborators, and dataset scopes against the Vercel Postgres store.',
+      'Admin console with real time status changes, request filtering, and instant API key issuance.',
+      'Secure data download room that unlocks datasets only for approved scopes.',
+      'Email notifications powered by Resend that deliver the scoped key to the requester automatically.',
+      'Shared component system that keeps the workflow story consistent across requester and admin lanes.',
+    ],
+  },
+  {
     slug: 'materials-dashboard',
     title: 'Materials Dashboard (Synthetic Data)',
     description: 'Interactive inventory management system with real-time analytics, scenario planning, and predictive insights for manufacturing operations. Features dynamic KPIs, supply chain simulation, and responsive design.',
