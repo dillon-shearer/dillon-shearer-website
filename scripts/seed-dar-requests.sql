@@ -129,12 +129,12 @@ INSERT INTO dar_collaborators (id, request_id, name, email, institution) VALUES
   ('c47f1ca8-e4e7-4c7c-9210-100000000007','fffffff6-ffff-4fff-8fff-fffffffffff5','Logan Mills','logan.mills@charlotteiron.com',NULL);
 
 INSERT INTO dar_status_events (id, request_id, status, description, metadata, created_at) VALUES
-  ('edc90101-0000-4000-9000-aaaaaaaa0001','11111111-1111-4111-8111-aaaaaaaaaaa1','SUBMITTED','Mae Chen submitted the request.',NULL,'2025-05-22T15:30:00Z'),
+  ('edc90101-0000-4000-9000-aaaaaaaa0001','11111111-1111-4111-8111-aaaaaaaaaaa1','SUBMITTED','Mae Chen submitted the request.','{"visualizationPresets":["split-all-time","volume-all-time"],"visualizationCustomRequest":"Overlay suppression under 3 for small squads.","visualizationPalette":["#34d399","#22d3ee","#a855f7"]}','2025-05-22T15:30:00Z'),
   ('edc90101-0000-4000-9000-aaaaaaaa0002','11111111-1111-4111-8111-aaaaaaaaaaa1','IN_REVIEW','Request moved to in review.',NULL,'2025-05-23T09:00:00Z'),
   ('edc90101-0000-4000-9000-aaaaaaaa0003','11111111-1111-4111-8111-aaaaaaaaaaa1','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-05-28T14:00:00Z'),
-  ('edc90101-0000-4000-9000-bbbbbbbb0001','22222222-2222-4222-8222-bbbbbbbbbbb2','SUBMITTED','Rafael Ortega submitted the request.',NULL,'2025-06-17T11:45:00Z'),
+  ('edc90101-0000-4000-9000-bbbbbbbb0001','22222222-2222-4222-8222-bbbbbbbbbbb2','SUBMITTED','Rafael Ortega submitted the request.','{"visualizationPresets":["rep-all-time"],"visualizationCustomRequest":"Stacked bars for practice vs meet weeks.","visualizationPalette":["#38bdf8","#f97316","#c084fc"]}','2025-06-17T11:45:00Z'),
   ('edc90101-0000-4000-9000-bbbbbbbb0002','22222222-2222-4222-8222-bbbbbbbbbbb2','IN_REVIEW','Compliance reviewing scope.',NULL,'2025-06-20T10:00:00Z'),
-  ('edc90101-0000-4000-9000-cccccccc0001','33333333-3333-4333-8333-ccccccccccc3','SUBMITTED','Claire Anderson submitted the request.',NULL,'2025-11-10T09:15:00Z'),
+  ('edc90101-0000-4000-9000-cccccccc0001','33333333-3333-4333-8333-ccccccccccc3','SUBMITTED','Claire Anderson submitted the request.','{"visualizationPresets":["training-days-all-time"],"visualizationCustomRequest":"Add line markers for tempo drift.","visualizationPalette":["#a78bfa","#f472b6","#22c55e"]}','2025-11-10T09:15:00Z'),
   ('edc90101-0000-4000-9000-dddddddd0001','44444444-4444-4444-8444-ddddddddddd4','SUBMITTED','Dr. Patel submitted the request.',NULL,'2025-08-14T08:05:00Z'),
   ('edc90101-0000-4000-9000-dddddddd0002','44444444-4444-4444-8444-ddddddddddd4','IN_REVIEW','Moved to in review.',NULL,'2025-08-18T12:00:00Z'),
   ('edc90101-0000-4000-9000-dddddddd0003','44444444-4444-4444-8444-ddddddddddd4','DENIED','Denied by demo-admin.','Country-specific guardrails triggered.','2025-08-20T08:32:00Z'),

@@ -4,6 +4,7 @@ import {
   getDarRequestWithRelations,
 } from '@/lib/data-access-portal';
 import { GYM_DATASETS, PRIMARY_DATASET_LEVEL } from '@/lib/gym-datasets';
+import { buildVisualizationPackages } from '@/lib/gym-data';
 import type { GymDatasetSlug } from '@/types/data-access-portal';
 
 const DATASET_INFO = Object.fromEntries(
@@ -59,6 +60,12 @@ export async function POST(req: NextRequest) {
         piName: fullRequest.piName,
         projectTitle: fullRequest.projectTitle,
         datasets,
+        visualizationPackages: await buildVisualizationPackages({
+          presets: fullRequest.visualizationPresets ?? [],
+          palette: fullRequest.visualizationPalette ?? [],
+        }),
+        visualizationCustomRequest: fullRequest.visualizationCustomRequest ?? null,
+        visualizationPalette: fullRequest.visualizationPalette ?? [],
       },
     });
   } catch (err) {

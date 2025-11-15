@@ -6,6 +6,31 @@ export type DarRequestStatus =
   | 'APPROVED'
   | 'DENIED';
 
+export type DarVisualizationPreset =
+  | 'split-all-time'
+  | 'volume-all-time'
+  | 'rep-all-time'
+  | 'training-days-all-time';
+
+export type DarDeliveryType = 'L1_VISUAL' | 'L2_PACKAGE';
+
+export type DarVisualizationPlan = {
+  chartType: 'line' | 'bar' | 'table';
+  measure: string;
+  breakdown: string;
+  filters: string;
+  refreshCadence: string;
+  suppressionThreshold: number;
+};
+
+export type DarPackagePlan = {
+  columns: string[];
+  filters: string;
+  sensitivityTags: string[];
+  format: 'csv' | 'parquet';
+  expectedSize?: string | null;
+};
+
 export type GymDatasetSlug =
   | 'workout_sessions'
   | 'set_metrics'
@@ -60,6 +85,13 @@ export interface DarRequest {
 
   apiKeyIssuedAt?: string | null;
   apiKey?: string | null;
+
+  deliveryTypes?: DarDeliveryType[];
+  visualizationPlan?: DarVisualizationPlan | null;
+  packagePlan?: DarPackagePlan | null;
+  visualizationPresets?: DarVisualizationPreset[];
+  visualizationCustomRequest?: string | null;
+  visualizationPalette?: string[];
 
   requestedDatasets?: DarRequestedDataset[];
   collaborators?: DarCollaborator[];

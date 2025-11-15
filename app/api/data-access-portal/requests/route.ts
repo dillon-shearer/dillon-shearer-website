@@ -4,7 +4,7 @@ import { sql } from '@vercel/postgres';
 import { createDarRequest, listDarRequests } from '@/lib/data-access-portal';
 import { PRIMARY_DATASET_LEVEL } from '@/lib/gym-datasets';
 import { COUNTRY_OPTIONS } from '@/lib/constants/countries';
-import type { GymDatasetSlug } from '@/types/data-access-portal';
+import type { DarVisualizationPreset, GymDatasetSlug } from '@/types/data-access-portal';
 
 const resolveDatasetLevel = (
   slug: string | null | undefined,
@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
       plannedEnd,
       datasets,
       collaborators,
+      visualizationPresets,
+      visualizationCustomRequest,
+      visualizationPalette,
     } = body;
 
     if (!piName || !piEmail || !institution || !country || !dataUseProposal) {
@@ -117,13 +120,6 @@ export async function POST(req: NextRequest) {
           })
       : [];
 
-    if (normalizedDatasets.length === 0) {
-      return NextResponse.json(
-        { error: 'Select at least one dataset scope.' },
-        { status: 400 },
-      );
-    }
-
     const dupeCheck = await sql`
       SELECT 1
       FROM dar_requests
@@ -145,6 +141,37 @@ export async function POST(req: NextRequest) {
       ? collaborators
       : [];
 
+    const allowedVizPresets: DarVisualizationPreset[] = [
+      'split-all-time',
+      'volume-all-time',
+      'rep-all-time',
+      'training-days-all-time',
+    ];
+    const normalizedVizPresets = Array.isArray(visualizationPresets)
+      ? (visualizationPresets as string[]).filter((preset) =>
+          allowedVizPresets.includes(preset as DarVisualizationPreset)
+        )
+      : [];
+    const normalizedVizCustom =
+      typeof visualizationCustomRequest === 'string' &&
+      visualizationCustomRequest.trim().length > 0
+        ? visualizationCustomRequest.trim()
+        : null;
+    const normalizedVizPalette = Array.isArray(visualizationPalette)
+      ? (visualizationPalette as string[])
+          .filter((color) => typeof color === 'string' && color.trim())
+          .map((color) => color.trim())
+      : [];
+    const hasVisualizationRequest =
+      normalizedVizPresets.length > 0 || Boolean(normalizedVizCustom);
+
+    if (normalizedDatasets.length === 0 && !hasVisualizationRequest) {
+      return NextResponse.json(
+        { error: 'Select at least one dataset or visualization package.' },
+        { status: 400 }
+      );
+    }
+
     const created = await createDarRequest({
       piName,
       piEmail,
@@ -157,6 +184,9 @@ export async function POST(req: NextRequest) {
       plannedEnd: plannedEnd || null,
       datasets: normalizedDatasets,
       collaborators: normalizedCollaborators,
+      visualizationPresets: normalizedVizPresets,
+      visualizationCustomRequest: normalizedVizCustom,
+      visualizationPalette: normalizedVizPalette,
     });
 
     return NextResponse.json({ data: created }, { status: 201 });

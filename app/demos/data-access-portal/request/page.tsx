@@ -7,6 +7,7 @@ import {
   DATASET_LEVEL_LABELS,
   PRIMARY_DATASET_LEVEL,
 } from '@/lib/gym-datasets';
+import type { DarVisualizationPreset } from '@/types/data-access-portal';
 import { COUNTRY_OPTIONS } from '@/lib/constants/countries';
 
 const WIZARD_STEPS = [
@@ -52,6 +53,29 @@ const resolveCountryInput = (value: string) => {
 const DUPLICATE_EMAIL_MESSAGE =
   'We already have an active request tied to this email. Please wait for the admin response before resubmitting.';
 
+const VISUAL_PRESETS: { id: DarVisualizationPreset; label: string; description: string }[] = [
+  {
+    id: 'split-all-time',
+    label: 'All-time split mix (push/pull/legs)',
+    description: 'Share of lifetime sessions + tonnage by split.',
+  },
+  {
+    id: 'volume-all-time',
+    label: 'All-time weekly volume',
+    description: 'Every week stacked together to show the long arc.',
+  },
+  {
+    id: 'rep-all-time',
+    label: 'All-time rep bands',
+    description: 'How often you live in strength, hypertrophy, or pump zones.',
+  },
+  {
+    id: 'training-days-all-time',
+    label: 'Lifetime training days per weekday',
+    description: 'Which days you actually train across the full dataset.',
+  },
+];
+
 export default function DataAccessRequestPage() {
   const datasetOptions = AVAILABLE_GYM_DATASETS;
   const lastStepIndex = WIZARD_STEPS.length - 1;
@@ -84,6 +108,17 @@ export default function DataAccessRequestPage() {
     new Date().toISOString().split('T')[0]
   );
   const [plannedEnd, setPlannedEnd] = useState('');
+  const [wantsVisuals, setWantsVisuals] = useState(false);
+  const [visualSelectionError, setVisualSelectionError] = useState<string | null>(null);
+  const [selectedVizPresets, setSelectedVizPresets] = useState<
+    Record<DarVisualizationPreset, boolean>
+  >({});
+  const [vizCustomRequest, setVizCustomRequest] = useState('');
+  const [vizPalette, setVizPalette] = useState<string[]>([
+    '#34d399',
+    '#22d3ee',
+    '#a855f7',
+  ]);
   const [selectedDatasets, setSelectedDatasets] = useState<Record<string, boolean>>({});
   const [collaborators, setCollaborators] = useState<CollaboratorInput[]>([]);
 
@@ -135,7 +170,7 @@ export default function DataAccessRequestPage() {
     };
   }, [piEmail, emailCheckNonce]);
 
-  const submitDisabled = submitting || datasetOptions.length === 0;
+  const submitDisabled = submitting;
 
   const getSelectedDatasets = () =>
     Object.entries(selectedDatasets)
@@ -145,6 +180,11 @@ export default function DataAccessRequestPage() {
         level:
           PRIMARY_DATASET_LEVEL[slug as keyof typeof PRIMARY_DATASET_LEVEL] ?? 1,
       }));
+
+  const getSelectedVizPresets = () =>
+    Object.entries(selectedVizPresets)
+      .filter(([, active]) => active)
+      .map(([id]) => id as DarVisualizationPreset);
 
   const hasIncompleteCollaborator = () =>
     collaborators.some(
@@ -251,11 +291,26 @@ export default function DataAccessRequestPage() {
 
   const validateDataSection = () => {
     const datasets = getSelectedDatasets();
-    if (datasets.length === 0) {
-      setDatasetError('Select at least one dataset.');
+    const selectedViz = getSelectedVizPresets();
+    const customText = vizCustomRequest.trim();
+    const hasVizSelection = wantsVisuals && (selectedViz.length > 0 || customText.length > 0);
+
+    if (datasets.length === 0 && !hasVizSelection) {
+      setDatasetError('Select at least one dataset or add a visualization package.');
+      if (wantsVisuals) {
+        setVisualSelectionError('Pick a preset or describe a custom visualization.');
+      }
       return false;
     }
     setDatasetError(null);
+
+    if (wantsVisuals && !hasVizSelection) {
+      setVisualSelectionError(
+        'Pick at least one visualization preset or describe a custom ask.'
+      );
+      return false;
+    }
+    setVisualSelectionError(null);
 
     if (hasIncompleteCollaborator()) {
       setCollaboratorError(
@@ -305,6 +360,22 @@ export default function DataAccessRequestPage() {
       [slug]: !prev[slug],
     }));
     setDatasetError(null);
+  };
+
+  const toggleVizPreset = (preset: DarVisualizationPreset) => {
+    setSelectedVizPresets((prev) => ({
+      ...prev,
+      [preset]: !prev[preset],
+    }));
+    setVisualSelectionError(null);
+  };
+
+  const updatePaletteColor = (index: number, color: string) => {
+    setVizPalette((prev) => {
+      const next = [...prev];
+      next[index] = color;
+      return next;
+    });
   };
 
   const addCollaborator = () => {
@@ -372,6 +443,7 @@ export default function DataAccessRequestPage() {
     setDatasetError(null);
     setCollaboratorError(null);
     setDateError(null);
+    setVisualSelectionError(null);
 
     try {
       const datasets = getSelectedDatasets();
@@ -385,6 +457,14 @@ export default function DataAccessRequestPage() {
         email: c.email.trim(),
         phone: c.phone.trim() || undefined,
       }));
+
+      const visualizationPresets = wantsVisuals ? getSelectedVizPresets() : [];
+      const visualizationCustomRequest = wantsVisuals
+        ? vizCustomRequest.trim() || null
+        : null;
+      const visualizationPalette = wantsVisuals
+        ? vizPalette.filter((color) => color && color.trim())
+        : [];
 
       const piEmailPayload = trimmedEmail;
 
@@ -403,6 +483,9 @@ export default function DataAccessRequestPage() {
           plannedEnd: plannedEnd || null,
           datasets,
           collaborators: cleanCollaborators,
+          visualizationPresets,
+          visualizationCustomRequest,
+          visualizationPalette,
         }),
       });
 
@@ -680,7 +763,7 @@ export default function DataAccessRequestPage() {
                   <h2 className="text-sm font-medium text-zinc-100">Data requested</h2>
                   <p className="text-xs text-zinc-400">
                     Pick every dataset you want approved. Each card calls out the Level 1, 2, or
-                    3 scope, and those scopes match the API and download experience.
+                    3 scope, and those scopes match the API and download experience. You can also skip datasets if you only want visualization packages.
                   </p>
                   {datasetOptions.length === 0 ? (
                     <p className="text-xs text-zinc-500">
@@ -689,7 +772,7 @@ export default function DataAccessRequestPage() {
                       you&apos;re ready to expose new scopes.
                     </p>
                   ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-2">
                       {datasetOptions.map((ds) => {
                         const active = !!selectedDatasets[ds.slug];
                         return (
@@ -697,31 +780,29 @@ export default function DataAccessRequestPage() {
                             type="button"
                             key={ds.slug}
                             onClick={() => toggleDataset(ds.slug)}
-                            className={`flex h-full flex-col justify-between rounded-2xl border p-4 text-left transition ${
+                            className={`rounded-xl border px-4 py-3 text-left transition ${
                               active
                                 ? 'border-emerald-500/70 bg-emerald-500/5 shadow-inner shadow-emerald-500/20'
                                 : 'border-zinc-800 bg-zinc-950/60 hover:border-emerald-500/40 hover:text-emerald-100'
                             }`}
                           >
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between">
+                              <div className="space-y-1">
                                 <h3 className="text-sm font-semibold text-zinc-50">
                                   {ds.label}
                                 </h3>
-                                <span
-                                  className={`h-2.5 w-2.5 rounded-full ${
-                                    active
-                                      ? 'bg-emerald-400 shadow-sm shadow-emerald-500'
-                                      : 'bg-zinc-700'
-                                  }`}
-                                />
+                                <p className="text-[11px] font-medium text-emerald-300">
+                                  {DATASET_LEVEL_LABELS[ds.slug as keyof typeof DATASET_LEVEL_LABELS]}
+                                </p>
+                                <p className="text-xs text-zinc-400">{ds.description}</p>
                               </div>
-                              <p className="text-[11px] font-medium text-emerald-300">
-                                {DATASET_LEVEL_LABELS[ds.slug as keyof typeof DATASET_LEVEL_LABELS]}
-                              </p>
-                              <p className="text-xs text-zinc-400">{ds.description}</p>
+                              <span
+                                className={`mt-1 inline-flex h-2.5 w-2.5 rounded-full md:mt-0 ${
+                                  active ? 'bg-emerald-400 shadow-sm shadow-emerald-500' : 'bg-zinc-700'
+                                }`}
+                              />
                             </div>
-                            <div className="mt-4 text-[11px] text-zinc-400">
+                            <div className="mt-2 text-[10px] text-zinc-500">
                               {active ? (
                                 <span className="font-medium text-emerald-300">Selected</span>
                               ) : (
@@ -736,6 +817,128 @@ export default function DataAccessRequestPage() {
                   {datasetError && (
                     <p className="text-xs font-medium text-red-400">{datasetError}</p>
                   )}
+                </section>
+
+                <section className="space-y-3">
+                  <div className="rounded-3xl border border-dashed border-zinc-800/80 bg-zinc-950/40 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-zinc-100">
+                          Visualization package
+                          <span className="ml-2 rounded-full border border-zinc-700 px-2 py-[1px] text-[10px] uppercase text-zinc-400">
+                            Optional
+                          </span>
+                        </p>
+                        <p className="text-xs text-zinc-400">
+                          Aggregates only (no underlying rows). Small-N groups suppressed under 3.
+                        </p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-xs text-zinc-200">
+                        <input
+                          type="checkbox"
+                          checked={wantsVisuals}
+                          onChange={(e) => {
+                            setWantsVisuals(e.target.checked);
+                            if (!e.target.checked) setVisualSelectionError(null);
+                          }}
+                          className="h-4 w-4 accent-emerald-500"
+                        />
+                        Include package
+                      </label>
+                    </div>
+
+                    {wantsVisuals && (
+                      <div className="mt-4 space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {VISUAL_PRESETS.map((preset) => {
+                            const active = !!selectedVizPresets[preset.id];
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => toggleVizPreset(preset.id)}
+                                className={`flex h-full flex-col justify-between rounded-2xl border p-3 text-left transition ${
+                                  active
+                                    ? 'border-emerald-500/70 bg-emerald-500/5'
+                                    : 'border-zinc-800 bg-zinc-950/60 hover:border-emerald-500/40 hover:text-emerald-100'
+                                }`}
+                              >
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-zinc-50">
+                                      {preset.label}
+                                    </p>
+                                    <span
+                                      className={`h-2.5 w-2.5 rounded-full ${
+                                        active ? 'bg-emerald-400' : 'bg-zinc-700'
+                                      }`}
+                                    />
+                                  </div>
+                                  <p className="text-[11px] text-zinc-400">{preset.description}</p>
+                                </div>
+                                <p className="text-[11px] text-zinc-400">
+                                  {active ? (
+                                    <span className="font-medium text-emerald-300">Selected</span>
+                                  ) : (
+                                    'Tap to add this visual'
+                                  )}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-300">
+                              Other / custom ask
+                            </label>
+                            <textarea
+                              className="min-h-[80px] w-full rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs outline-none focus:border-emerald-500/70"
+                              placeholder="E.g., stacked bar comparing varsity vs JV for velocity compliance."
+                              value={vizCustomRequest}
+                              onChange={(e) => setVizCustomRequest(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-300">
+                              Palette (match your org brand)
+                            </label>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {vizPalette.map((color, index) => (
+                                <input
+                                  key={`${color}-${index}`}
+                                  type="color"
+                                  value={color}
+                                  onChange={(e) => updatePaletteColor(index, e.target.value)}
+                                  className="h-10 w-14 rounded border border-zinc-800 bg-zinc-900"
+                                />
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setVizPalette((prev) =>
+                                    prev.length >= 5 ? prev : [...prev, '#22c55e']
+                                  )
+                                }
+                                disabled={vizPalette.length >= 5}
+                                className="rounded-full border border-emerald-500/40 px-3 py-1 text-[11px] text-emerald-300 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
+                              >
+                                + Add color
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-zinc-500">
+                              Applied to charts for this package. You can tweak later in the admin/API.
+                            </p>
+                          </div>
+                        </div>
+
+                        {visualSelectionError && (
+                          <p className="text-xs font-medium text-red-400">{visualSelectionError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </section>
 
                 <section className="space-y-3">

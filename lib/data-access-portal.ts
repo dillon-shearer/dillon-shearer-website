@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { nanoid } from 'nanoid';
 import type {
   DarRequest,
+  DarVisualizationPreset,
   DarRequestStatus,
   DarCollaborator,
   DarRequestedDataset,
@@ -60,6 +61,95 @@ async function logStatusEvent(
   }
 }
 
+type DeliverableMetadata = {
+  visualizationPresets?: DarVisualizationPreset[];
+  visualizationCustomRequest?: string | null;
+  visualizationPalette?: string[];
+};
+
+const DEMO_VISUALIZATION_ENRICHMENTS: Record<string, DeliverableMetadata> = {
+  '11111111-1111-4111-8111-aaaaaaaaaaa1': {
+    visualizationPresets: ['split-all-time', 'volume-all-time'],
+    visualizationCustomRequest: 'Overlay k-anon suppression for small-N cohorts.',
+    visualizationPalette: ['#34d399', '#22d3ee', '#a855f7'],
+  },
+  '22222222-2222-4222-8222-bbbbbbbbbbb2': {
+    visualizationPresets: ['rep-all-time'],
+    visualizationCustomRequest: 'Stacked bars for practice vs meet weeks.',
+    visualizationPalette: ['#38bdf8', '#f97316', '#c084fc'],
+  },
+  '55555555-5555-4555-8555-eeeeeeeeeee5': {
+    visualizationPresets: ['training-days-all-time'],
+    visualizationCustomRequest: null,
+    visualizationPalette: ['#a78bfa', '#e879f9', '#22c55e'],
+  },
+  '77777777-7777-4777-8777-777777777777': {
+    visualizationPresets: ['split-all-time', 'rep-all-time'],
+    visualizationCustomRequest: 'Add squad comparison for pro vs amateur.',
+    visualizationPalette: ['#10b981', '#fbbf24', '#e0f2fe'],
+  },
+  '99999999-9999-4999-8999-999999999999': {
+    visualizationPresets: ['volume-all-time', 'training-days-all-time'],
+    visualizationCustomRequest: null,
+    visualizationPalette: ['#22d3ee', '#facc15', '#f97316'],
+  },
+};
+
+const parseDeliverableMetadata = (raw?: string | null): DeliverableMetadata | null => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as DeliverableMetadata;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+function applyDeliverablePlan(request: DarRequest): DarRequest {
+  const fallback = DEMO_VISUALIZATION_ENRICHMENTS[request.id];
+
+  let meta: DeliverableMetadata | null = null;
+  if (request.statusEvents && request.statusEvents.length > 0) {
+    for (let i = request.statusEvents.length - 1; i >= 0; i -= 1) {
+      const parsed = parseDeliverableMetadata(request.statusEvents[i]?.metadata);
+      if (
+        parsed &&
+        (parsed.visualizationPresets ||
+          parsed.visualizationCustomRequest ||
+          parsed.visualizationPalette)
+      ) {
+        meta = parsed;
+        break;
+      }
+    }
+  }
+
+  request.visualizationPresets =
+    (meta?.visualizationPresets && meta.visualizationPresets.length > 0
+      ? meta.visualizationPresets
+      : request.visualizationPresets && request.visualizationPresets.length > 0
+        ? request.visualizationPresets
+        : fallback?.visualizationPresets) ?? [];
+
+  request.visualizationCustomRequest =
+    meta?.visualizationCustomRequest ??
+    request.visualizationCustomRequest ??
+    fallback?.visualizationCustomRequest ??
+    null;
+
+  request.visualizationPalette =
+    (meta?.visualizationPalette && meta.visualizationPalette.length > 0
+      ? meta.visualizationPalette
+      : request.visualizationPalette && request.visualizationPalette.length > 0
+        ? request.visualizationPalette
+        : fallback?.visualizationPalette) ?? [];
+
+  return request;
+}
+
 // ============================================================================
 // CREATE REQUEST
 // ============================================================================
@@ -80,6 +170,9 @@ type CreateDarRequestInput = {
     email: string;
     phone?: string | null;
   }>;
+  visualizationPresets?: DarVisualizationPreset[];
+  visualizationCustomRequest?: string | null;
+  visualizationPalette?: string[];
 };
 
 export async function createDarRequest(
@@ -172,9 +265,19 @@ export async function createDarRequest(
       }
     }
 
-    await logStatusEvent(id, 'SUBMITTED', `${input.piName} submitted the request.`);
+    const metadata = JSON.stringify({
+      visualizationPresets: input.visualizationPresets ?? [],
+      visualizationCustomRequest: input.visualizationCustomRequest ?? null,
+      visualizationPalette: input.visualizationPalette ?? [],
+    });
 
-    return mapDarRequestFromDb(request);
+    await logStatusEvent(id, 'SUBMITTED', `${input.piName} submitted the request.`, metadata);
+
+    const mapped = mapDarRequestFromDb(request);
+    mapped.visualizationPresets = input.visualizationPresets ?? [];
+    mapped.visualizationCustomRequest = input.visualizationCustomRequest ?? null;
+    mapped.visualizationPalette = input.visualizationPalette ?? [];
+    return mapped;
   } catch (error) {
     console.error('Error creating DAR request:', error);
     throw new Error('Failed to create data access request');
@@ -188,10 +291,36 @@ export async function createDarRequest(
 export async function getAllDarRequests(): Promise<DarRequest[]> {
   try {
     const result = await sql`
-      SELECT * FROM dar_requests
-      ORDER BY created_at DESC
+      SELECT
+        r.*,
+        se.metadata AS latest_metadata,
+        se.created_at AS latest_metadata_at
+      FROM dar_requests r
+      LEFT JOIN LATERAL (
+        SELECT metadata, created_at
+        FROM dar_status_events
+        WHERE request_id = r.id AND metadata IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) se ON TRUE
+      ORDER BY r.created_at DESC
     `;
-    return result.rows.map(mapDarRequestFromDb);
+    return result.rows.map((row) => {
+      const mapped = mapDarRequestFromDb(row);
+      if (row.latest_metadata) {
+        mapped.statusEvents = [
+          {
+            id: 'inline-meta',
+            requestId: mapped.id,
+            status: 'SUBMITTED',
+            description: '',
+            metadata: row.latest_metadata,
+            createdAt: row.latest_metadata_at ?? mapped.createdAt,
+          } as DarStatusEvent,
+        ];
+      }
+      return applyDeliverablePlan(mapped);
+    });
   } catch (error) {
     console.error('Error fetching DAR requests:', error);
     throw new Error('Failed to fetch data access requests');
@@ -260,7 +389,7 @@ export async function getDarRequestById(
       createdAt: row.created_at,
     })) as DarStatusEvent[];
 
-    return request;
+    return applyDeliverablePlan(request);
   } catch (error) {
     console.error('Error fetching DAR request by ID:', error);
     throw new Error('Failed to fetch data access request');
@@ -585,6 +714,12 @@ function mapDarRequestFromDb(row: any): DarRequest {
     apiKey: row.api_key_hash,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    deliveryTypes: [],
+    visualizationPlan: null,
+    packagePlan: null,
+    visualizationPresets: [],
+    visualizationCustomRequest: null,
+    visualizationPalette: [],
     requestedDatasets: [],
     collaborators: [],
     statusEvents: [],
