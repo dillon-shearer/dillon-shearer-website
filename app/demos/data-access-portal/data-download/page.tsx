@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import JSZip from 'jszip';
 import type { GymDatasetSlug } from '@/types/data-access-portal';
 import {
@@ -9,6 +9,7 @@ import {
   DATASET_LEVEL_LABELS,
   PRIMARY_DATASET_LEVEL,
 } from '@/lib/gym-datasets';
+import { PortalPageShell } from '../_components/page-shell';
 
 type AllowedDataset = {
   slug: GymDatasetSlug;
@@ -51,6 +52,7 @@ type UnlockResponse = {
     visualizationCustomRequest?: string | null;
     customDeliveryStatus?: 'pending' | 'fulfilled' | 'rejected' | null;
     customDeliveryNote?: string | null;
+    palette?: string[] | null;
   };
 };
 
@@ -82,6 +84,9 @@ const formatSeriesLabel = (label: unknown) => {
   return String(label);
 };
 
+const MIN_PALETTE_COLORS = 2;
+const MAX_PALETTE_COLORS = 5;
+
 const baseFileName = (pkg: VisualizationPackagePayload) => {
   const source = pkg.title?.trim() || pkg.presetId || 'visualization';
   return source
@@ -90,6 +95,13 @@ const baseFileName = (pkg: VisualizationPackagePayload) => {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60) || 'visualization';
 };
+
+const sanitizePalette = (palette: string[] | null | undefined) =>
+  (palette ?? [])
+    .filter((color): color is string => typeof color === 'string')
+    .map((color) => color.trim())
+    .filter(Boolean)
+    .slice(0, MAX_PALETTE_COLORS);
 
 export default function DataDownloadPage() {
   const [apiKey, setApiKey] = useState('');
@@ -174,8 +186,38 @@ export default function DataDownloadPage() {
   }, []);
 
   useEffect(() => {
-    setVizPalette(DEFAULT_PALETTE);
+    if (!requestInfo) return;
+    const nextPalette = sanitizePalette(requestInfo.palette ?? DEFAULT_PALETTE);
+    if (nextPalette.length >= MIN_PALETTE_COLORS) {
+      setVizPalette(nextPalette);
+    } else {
+      setVizPalette(DEFAULT_PALETTE);
+    }
   }, [requestInfo]);
+
+  const persistPalette = useCallback(
+    async (palette: string[]) => {
+      if (!requestInfo || !apiKey.trim()) return;
+      try {
+        await fetch('/api/data-access-portal/gym-data/palette', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: apiKey.trim(), palette }),
+        });
+      } catch (error) {
+        console.error('Failed to save palette', error);
+      }
+    },
+    [apiKey, requestInfo?.id]
+  );
+
+  useEffect(() => {
+    if (!requestInfo) return;
+    const timer = setTimeout(() => {
+      persistPalette(vizPalette);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [vizPalette, persistPalette, requestInfo]);
 
   const copyExampleToClipboard = async (text: string) => {
     try {
@@ -227,7 +269,15 @@ export default function DataDownloadPage() {
   };
 
   const addPaletteColor = () => {
-    setVizPalette((prev) => (prev.length >= 5 ? prev : [...prev, '#22c55e']));
+    setVizPalette((prev) => (prev.length >= MAX_PALETTE_COLORS ? prev : [...prev, '#22c55e']));
+  };
+
+  const removePaletteColor = (index: number) => {
+    setVizPalette((prev) => {
+      if (prev.length <= MIN_PALETTE_COLORS) return prev;
+      const next = prev.filter((_, i) => i !== index);
+      return next.length < MIN_PALETTE_COLORS ? prev : next;
+    });
   };
 
   const handleUnlock = async () => {
@@ -248,7 +298,14 @@ export default function DataDownloadPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed to unlock datasets');
-      setRequestInfo(json.request as UnlockResponse['request']);
+      const request = json.request as UnlockResponse['request'];
+      setRequestInfo(request);
+      const nextPalette = sanitizePalette(request.palette ?? DEFAULT_PALETTE);
+      if (nextPalette.length >= MIN_PALETTE_COLORS) {
+        setVizPalette(nextPalette);
+      } else {
+        setVizPalette(DEFAULT_PALETTE);
+      }
     } catch (err: any) {
       setUnlockError(err.message ?? 'Could not unlock datasets with that key.');
     } finally {
@@ -650,31 +707,21 @@ export default function DataDownloadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-50">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-12">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-              Demo - Data Download
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50">
-              Download Approved Gym Data
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-              Enter an API key issued from the admin view. I’ll unlock the datasets and
-              all-time visualization bundles tied to that approval so you can preview JSON
-              payloads or export CSV instantly.
-            </p>
-          </div>
-          <Link
-            href="/demos/data-access-portal"
-            className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-xs font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
-          >
-            Back to portal
-          </Link>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-5 shadow-sm shadow-black/40">
+    <PortalPageShell
+      eyebrow="Demo - Data Download"
+      title="Download Approved Gym Data"
+      description="Enter an API key issued from the admin view. I’ll unlock the datasets and all-time visualization bundles tied to that approval so you can preview JSON payloads or export CSV instantly."
+      actions={
+        <Link
+          href="/demos/data-access-portal"
+          className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
+        >
+          Back to portal
+        </Link>
+      }
+    >
+      <>
+        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-6 shadow-sm shadow-black/40 sm:p-8">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div className="space-y-3">
               <div className="space-y-1.5">
@@ -730,6 +777,7 @@ export default function DataDownloadPage() {
                 <li>Keys are tied to a single request. Rotating decisions invalidates old keys.</li>
                 <li>I only surface datasets and visuals your approval actually covers.</li>
                 <li>Preview JSON inline or download CSV/visual bundles for quick analysis.</li>
+                <li>Palette selections persist with each API key, so whatever you pick stays with that approval.</li>
               </ul>
             </div>
           </div>
@@ -854,34 +902,48 @@ export default function DataDownloadPage() {
                         </div>
                       </div>
                     <div className="mt-3 space-y-2">
-                      <p className="text-[10px] uppercase text-zinc-500">Palette</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {vizPalette.map((color, index) => (
-                          <input
-                            key={`${color}-${index}`}
-                            type="color"
-                            value={color}
-                            onChange={(e) => updatePaletteColor(index, e.target.value)}
-                            className="h-10 w-14 rounded border border-zinc-800 bg-zinc-900"
-                          />
-                        ))}
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] uppercase text-zinc-500">Palette</p>
                         <button
                           type="button"
                           onClick={addPaletteColor}
-                          disabled={vizPalette.length >= 5}
+                          disabled={vizPalette.length >= MAX_PALETTE_COLORS}
                           className="rounded-full border border-emerald-500/40 px-3 py-1 text-[11px] text-emerald-300 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
                         >
                           + Add color
                         </button>
                       </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                        {vizPalette.map((color, index) => (
+                          <div
+                            key={`${color}-${index}`}
+                            className="flex h-full items-center justify-between gap-3 rounded-2xl border border-zinc-900/80 bg-zinc-950/70 px-4 py-3 shadow-inner shadow-black/40"
+                          >
+                            <input
+                              type="color"
+                              value={color}
+                              onChange={(e) => updatePaletteColor(index, e.target.value)}
+                              title={`Select palette color ${index + 1}`}
+                              className="h-12 w-full flex-1 cursor-pointer appearance-none rounded-xl border border-zinc-700 bg-transparent p-0"
+                              style={{ background: color }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePaletteColor(index)}
+                              disabled={vizPalette.length <= MIN_PALETTE_COLORS}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 text-[14px] text-zinc-300 transition hover:border-red-500/60 hover:text-red-300 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-600"
+                              aria-label={`Remove palette color ${index + 1}`}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-zinc-500">
+                        Keep between {MIN_PALETTE_COLORS} and {MAX_PALETTE_COLORS} colors. Remove extras to simplify the chart palette.
+                      </p>
                     </div>
-                    <p className="mt-3 text-[10px] text-zinc-500">
-                      These toggles only affect the PNG preview bundled in each download.
-                    </p>
                   </div>
-                    <p className="mt-3 text-[10px] text-zinc-500">
-                      These toggles only affect the PNG preview bundled in each download.
-                    </p>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     {visualizationPackagesWithPalette.map((pkg) => (
@@ -1070,7 +1132,7 @@ export default function DataDownloadPage() {
             <p className="mt-4 text-[11px] text-zinc-400">{downloadMessage}</p>
           )}
         </div>
-      </div>
-    </div>
+      </>
+    </PortalPageShell>
   );
 }

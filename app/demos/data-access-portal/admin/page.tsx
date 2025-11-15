@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { PortalPageShell } from '../_components/page-shell';
 import type { DarRequest, DarRequestStatus } from '@/types/data-access-portal';
 
 const STATUS_COLORS: Record<DarRequestStatus, string> = {
@@ -93,6 +94,12 @@ export default function AdminRequestsPage() {
   const completedTotal = completedRequests.length;
   const completedApproved = completedSummary.APPROVED ?? 0;
   const completedDenied = completedSummary.DENIED ?? 0;
+  const submittedCount = statusSummary.SUBMITTED ?? 0;
+  const inReviewCount = statusSummary.IN_REVIEW ?? 0;
+  const approvedCount = completedApproved;
+  const deniedCount = completedDenied;
+  const pendingDecisions = Math.max(totalRequests - completedTotal, 0);
+  const activeQueue = submittedCount + inReviewCount;
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentSlice = filtered.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -111,82 +118,71 @@ export default function AdminRequestsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-50">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-12">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                Demo - Admin
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50">
-                Data Access Requests - Admin View
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-                This table mirrors an internal tracker for data access workflows: see all
-                requests at a glance, filter by status, and drill into individual requests to
-                approve or deny.
-              </p>
-            </div>
-            <Link
-              href="/demos/data-access-portal"
-              className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-xs font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
-            >
-              Back to portal
-            </Link>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              placeholder="Search name, email, institution..."
-              className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs outline-none focus:border-sky-500/70 md:w-64"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <select
-              className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs outline-none focus:border-sky-500/70 md:w-auto"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-            >
-              <option value="ALL">All statuses</option>
-              <option value="SUBMITTED">Submitted</option>
-              <option value="IN_REVIEW">In review</option>
-              <option value="APPROVED">Approved</option>
-              <option value="DENIED">Denied</option>
-            </select>
-          </div>
+    <PortalPageShell
+      eyebrow="Demo - Admin"
+      title="Data Access Requests - Admin View"
+      description="This table mirrors an internal tracker for data access workflows: see all requests at a glance, filter by status, and drill into individual requests to approve or deny."
+      actions={
+        <Link
+          href="/demos/data-access-portal"
+          className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
+        >
+          Back to portal
+        </Link>
+      }
+    >
+      <div className="flex flex-col gap-8">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            placeholder="Search name, email, institution..."
+            className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-sky-500/70 md:w-72"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-sky-500/70 md:w-auto"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+          >
+            <option value="ALL">All statuses</option>
+            <option value="SUBMITTED">Submitted</option>
+            <option value="IN_REVIEW">In review</option>
+            <option value="APPROVED">Approved</option>
+            <option value="DENIED">Denied</option>
+          </select>
         </div>
 
-        <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(320px,1fr)]">
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,2.6fr)_minmax(320px,1fr)] xl:items-stretch">
           <div className="w-full overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/40 shadow-sm shadow-black/40">
             <div className="border-b border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
               Requests ({filtered.length})
             </div>
-            <div className="max-h-[520px] min-h-[520px] overflow-y-auto overflow-x-hidden">
-              <table className="min-w-full table-fixed text-xs">
+            <div className="overflow-hidden">
+              <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[18%]" />
-                  <col className="w-[36%]" />
-                  <col className="w-[22%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[29%]" />
+                  <col className="w-[20%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[4%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
                 </colgroup>
                 <thead className="sticky top-0 bg-zinc-950/95 backdrop-blur">
-                  <tr className="border-b border-zinc-800/80 text-[11px] text-zinc-500">
-                    <th className="px-4 py-2 text-left font-medium">Status</th>
-                    <th className="px-4 py-2 text-left font-medium">Requester</th>
-                    <th className="px-4 py-2 text-left font-medium">Institution</th>
-                    <th className="px-4 py-2 text-left font-medium">Country</th>
-                    <th className="px-4 py-2 text-left font-medium">Created</th>
-                    <th className="px-4 py-2 text-right font-medium">Open</th>
+                  <tr className="border-b border-zinc-800/80 text-xs uppercase tracking-[0.16em] text-zinc-500">
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">Requester</th>
+                    <th className="px-3 py-2 text-left font-medium">Institution</th>
+                    <th className="px-3 py-2 text-left font-medium">Country</th>
+                    <th className="px-3 py-2 text-left font-medium">Created</th>
+                    <th className="px-3 py-2 text-right font-medium">Open</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-sm">
                   {loading && (
                     <tr>
                       <td
                         colSpan={6}
-                        className="px-4 py-6 text-center text-[11px] text-zinc-500"
+                        className="px-3 py-6 text-center text-sm text-zinc-500"
                       >
                         Loading requests...
                       </td>
@@ -196,7 +192,7 @@ export default function AdminRequestsPage() {
                     <tr>
                       <td
                         colSpan={6}
-                        className="px-4 py-6 text-center text-[11px] text-zinc-500"
+                        className="px-3 py-6 text-center text-[11px] text-zinc-500"
                       >
                         No requests match the current filters.
                       </td>
@@ -207,44 +203,58 @@ export default function AdminRequestsPage() {
                       key={r.id}
                       className="border-t border-zinc-900/80 hover:bg-zinc-900/60"
                     >
-                      <td className="px-4 py-2 align-top">
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center rounded-full border px-2 py-[3px] text-[10px] font-medium ${STATUS_COLORS[r.status]}`}
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${STATUS_COLORS[r.status]}`}
+                          title={r.status.replace('_', ' ')}
                         >
                           {r.status.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className="px-4 py-2 align-top">
-                        <div className="flex min-w-0 flex-col">
-                          <span className="truncate font-medium text-zinc-100">
+                      <td className="px-3 py-2 align-top">
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <span
+                            className="truncate font-medium text-zinc-50"
+                            title={r.piName}
+                          >
                             {r.piName}
                           </span>
-                          <span className="truncate font-mono text-[10px] text-zinc-500">
+                          <span
+                            className="truncate font-mono text-xs text-zinc-500"
+                            title={r.piEmail}
+                          >
                             {r.piEmail}
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-2 align-top">
-                        <span className="block truncate text-[11px] text-zinc-200">
+                      <td className="px-3 py-2 align-top">
+                        <span
+                          className="block truncate text-sm text-zinc-200"
+                          title={r.institution}
+                        >
                           {r.institution}
                         </span>
                       </td>
-                      <td className="px-4 py-2 align-top">
-                        <span className="block truncate text-[11px] text-zinc-300">
+                      <td className="px-3 py-2 align-top">
+                        <span className="block truncate text-sm text-zinc-300">
                           {r.country}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 align-top">
-                        <span className="text-[11px] text-zinc-400">
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
+                        <span
+                          className="block truncate text-sm text-zinc-400"
+                          title={new Date(r.createdAt).toLocaleDateString()}
+                        >
                           {new Date(r.createdAt).toLocaleDateString()}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-right align-top">
+                      <td className="px-3 py-2 text-right align-top whitespace-nowrap">
                         <Link
                           href={`/demos/data-access-portal/admin/${r.id}`}
-                          className="text-[11px] text-sky-400 hover:text-sky-300"
+                          className="inline-flex items-center justify-end text-sm text-sky-400 hover:text-sky-300"
+                          title="View request"
                         >
-                          View &gt;
+                          View
                         </Link>
                       </td>
                     </tr>
@@ -252,7 +262,7 @@ export default function AdminRequestsPage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between border-t border-zinc-900 px-4 py-3 text-[11px] text-zinc-400">
+            <div className="flex items-center justify-between border-t border-zinc-900 px-4 py-3 text-sm text-zinc-400">
               <span>
                 Showing{' '}
                 {filtered.length === 0
@@ -267,7 +277,7 @@ export default function AdminRequestsPage() {
                   type="button"
                   onClick={() => handlePageChange('prev')}
                   disabled={currentPage === 1}
-                  className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-full border border-zinc-800 px-4 py-1.5 text-sm text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Prev
                 </button>
@@ -278,7 +288,7 @@ export default function AdminRequestsPage() {
                   type="button"
                   onClick={() => handlePageChange('next')}
                   disabled={currentPage === totalPages}
-                  className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-full border border-zinc-800 px-4 py-1.5 text-sm text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Next
                 </button>
@@ -286,8 +296,8 @@ export default function AdminRequestsPage() {
             </div>
           </div>
 
-          <div className="flex w-full flex-col gap-4 xl:min-h-[480px]">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="flex h-full w-full min-h-0 flex-col gap-4 lg:gap-5">
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
               <SummaryCard
                 label="Submitted"
                 value={statusSummary.SUBMITTED ?? 0}
@@ -309,79 +319,151 @@ export default function AdminRequestsPage() {
                 accent="text-red-300"
               />
             </div>
-            <div className="flex h-full flex-col rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
-                Requests per month
-              </p>
-              <div className="mt-4 flex flex-1 items-end justify-between gap-3">
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-5">
+              <div className="flex items-center justify-between text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+                <p>Requests per month</p>
+                <span className="text-[10px] font-semibold text-zinc-500">
+                  Last 6 months
+                </span>
+              </div>
+              <div className="mt-5 flex h-40 items-end justify-between gap-3 sm:h-48">
                 {monthlySummary.map((bucket) => {
-                  const height = Math.max(6, (bucket.count / monthlyMax) * 60);
+                  const height = Math.max(20, (bucket.count / monthlyMax) * 120);
                   return (
                     <div
                       key={bucket.label}
-                      className="flex flex-col items-center gap-1 text-[10px] text-zinc-500"
+                      className="flex flex-1 flex-col items-center gap-1 text-[11px] text-zinc-500"
                     >
                       <div
-                        className="w-6 rounded-full bg-gradient-to-t from-zinc-800 to-emerald-500/60"
+                        className="w-7 rounded-[999px] bg-gradient-to-t from-zinc-900 via-emerald-600/60 to-emerald-400/80 shadow-inner shadow-black/40"
                         style={{ height: `${height}px` }}
                         title={`${bucket.count} requests`}
                       />
                       <span>{bucket.label}</span>
-                      <span className="text-zinc-300">{bucket.count}</span>
+                      <span className="font-semibold text-zinc-200">{bucket.count}</span>
                     </div>
                   );
                 })}
               </div>
             </div>
-            <div className="flex h-full flex-col rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
-                Request funnel
-              </p>
-              <div className="mt-4 space-y-4 text-[11px] text-zinc-400">
-                <div>
-                  <p className="mb-1 text-zinc-500">Completed decisions</p>
-                  <div className="h-3 w-full rounded-full bg-zinc-900">
-                    <div
-                      className="h-full rounded-full bg-emerald-500/80"
-                      style={{ width: `${completedTotal > 0 ? 100 : 0}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-center text-zinc-200">
-                    {completedTotal.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="mb-1 text-zinc-500">Approvals vs denials</p>
-                  {completedTotal === 0 ? (
-                    <p className="text-center text-zinc-500">
-                      No completed decisions yet.
-                    </p>
-                  ) : (
-                    <>
-                      <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-900">
-                        <div
-                          className="h-full bg-emerald-500/80"
-                          style={{
-                            width: `${(completedApproved / completedTotal) * 100}%`,
-                          }}
-                        />
-                        <div
-                          className="h-full bg-red-500/80"
-                          style={{
-                            width: `${(completedDenied / completedTotal) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <p className="mt-1 text-center text-zinc-200">
-                        {completedApproved} approved vs {completedDenied} denied
-                      </p>
-                    </>
-                  )}
+            <FunnelCard
+              totalRequests={totalRequests}
+              submittedCount={submittedCount}
+              inReviewCount={inReviewCount}
+              approvedCount={approvedCount}
+              deniedCount={deniedCount}
+              pendingDecisions={pendingDecisions}
+            />
+          </div>
+        </div>
+      </div>
+    </PortalPageShell>
+  );
+}
+
+function FunnelCard({
+  totalRequests,
+  submittedCount,
+  inReviewCount,
+  approvedCount,
+  deniedCount,
+  pendingDecisions,
+}: {
+  totalRequests: number;
+  submittedCount: number;
+  inReviewCount: number;
+  approvedCount: number;
+  deniedCount: number;
+  pendingDecisions: number;
+}) {
+  const funnelStages = [
+    {
+      key: 'total',
+      title: 'Requests received',
+      segments: [
+        {
+          label: 'Total',
+          value: totalRequests,
+          color: 'bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-300',
+        },
+      ],
+      total: totalRequests,
+      relativeTo: totalRequests,
+      offsetPercent: 0,
+    },
+    {
+      key: 'pipeline',
+      title: 'Pipeline status',
+      segments: [
+        {
+          label: 'Submitted',
+          value: submittedCount,
+          color: 'bg-gradient-to-r from-zinc-700 to-zinc-600',
+        },
+        {
+          label: 'In Review',
+          value: inReviewCount,
+          color: 'bg-gradient-to-r from-sky-600 to-sky-400',
+        },
+        {
+          label: 'Approved',
+          value: approvedCount,
+          color: 'bg-gradient-to-r from-emerald-600 to-emerald-400',
+        },
+        {
+          label: 'Denied',
+          value: deniedCount,
+          color: 'bg-gradient-to-r from-rose-600 to-rose-400',
+        },
+      ],
+      total: totalRequests,
+      relativeTo: totalRequests,
+      offsetPercent: 0,
+    },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-5">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+        Request funnel
+      </p>
+      <div className="mt-5 space-y-6 text-sm text-zinc-400">
+        {funnelStages.map((stage) => {
+          const relativePercent =
+            stage.relativeTo > 0 ? Math.min(100, (stage.total / stage.relativeTo) * 100) : 0;
+          const offsetPercent = stage.offsetPercent ?? 0;
+          return (
+            <div key={stage.key} className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                <p>{stage.title}</p>
+              </div>
+              <div className="relative h-5 w-full rounded-full bg-zinc-950/60 shadow-inner shadow-black/30">
+                <div
+                  className="absolute inset-y-0 flex overflow-hidden rounded-full"
+                  style={{
+                    width: `${relativePercent}%`,
+                    left: `${offsetPercent}%`,
+                  }}
+                >
+                  {stage.segments.map((segment) => {
+                    const percent =
+                      stage.total > 0
+                        ? Math.max(0, (segment.value / stage.total) * 100)
+                        : 0;
+                    return (
+                      <div
+                        key={segment.label}
+                        className={`${segment.color}`}
+                        style={{ width: `${percent}%` }}
+                        title={`${stage.title}: ${segment.value} ${segment.label.toLowerCase()}`}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
     </div>
   );

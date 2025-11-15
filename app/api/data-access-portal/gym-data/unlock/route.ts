@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getRequestFromApiKey,
   getDarRequestWithRelations,
+  getRequestPalette,
 } from '@/lib/data-access-portal';
 import { GYM_DATASETS, PRIMARY_DATASET_LEVEL } from '@/lib/gym-datasets';
 import { buildVisualizationPackages } from '@/lib/gym-data';
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const palette = (await getRequestPalette(fullRequest.id)) ?? null;
+
     return NextResponse.json({
       request: {
         id: fullRequest.id,
@@ -71,6 +74,7 @@ export async function POST(req: NextRequest) {
         visualizationCustomRequest: fullRequest.visualizationCustomRequest ?? null,
         customDeliveryStatus: fullRequest.customDeliveryStatus ?? null,
         customDeliveryNote: fullRequest.customDeliveryNote ?? null,
+        palette,
       },
     });
   } catch (err) {

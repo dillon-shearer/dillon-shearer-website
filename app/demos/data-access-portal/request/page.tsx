@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { PortalPageShell } from '../_components/page-shell';
 import {
   AVAILABLE_GYM_DATASETS,
   DATASET_LEVEL_LABELS,
@@ -495,33 +496,23 @@ export default function DataAccessRequestPage() {
   const emailFieldError = emailError ?? emailDuplicateMessage;
 
   return (
-    <div className="min-h-screen bg-black text-zinc-50">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-12">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-              Demo - Data Access Request
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50">
-              Request Access to the Gym Dataset
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-              Mirror the same workflow I use with enterprise teams: capture who you are,
-              why you need the data, and exactly which gym datasets should be unlocked.
-            </p>
-          </div>
-          <Link
-            href="/demos/data-access-portal"
-            className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-xs font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
-          >
-            Back to portal
-          </Link>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 shadow-sm shadow-black/40"
+    <PortalPageShell
+      eyebrow="Demo - Data Access Request"
+      title="Request Access to the Gym Dataset"
+      description="Mirror the same workflow I use with enterprise teams: capture who you are, why you need the data, and exactly which gym datasets should be unlocked."
+      actions={
+        <Link
+          href="/demos/data-access-portal"
+          className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
         >
+          Back to portal
+        </Link>
+      }
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 shadow-sm shadow-black/40 sm:p-8 lg:p-10"
+      >
           <div className="space-y-5">
             <div className="grid gap-3 md:grid-cols-3">
               {WIZARD_STEPS.map((step, index) => {
@@ -813,21 +804,19 @@ export default function DataAccessRequestPage() {
                               key={preset.id}
                               type="button"
                               onClick={() => toggleVizPreset(preset.id)}
-                              className={`flex h-full flex-col justify-between rounded-2xl border p-3 text-left transition ${
+                              className={`relative flex h-full flex-col justify-between rounded-2xl border p-3 text-left transition ${
                                 active
                                   ? 'border-emerald-500/70 bg-emerald-500/5'
                                   : 'border-zinc-800 bg-zinc-950/60 hover:border-emerald-500/40 hover:text-emerald-100'
                               }`}
                             >
-                              <div className="space-y-1.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-sm font-semibold text-zinc-50">{preset.label}</p>
-                                  <span
-                                    className={`h-2.5 w-2.5 rounded-full ${
-                                      active ? 'bg-emerald-400' : 'bg-zinc-700'
-                                    }`}
-                                  />
-                                </div>
+                              <span
+                                className={`absolute right-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full ${
+                                  active ? 'bg-emerald-400' : 'bg-zinc-700'
+                                }`}
+                              />
+                              <div className="space-y-1.5 pr-5">
+                                <p className="text-sm font-semibold text-zinc-50">{preset.label}</p>
                                 <p className="text-[11px] text-zinc-400">{preset.description}</p>
                               </div>
                               <p className="text-[11px] text-zinc-400">
@@ -979,7 +968,6 @@ export default function DataAccessRequestPage() {
             </div>
           </div>
         </form>
-      </div>
-    </div>
+    </PortalPageShell>
   );
 }

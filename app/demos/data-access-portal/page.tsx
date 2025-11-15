@@ -1,6 +1,7 @@
 // app/demos/data-access-portal/page.tsx
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { PortalPageShell } from './_components/page-shell';
 
 export const metadata: Metadata = {
   title: 'Data Access Dashboard | DWD',
@@ -57,29 +58,17 @@ const ACCENT_STYLES = {
 
 export default function DataAccessPortalLandingPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-black text-zinc-50">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-10 px-4 py-16">
-        <div className="space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-            Demo - Data Access Portal
-          </p>
-          <h1 className="text-4xl font-semibold tracking-tight text-zinc-50">
-            Follow the full Gym Dataset access workflow
-          </h1>
-          <p className="max-w-2xl text-sm text-zinc-400">
-            This mirrors the real intake loop: requesters submit with inline validation,
-            admins review with a persistent audit trail, and approved researchers land in the
-            gated API workspace with a scoped key. Tap into each surface below to see the
-            workflow in motion.
-          </p>
-          <div className="grid gap-4 md:grid-cols-3">
-            {HERO_PREVIEWS.map((preview, index) => (
-              <HeroPreviewCard key={preview.label} preview={preview} step={index + 1} />
-            ))}
-          </div>
-        </div>
+    <PortalPageShell
+      eyebrow="Demo - Data Access Portal"
+      title="Follow the full Gym Dataset access workflow"
+      description="This mirrors the real intake loop: requesters submit with inline validation, admins review with a persistent audit trail, and approved researchers land in the gated API workspace with a scoped key. Tap into each surface below to see the workflow in motion."
+    >
+      <div className="grid gap-4 md:grid-cols-3">
+        {HERO_PREVIEWS.map((preview, index) => (
+          <HeroPreviewCard key={preview.label} preview={preview} step={index + 1} />
+        ))}
       </div>
-    </div>
+    </PortalPageShell>
   );
 }
 

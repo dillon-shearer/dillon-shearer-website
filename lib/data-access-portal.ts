@@ -13,6 +13,7 @@ import type {
 const DEFAULT_PROJECT_TITLE = 'Untitled project';
 let statusEventsTableReady: Promise<void> | null = null;
 let requestNotesTableReady: Promise<void> | null = null;
+let palettePrefsTableReady: Promise<void> | null = null;
 
 async function ensureStatusEventsTable() {
   if (!statusEventsTableReady) {
@@ -44,6 +45,19 @@ async function ensureRequestNotesTable() {
   await requestNotesTableReady;
 }
 
+async function ensurePalettePrefsTable() {
+  if (!palettePrefsTableReady) {
+    palettePrefsTableReady = sql`
+      CREATE TABLE IF NOT EXISTS dar_request_palette_preferences (
+        request_id UUID PRIMARY KEY REFERENCES dar_requests(id) ON DELETE CASCADE,
+        palette TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+  }
+  await palettePrefsTableReady;
+}
+
 async function logStatusEvent(
   requestId: string,
   status: string,
@@ -73,6 +87,43 @@ async function logStatusEvent(
     `;
   } catch (error) {
     console.error('Failed to log status event', error);
+  }
+}
+
+export async function getRequestPalette(requestId: string): Promise<string[] | null> {
+  await ensurePalettePrefsTable();
+  try {
+    const result = await sql`
+      SELECT palette
+      FROM dar_request_palette_preferences
+      WHERE request_id = ${requestId}
+    `;
+    if (result.rows.length === 0) return null;
+    const raw = result.rows[0].palette;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((color) => typeof color === 'string');
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to load palette preference', error);
+    return null;
+  }
+}
+
+export async function saveRequestPalette(requestId: string, palette: string[]): Promise<void> {
+  await ensurePalettePrefsTable();
+  const payload = JSON.stringify(palette);
+  try {
+    await sql`
+      INSERT INTO dar_request_palette_preferences (request_id, palette, updated_at)
+      VALUES (${requestId}, ${payload}, NOW())
+      ON CONFLICT (request_id)
+      DO UPDATE SET palette = ${payload}, updated_at = NOW()
+    `;
+  } catch (error) {
+    console.error('Failed to save palette preference', error);
   }
 }
 
