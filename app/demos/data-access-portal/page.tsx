@@ -91,7 +91,7 @@ function HeroPreviewCard({ preview, step }: { preview: HeroPreview; step: number
   return (
     <Link
       href={preview.href}
-      className="group flex h-full flex-col rounded-2xl border border-zinc-900/60 bg-gradient-to-b from-zinc-950 via-zinc-950/70 to-zinc-900/40 p-4"
+      className="group flex h-full min-h-[420px] flex-col rounded-2xl border border-zinc-900/60 bg-gradient-to-b from-zinc-950 via-zinc-950/70 to-zinc-900/40 p-4"
     >
       <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-zinc-500">
         <div className="flex items-center gap-2">
@@ -121,48 +121,47 @@ type AccentStyle = (typeof ACCENT_STYLES)[keyof typeof ACCENT_STYLES];
 function MiniScreen({ accent, preview }: { accent: AccentStyle; preview: HeroPreview }) {
   if (preview.href.includes('/request')) {
     return (
-      <div className="mt-4 rounded-xl border border-zinc-900 bg-zinc-950/80 p-3 text-[10px]">
+      <div className="mt-4 flex flex-1 flex-col rounded-xl border border-zinc-900 bg-zinc-950/80 p-3 text-[10px] text-zinc-100">
         <div className="flex items-center gap-1">
           <span className="h-2 w-2 rounded-full bg-red-400/60" />
           <span className="h-2 w-2 rounded-full bg-amber-400/60" />
           <span className="h-2 w-2 rounded-full bg-emerald-400/60" />
         </div>
-        <div className="mt-3 space-y-2 text-zinc-400">
-          <div className="grid gap-2">
-            <div className="h-2 rounded bg-zinc-800/70" />
-            <div className="h-6 rounded-lg border border-zinc-900 bg-zinc-950/70" />
+        <div className="mt-3 flex flex-1 flex-col gap-2 text-[9px] text-zinc-300">
+          <div className="rounded-xl border border-zinc-900/70 bg-zinc-950/60 p-2">
+            <p className="text-[8px] uppercase tracking-[0.2em] text-zinc-500">PI & org</p>
+            <p className="text-[10px] font-semibold text-zinc-50">Sara Bell · Peak Lab (US)</p>
+            <p>sara.bell@peaklab.io · +1 (312) 555-4471</p>
+            <p>Timeline · Jun 20 → Sep 15</p>
           </div>
-          <div className="grid gap-2">
-            <div className="h-2 rounded bg-zinc-800/70" />
-            <div className="h-16 rounded-xl border border-zinc-900 bg-zinc-950/60" />
+          <div className="rounded-lg border border-zinc-900/70 bg-zinc-950/60 p-2 leading-snug text-zinc-300">
+            <p className="text-[8px] uppercase tracking-[0.2em] text-zinc-500">Data use proposal</p>
+            Validate auto-RIR suggestions with set metrics and coached adjustments across collegiate rowers.
           </div>
-          <div className="grid gap-2 md:grid-cols-2">
-            {[0, 1, 2, 3].map((field) => (
-              <div key={field} className="space-y-1">
-                <div className="h-2 rounded bg-zinc-800/70" />
-                <div className="h-4 rounded-lg border border-zinc-900 bg-zinc-950/70" />
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-1">
-            {[0, 1, 2].map((chip) => (
+          <div className="flex flex-wrap gap-1">
+            {[
+              { label: 'set_metrics', badge: 'L2' },
+              { label: 'workout_sessions', badge: 'L2' },
+              { label: 'aggregates', badge: 'L1' },
+            ].map((dataset) => (
               <span
-                key={chip}
-                className="rounded-full border border-zinc-800 px-2 py-0.5 text-[8px]"
+                key={dataset.label}
+                className="flex items-center gap-1 rounded-full border border-zinc-800/70 px-2 py-0.5 text-[9px] text-zinc-200"
               >
-                Scope {chip + 1}
+                {dataset.label}
+                <span className="rounded-full border border-zinc-700 px-1 text-[8px] text-zinc-400">
+                  {dataset.badge}
+                </span>
               </span>
             ))}
           </div>
-          <div className="grid gap-1 md:grid-cols-2">
-            {[0, 1].map((action) => (
-              <div
-                key={action}
-                className="rounded-full border border-zinc-800 px-2 py-1 text-center text-[9px]"
-              >
-                {action === 0 ? 'Back' : 'Submit'}
-              </div>
-            ))}
+          <div className="grid gap-2 md:grid-cols-2">
+            <button className="rounded-full border border-zinc-800/80 px-2 py-1 text-[9px] text-zinc-300">
+              Save draft
+            </button>
+            <button className="rounded-full border border-emerald-500/70 bg-emerald-500/10 px-2 py-1 text-[9px] text-emerald-100">
+              Submit DAR
+            </button>
           </div>
         </div>
       </div>
@@ -189,8 +188,8 @@ function MiniScreen({ accent, preview }: { accent: AccentStyle; preview: HeroPre
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-2">
-            <div className="flex items-center gap-2 text-[8px] uppercase tracking-[0.2em] text-zinc-500">
+          <div className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-2 text-[9px] text-zinc-300">
+            <div className="mb-1 grid grid-cols-3 text-center text-[8px] uppercase tracking-[0.2em] text-zinc-500">
               <span>PI</span>
               <span>Institution</span>
               <span>Status</span>
@@ -198,12 +197,20 @@ function MiniScreen({ accent, preview }: { accent: AccentStyle; preview: HeroPre
             {[0, 1, 2].map((row) => (
               <div
                 key={row}
-                className="mt-1 flex items-center justify-between rounded border border-zinc-900/60 bg-zinc-950/50 px-2 py-1 text-[9px]"
+                className="mt-1 grid grid-cols-3 items-center rounded border border-zinc-900/60 bg-zinc-950/50 px-2 py-1 text-center text-[9px]"
               >
                 <span className="text-zinc-200">H. Patel</span>
                 <span className="text-zinc-400">Stanford</span>
-                <span className={`rounded-full border px-2 py-[1px] text-[8px] ${accent.ring}`}>
-                  {row === 0 ? 'Approved' : row === 1 ? 'Submitted' : 'Review'}
+                <span
+                  className={`rounded-full border px-2 py-[1px] text-[8px] ${
+                    row === 0
+                      ? 'border-emerald-500/70 text-emerald-200'
+                      : row === 1
+                        ? 'border-zinc-700 text-zinc-200'
+                        : 'border-sky-500/70 text-sky-200'
+                  }`}
+                >
+                  {row === 0 ? 'Approved' : row === 1 ? 'Submitted' : 'In Review'}
                 </span>
               </div>
             ))}

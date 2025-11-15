@@ -45,7 +45,6 @@ export async function POST(req: NextRequest) {
       collaborators,
       visualizationPresets,
       visualizationCustomRequest,
-      visualizationPalette,
     } = body;
 
     if (!piName || !piEmail || !institution || !country || !dataUseProposal) {
@@ -157,11 +156,6 @@ export async function POST(req: NextRequest) {
       visualizationCustomRequest.trim().length > 0
         ? visualizationCustomRequest.trim()
         : null;
-    const normalizedVizPalette = Array.isArray(visualizationPalette)
-      ? (visualizationPalette as string[])
-          .filter((color) => typeof color === 'string' && color.trim())
-          .map((color) => color.trim())
-      : [];
     const hasVisualizationRequest =
       normalizedVizPresets.length > 0 || Boolean(normalizedVizCustom);
 
@@ -186,7 +180,6 @@ export async function POST(req: NextRequest) {
       collaborators: normalizedCollaborators,
       visualizationPresets: normalizedVizPresets,
       visualizationCustomRequest: normalizedVizCustom,
-      visualizationPalette: normalizedVizPalette,
     });
 
     return NextResponse.json({ data: created }, { status: 201 });

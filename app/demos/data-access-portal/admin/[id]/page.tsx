@@ -1016,19 +1016,6 @@ export default function AdminRequestDetailPage() {
                           )}
                         </div>
                       )}
-                      {request.visualizationPalette && request.visualizationPalette.length > 0 && (
-                        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
-                          Palette:
-                          {request.visualizationPalette.slice(0, 5).map((color) => (
-                            <span
-                              key={color}
-                              className="h-4 w-4 rounded-full border border-zinc-800"
-                              style={{ backgroundColor: color }}
-                              title={color}
-                            />
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </section>
 
@@ -1220,6 +1207,8 @@ export default function AdminRequestDetailPage() {
                     )}
                   </div>
                 </div>
+
+                <UserNotesPanel requestId={id as string} />
               </div>
             </div>
 
@@ -1232,6 +1221,95 @@ export default function AdminRequestDetailPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function UserNotesPanel({ requestId }: { requestId: string }) {
+  const [notes, setNotes] = useState<{ noteBody: string; followUp: string }>({
+    noteBody: '',
+    followUp: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const initialLoad = useRef(false);
+
+  useEffect(() => {
+    if (initialLoad.current) return;
+    const loadNotes = async () => {
+      initialLoad.current = true;
+      try {
+        const response = await fetch(`/api/data-access-portal/notes/${requestId}`, {
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (payload?.notes) {
+          setNotes({
+            noteBody: payload.notes.notes ?? '',
+            followUp: payload.notes.followUp ?? '',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch request notes', err);
+      }
+    };
+    loadNotes();
+  }, [requestId]);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await fetch(`/api/data-access-portal/notes/${requestId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes: notes.noteBody,
+          followUp: notes.followUp,
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to save request notes', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
+      <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">User Notes</h2>
+      <p className="mt-1 text-[11px] text-zinc-500">
+        Capture reviewer context or decisions we should remember on the next touchpoint.
+      </p>
+      <div className="mt-3 space-y-3 text-[11px] text-zinc-200">
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Notes</span>
+          <textarea
+            rows={3}
+            className="w-full rounded-2xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[11px] outline-none focus:border-emerald-500/70"
+            placeholder="Coaches confirmed export cadence, waiting on SOC2 letter..."
+            value={notes.noteBody}
+            onChange={(e) => setNotes((prev) => ({ ...prev, noteBody: e.target.value }))}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Next follow-up</span>
+          <input
+            type="text"
+            className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[11px] outline-none focus:border-sky-500/70"
+            placeholder="e.g., Email Sara on Nov 20 with redlines"
+            value={notes.followUp}
+            onChange={(e) => setNotes((prev) => ({ ...prev, followUp: e.target.value }))}
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saving}
+        className="mt-4 inline-flex w-full items-center justify-center rounded-full border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {saving ? 'Saving notes...' : 'Save notes'}
+      </button>
     </div>
   );
 }

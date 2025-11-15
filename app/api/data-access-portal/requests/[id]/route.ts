@@ -306,7 +306,6 @@ export async function PATCH(req: NextRequest, { params }: PathParams) {
       const metadata = {
         visualizationPresets: nextPresets,
         visualizationCustomRequest: existing.visualizationCustomRequest ?? null,
-        visualizationPalette: existing.visualizationPalette ?? [],
         customDeliveryStatus: nextCustomStatus ?? undefined,
         customDeliveryNote: nextCustomNote ? nextCustomNote : undefined,
       };

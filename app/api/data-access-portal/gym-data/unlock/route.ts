@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
 
     const visualizationPackages = await buildVisualizationPackages({
       presets: fullRequest.visualizationPresets ?? [],
-      palette: fullRequest.visualizationPalette ?? [],
     });
 
     const hasVisualizationRequest =
@@ -70,7 +69,6 @@ export async function POST(req: NextRequest) {
         datasets,
         visualizationPackages,
         visualizationCustomRequest: fullRequest.visualizationCustomRequest ?? null,
-        visualizationPalette: fullRequest.visualizationPalette ?? [],
         customDeliveryStatus: fullRequest.customDeliveryStatus ?? null,
         customDeliveryNote: fullRequest.customDeliveryNote ?? null,
       },

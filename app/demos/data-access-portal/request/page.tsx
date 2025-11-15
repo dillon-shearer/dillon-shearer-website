@@ -443,7 +443,6 @@ export default function DataAccessRequestPage() {
 
       const visualizationPresets = getSelectedVizPresets();
       const visualizationCustomRequest = vizCustomRequest.trim() || null;
-      const visualizationPalette: string[] = [];
 
       const piEmailPayload = trimmedEmail;
 
@@ -464,7 +463,6 @@ export default function DataAccessRequestPage() {
           collaborators: cleanCollaborators,
           visualizationPresets,
           visualizationCustomRequest,
-          visualizationPalette,
         }),
       });
 

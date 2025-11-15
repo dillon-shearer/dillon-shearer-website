@@ -49,7 +49,6 @@ type UnlockResponse = {
     datasets: AllowedDataset[];
     visualizationPackages: VisualizationPackagePayload[];
     visualizationCustomRequest?: string | null;
-    visualizationPalette?: string[];
     customDeliveryStatus?: 'pending' | 'fulfilled' | 'rejected' | null;
     customDeliveryNote?: string | null;
   };
@@ -175,15 +174,7 @@ export default function DataDownloadPage() {
   }, []);
 
   useEffect(() => {
-    if (!requestInfo) {
-      setVizPalette(DEFAULT_PALETTE);
-      return;
-    }
-    const initialPalette =
-      requestInfo.visualizationPalette && requestInfo.visualizationPalette.length > 0
-        ? requestInfo.visualizationPalette
-        : DEFAULT_PALETTE;
-    setVizPalette(initialPalette.slice(0, 5));
+    setVizPalette(DEFAULT_PALETTE);
   }, [requestInfo]);
 
   const copyExampleToClipboard = async (text: string) => {

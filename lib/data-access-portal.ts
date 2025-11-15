@@ -12,6 +12,7 @@ import type {
 
 const DEFAULT_PROJECT_TITLE = 'Untitled project';
 let statusEventsTableReady: Promise<void> | null = null;
+let requestNotesTableReady: Promise<void> | null = null;
 
 async function ensureStatusEventsTable() {
   if (!statusEventsTableReady) {
@@ -27,6 +28,20 @@ async function ensureStatusEventsTable() {
     `;
   }
   await statusEventsTableReady;
+}
+
+async function ensureRequestNotesTable() {
+  if (!requestNotesTableReady) {
+    requestNotesTableReady = sql`
+      CREATE TABLE IF NOT EXISTS dar_request_notes (
+        request_id UUID PRIMARY KEY REFERENCES dar_requests(id) ON DELETE CASCADE,
+        notes TEXT,
+        follow_up TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+  }
+  await requestNotesTableReady;
 }
 
 async function logStatusEvent(
@@ -73,7 +88,6 @@ export async function recordDeliverableMetadata(
 type DeliverableMetadata = {
   visualizationPresets?: DarVisualizationPreset[];
   visualizationCustomRequest?: string | null;
-  visualizationPalette?: string[];
   customDeliveryStatus?: 'pending' | 'fulfilled' | 'rejected';
   customDeliveryNote?: string | null;
 };
@@ -82,27 +96,22 @@ const DEMO_VISUALIZATION_ENRICHMENTS: Record<string, DeliverableMetadata> = {
   '11111111-1111-4111-8111-aaaaaaaaaaa1': {
     visualizationPresets: ['split-all-time', 'volume-all-time'],
     visualizationCustomRequest: 'Overlay k-anon suppression for small-N cohorts.',
-    visualizationPalette: ['#34d399', '#22d3ee', '#a855f7'],
   },
   '22222222-2222-4222-8222-bbbbbbbbbbb2': {
     visualizationPresets: ['rep-all-time'],
     visualizationCustomRequest: 'Stacked bars for practice vs meet weeks.',
-    visualizationPalette: ['#38bdf8', '#f97316', '#c084fc'],
   },
   '55555555-5555-4555-8555-eeeeeeeeeee5': {
     visualizationPresets: ['training-days-all-time'],
     visualizationCustomRequest: null,
-    visualizationPalette: ['#a78bfa', '#e879f9', '#22c55e'],
   },
   '77777777-7777-4777-8777-777777777777': {
     visualizationPresets: ['split-all-time', 'rep-all-time'],
     visualizationCustomRequest: 'Add squad comparison for pro vs amateur.',
-    visualizationPalette: ['#10b981', '#fbbf24', '#e0f2fe'],
   },
   '99999999-9999-4999-8999-999999999999': {
     visualizationPresets: ['volume-all-time', 'training-days-all-time'],
     visualizationCustomRequest: null,
-    visualizationPalette: ['#22d3ee', '#facc15', '#f97316'],
   },
 };
 
@@ -130,7 +139,6 @@ function applyDeliverablePlan(request: DarRequest): DarRequest {
         parsed &&
         (parsed.visualizationPresets ||
           parsed.visualizationCustomRequest ||
-          parsed.visualizationPalette ||
           parsed.customDeliveryStatus)
       ) {
         meta = parsed;
@@ -152,13 +160,6 @@ function applyDeliverablePlan(request: DarRequest): DarRequest {
     fallback?.visualizationCustomRequest ??
     null;
 
-  request.visualizationPalette =
-    (meta?.visualizationPalette && meta.visualizationPalette.length > 0
-      ? meta.visualizationPalette
-      : request.visualizationPalette && request.visualizationPalette.length > 0
-        ? request.visualizationPalette
-        : fallback?.visualizationPalette) ?? [];
-
   request.customDeliveryStatus =
     meta?.customDeliveryStatus ??
     request.customDeliveryStatus ??
@@ -166,8 +167,8 @@ function applyDeliverablePlan(request: DarRequest): DarRequest {
     (request.visualizationCustomRequest ? 'pending' : null);
   request.customDeliveryNote =
     meta?.customDeliveryNote ??
-    request.customDeliveryNote ??
-    fallback?.customDeliveryNote ??
+    request.customDeliveryNote ?? 
+    fallback?.customDeliveryNote ?? 
     null;
 
   return request;
@@ -195,7 +196,6 @@ type CreateDarRequestInput = {
   }>;
   visualizationPresets?: DarVisualizationPreset[];
   visualizationCustomRequest?: string | null;
-  visualizationPalette?: string[];
 };
 
 export async function createDarRequest(
@@ -291,7 +291,6 @@ export async function createDarRequest(
     const metadata = JSON.stringify({
       visualizationPresets: input.visualizationPresets ?? [],
       visualizationCustomRequest: input.visualizationCustomRequest ?? null,
-      visualizationPalette: input.visualizationPalette ?? [],
       customDeliveryStatus: input.visualizationCustomRequest ? 'pending' : undefined,
       customDeliveryNote: null,
     });
@@ -301,7 +300,6 @@ export async function createDarRequest(
     const mapped = mapDarRequestFromDb(request);
     mapped.visualizationPresets = input.visualizationPresets ?? [];
     mapped.visualizationCustomRequest = input.visualizationCustomRequest ?? null;
-    mapped.visualizationPalette = input.visualizationPalette ?? [];
     mapped.customDeliveryStatus = input.visualizationCustomRequest ? 'pending' : null;
     mapped.customDeliveryNote = null;
     return mapped;
@@ -746,7 +744,6 @@ function mapDarRequestFromDb(row: any): DarRequest {
     packagePlan: null,
     visualizationPresets: [],
     visualizationCustomRequest: null,
-    visualizationPalette: [],
     customDeliveryStatus: null,
     customDeliveryNote: null,
     requestedDatasets: [],
@@ -813,4 +810,50 @@ export async function replaceDarCollaborators(
       )
     `;
   }
+}
+
+type RequestNotesRecord = {
+  notes: string | null;
+  followUp: string | null;
+  updatedAt: string;
+};
+
+export async function getDarRequestNotes(
+  requestId: string
+): Promise<RequestNotesRecord | null> {
+  await ensureRequestNotesTable();
+  const result = await sql`
+    SELECT notes, follow_up, updated_at
+    FROM dar_request_notes
+    WHERE request_id = ${requestId}
+  `;
+  if (result.rows.length === 0) return null;
+  return {
+    notes: result.rows[0].notes,
+    followUp: result.rows[0].follow_up,
+    updatedAt: result.rows[0].updated_at,
+  };
+}
+
+export async function saveDarRequestNotes(
+  requestId: string,
+  payload: { notes?: string; followUp?: string }
+): Promise<RequestNotesRecord> {
+  await ensureRequestNotesTable();
+  const result = await sql`
+    INSERT INTO dar_request_notes (request_id, notes, follow_up)
+    VALUES (${requestId}, ${payload.notes ?? null}, ${payload.followUp ?? null})
+    ON CONFLICT (request_id)
+    DO UPDATE SET
+      notes = EXCLUDED.notes,
+      follow_up = EXCLUDED.follow_up,
+      updated_at = NOW()
+    RETURNING notes, follow_up, updated_at
+  `;
+  const row = result.rows[0];
+  return {
+    notes: row.notes,
+    followUp: row.follow_up,
+    updatedAt: row.updated_at,
+  };
 }

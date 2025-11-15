@@ -91,7 +91,6 @@ export interface DarRequest {
   packagePlan?: DarPackagePlan | null;
   visualizationPresets?: DarVisualizationPreset[];
   visualizationCustomRequest?: string | null;
-  visualizationPalette?: string[];
   customDeliveryStatus?: 'pending' | 'fulfilled' | 'rejected' | null;
   customDeliveryNote?: string | null;
 
