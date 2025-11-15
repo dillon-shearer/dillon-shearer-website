@@ -6,9 +6,59 @@ import type {
   DarRequestStatus,
   DarCollaborator,
   DarRequestedDataset,
+  DarStatusEvent,
 } from '@/types/data-access-portal';
 
 const DEFAULT_PROJECT_TITLE = 'Untitled project';
+let statusEventsTableReady: Promise<void> | null = null;
+
+async function ensureStatusEventsTable() {
+  if (!statusEventsTableReady) {
+    statusEventsTableReady = sql`
+      CREATE TABLE IF NOT EXISTS dar_status_events (
+        id UUID PRIMARY KEY,
+        request_id UUID NOT NULL REFERENCES dar_requests(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        description TEXT,
+        metadata TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+  }
+  await statusEventsTableReady;
+}
+
+async function logStatusEvent(
+  requestId: string,
+  status: string,
+  description: string,
+  metadata?: string | null
+) {
+  try {
+    await ensureStatusEventsTable();
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO dar_status_events (
+        id,
+        request_id,
+        status,
+        description,
+        metadata,
+        created_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${requestId},
+        ${status},
+        ${description},
+        ${metadata ?? null},
+        ${now}
+      )
+    `;
+  } catch (error) {
+    console.error('Failed to log status event', error);
+  }
+}
 
 // ============================================================================
 // CREATE REQUEST
@@ -24,7 +74,6 @@ type CreateDarRequestInput = {
   dataUseProposal: string;
   plannedStart?: string | null;
   plannedEnd?: string | null;
-  expectedDurationCategory?: string | null;
   datasets: Array<{ datasetSlug: string; level?: number | null }>;
   collaborators: Array<{
     name: string;
@@ -55,7 +104,6 @@ export async function createDarRequest(
         data_use_proposal,
         planned_start,
         planned_end,
-        expected_duration_category,
         status,
         status_last_changed_at,
         created_at,
@@ -72,7 +120,6 @@ export async function createDarRequest(
         ${input.dataUseProposal},
         ${input.plannedStart || null},
         ${input.plannedEnd || null},
-        ${input.expectedDurationCategory ?? null},
         'SUBMITTED',
         ${now},
         ${now},
@@ -124,6 +171,8 @@ export async function createDarRequest(
         `;
       }
     }
+
+    await logStatusEvent(id, 'SUBMITTED', `${input.piName} submitted the request.`);
 
     return mapDarRequestFromDb(request);
   } catch (error) {
@@ -195,6 +244,22 @@ export async function getDarRequestById(
       phone: row.institution,
     }));
 
+    await ensureStatusEventsTable();
+    const eventsResult = await sql`
+      SELECT id, request_id, status, description, metadata, created_at
+      FROM dar_status_events
+      WHERE request_id = ${id}
+      ORDER BY created_at ASC
+    `;
+    request.statusEvents = eventsResult.rows.map((row) => ({
+      id: row.id,
+      requestId: row.request_id,
+      status: row.status,
+      description: row.description,
+      metadata: row.metadata,
+      createdAt: row.created_at,
+    })) as DarStatusEvent[];
+
     return request;
   } catch (error) {
     console.error('Error fetching DAR request by ID:', error);
@@ -222,7 +287,9 @@ export async function markDarRequestInReview(id: string): Promise<DarRequest | n
       return null;
     }
 
-    return mapDarRequestFromDb(result.rows[0]);
+    const mapped = mapDarRequestFromDb(result.rows[0]);
+    await logStatusEvent(id, 'IN_REVIEW', 'Request moved to in review.');
+    return mapped;
   } catch (error) {
     console.error('Error marking DAR request in review:', error);
     return null;
@@ -248,7 +315,7 @@ type UpdateDarRequestInput = {
 export async function updateDarRequest(
   id: string,
   patch: UpdateDarRequestInput,
-  _updatedBy?: string
+  updatedBy: string = 'demo-admin'
 ): Promise<DarRequest> {
   const now = new Date().toISOString();
   const shouldUpdatePiPhone = patch.piPhone !== undefined;
@@ -284,7 +351,14 @@ export async function updateDarRequest(
       throw new Error('Request not found');
     }
 
-    return mapDarRequestFromDb(result.rows[0]);
+    const mapped = mapDarRequestFromDb(result.rows[0]);
+    await logStatusEvent(
+      id,
+      'UPDATED',
+      `Metadata updated by ${updatedBy}.`
+    );
+
+    return mapped;
   } catch (error) {
     console.error('Error updating DAR request:', error);
     throw new Error('Failed to update data access request');
@@ -326,8 +400,16 @@ export async function approveDarRequest(
       throw new Error('Request not found');
     }
 
+    const mapped = mapDarRequestFromDb(result.rows[0]);
+    await logStatusEvent(
+      id,
+      'APPROVED',
+      `Approved by ${approvedBy}.`,
+      'API key minted at approval.'
+    );
+
     return {
-      request: mapDarRequestFromDb(result.rows[0]),
+      request: mapped,
       apiKey,
     };
   } catch (error) {
@@ -371,7 +453,15 @@ export async function denyDarRequest(
       throw new Error('Request not found');
     }
 
-    return mapDarRequestFromDb(result.rows[0]);
+    const mapped = mapDarRequestFromDb(result.rows[0]);
+    await logStatusEvent(
+      id,
+      'DENIED',
+      `Denied by ${deniedBy}.`,
+      reason
+    );
+
+    return mapped;
   } catch (error) {
     console.error('Error denying DAR request:', error);
     throw new Error('Failed to deny data access request');
@@ -412,7 +502,15 @@ export async function revokeDarRequest(
       throw new Error('Request not found');
     }
 
-    return mapDarRequestFromDb(result.rows[0]);
+    const mapped = mapDarRequestFromDb(result.rows[0]);
+    await logStatusEvent(
+      id,
+      'REVOKED',
+      `Access revoked by ${revokedBy}.`,
+      'API key invalidated.'
+    );
+
+    return mapped;
   } catch (error) {
     console.error('Error revoking DAR request:', error);
     throw new Error('Failed to revoke data access request');
@@ -473,7 +571,6 @@ function mapDarRequestFromDb(row: any): DarRequest {
     dataUseProposal: row.data_use_proposal,
     plannedStart: row.planned_start,
     plannedEnd: row.planned_end,
-    expectedDurationCategory: row.expected_duration_category,
     status: row.status as DarRequestStatus,
     statusLastChangedAt: row.status_last_changed_at,
     lastUpdatedBy: row.last_updated_by,
@@ -490,6 +587,7 @@ function mapDarRequestFromDb(row: any): DarRequest {
     updatedAt: row.updated_at,
     requestedDatasets: [],
     collaborators: [],
+    statusEvents: [],
   };
 }
 

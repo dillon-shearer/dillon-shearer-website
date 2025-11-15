@@ -227,6 +227,7 @@ export async function PATCH(req: NextRequest, { params }: PathParams) {
       const { request, apiKey } = await approveDarRequest(id, updatedBy);
       if (!request) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+      let hydrated = await getDarRequestWithRelations(id);
       if (shouldSendApprovalEmails()) {
         try {
           await sendApiKeyEmail(request, apiKey);
@@ -235,21 +236,22 @@ export async function PATCH(req: NextRequest, { params }: PathParams) {
         }
       }
 
-      // Return the raw key ONCE for the UI to show
-      return NextResponse.json({ data: request, apiKey });
+      return NextResponse.json({ data: hydrated ?? request, apiKey });
     }
 
     if (action === 'deny') {
       const { reason } = body as { reason?: string };
       const patched = await denyDarRequest(id, reason ?? 'No reason provided', updatedBy);
       if (!patched) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-      return NextResponse.json({ data: patched });
+      const hydrated = await getDarRequestWithRelations(id);
+      return NextResponse.json({ data: hydrated ?? patched });
     }
 
     if (action === 'revoke') {
       const patched = await revokeDarRequest(id, updatedBy);
       if (!patched) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-      return NextResponse.json({ data: patched });
+      const hydrated = await getDarRequestWithRelations(id);
+      return NextResponse.json({ data: hydrated ?? patched });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

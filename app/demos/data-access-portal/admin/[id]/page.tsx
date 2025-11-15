@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { DarRequest, DarRequestStatus } from '@/types/data-access-portal';
 import {
@@ -27,6 +27,20 @@ type AdminCollaboratorInput = {
 
 const MAX_FUTURE_DATE = '2999-12-31';
 const datasetOptions = AVAILABLE_GYM_DATASETS;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidEmail = (value: string) => EMAIL_REGEX.test(value.trim());
+
+const resolveCountryInput = (value: string) => {
+  if (!value) return null;
+  const needle = value.trim().toLowerCase();
+  if (!needle) return null;
+  return (
+    COUNTRY_OPTIONS.find(
+      (option) => option.toLowerCase() === needle
+    ) ?? null
+  );
+};
 
 const splitName = (fullName: string = '') => {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -55,6 +69,139 @@ const normalizeDateInput = (value?: string | null) => {
   return parsed.toISOString().split('T')[0];
 };
 
+type AuditEvent = {
+  label: string;
+  timestamp: string;
+  description: string;
+  meta?: string | null;
+};
+
+function buildAuditTrail(request?: DarRequest | null): AuditEvent[] {
+  if (!request) return [];
+
+  if (request.statusEvents && request.statusEvents.length > 0) {
+    return request.statusEvents
+      .map((event) => ({
+        label: event.status.replace(/_/g, ' '),
+        timestamp: event.createdAt,
+        description: event.description || '',
+        meta: event.metadata,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+  }
+
+  const events: AuditEvent[] = [];
+  const add = (
+    timestamp: string | null | undefined,
+    label: string,
+    description: string,
+    meta?: string | null
+  ) => {
+    if (!timestamp) return;
+    events.push({ label, timestamp, description, meta });
+  };
+
+  add(
+    request.createdAt,
+    'Submitted',
+    `${request.piName} submitted the request.`
+  );
+
+  add(
+    request.approvedAt,
+    'Approved',
+    `Approved by ${request.approvedBy ?? 'demo-admin'}.`,
+    request.apiKeyIssuedAt ? 'API key was minted at approval.' : null
+  );
+
+  add(
+    request.deniedAt,
+    'Denied',
+    request.deniedReason ? `Reason: ${request.deniedReason}` : 'Request denied.',
+    request.deniedBy ? `By ${request.deniedBy}` : null
+  );
+
+  add(
+    request.revokedAt,
+    'Access revoked',
+    request.revokedBy ? `Revoked by ${request.revokedBy}.` : 'Access revoked.'
+  );
+
+  if (request.apiKeyIssuedAt && request.apiKeyIssuedAt !== request.approvedAt) {
+    add(
+      request.apiKeyIssuedAt,
+      'API key minted',
+      'Scoped credentials issued to the requester.'
+    );
+  }
+
+  return events.sort(
+    (a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+}
+
+function AuditTrailDrawer({
+  trail,
+  onClose,
+}: {
+  trail: AuditEvent[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 py-10 text-zinc-50 sm:items-center">
+      <div className="w-full max-w-xl rounded-3xl border border-zinc-900 bg-zinc-950 p-6 shadow-2xl">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+              Audit trail
+            </p>
+            <h3 className="text-lg font-semibold text-zinc-50">
+              Decision history
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] text-zinc-200 hover:border-emerald-500/70 hover:text-emerald-200"
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-6 max-h-[60vh] space-y-5 overflow-y-auto pr-2">
+          {trail.length === 0 ? (
+            <p className="text-sm text-zinc-400">No audit events recorded yet.</p>
+          ) : (
+            trail.map((event, index) => (
+              <div key={`${event.label}-${event.timestamp}`} className="flex gap-4">
+                <div className="flex flex-col items-center">
+                  <span className="mt-1 block h-3 w-3 rounded-full bg-emerald-400" />
+                  {index !== trail.length - 1 && (
+                    <span className="mt-1 block h-full w-px flex-1 bg-zinc-800" />
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-zinc-100">{event.label}</p>
+                  <p className="text-[11px] text-zinc-500">
+                    {new Date(event.timestamp).toLocaleString()}
+                  </p>
+                  <p className="text-sm text-zinc-300">{event.description}</p>
+                  {event.meta && (
+                    <p className="text-xs text-zinc-500">{event.meta}</p>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminRequestDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -70,6 +217,7 @@ export default function AdminRequestDetailPage() {
     'idle'
   );
   const [denialReason, setDenialReason] = useState('');
+  const formErrorRef = useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState({
     firstName: '',
@@ -87,6 +235,7 @@ export default function AdminRequestDetailPage() {
     () => buildDatasetSelectionMap()
   );
   const [collaboratorsForm, setCollaboratorsForm] = useState<AdminCollaboratorInput[]>([]);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   const hydrateFormFromRequest = (r: DarRequest) => {
     setRequest(r);
@@ -97,7 +246,7 @@ export default function AdminRequestDetailPage() {
       email: r.piEmail,
       phone: r.piPhone ?? '',
       institution: r.institution,
-      country: r.country,
+      country: resolveCountryInput(r.country) ?? r.country,
       projectTitle: r.projectTitle ?? '',
       dataUseProposal: r.dataUseProposal,
       plannedStart: normalizeDateInput(r.plannedStart),
@@ -121,10 +270,18 @@ export default function AdminRequestDetailPage() {
     setDenialReason(r.deniedReason ?? '');
   };
 
+  const auditTrail = useMemo(() => buildAuditTrail(request), [request]);
+
   useEffect(() => {
     setApiKey(null);
     setApiKeyCopyState('idle');
   }, [id]);
+
+  useEffect(() => {
+    if (formError && formErrorRef.current) {
+      formErrorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [formError]);
 
   useEffect(() => {
     if (!id) return;
@@ -214,8 +371,32 @@ export default function AdminRequestDetailPage() {
     setFormError(null);
 
     try {
-      if (!form.firstName.trim() || !form.lastName.trim()) {
+      const firstName = form.firstName.trim();
+      const lastName = form.lastName.trim();
+      const email = form.email.trim();
+      const phone = form.phone.trim();
+      const institution = form.institution.trim();
+      const proposal = form.dataUseProposal.trim();
+      const normalizedCountry = resolveCountryInput(form.country);
+      const projectTitle = form.projectTitle.trim();
+
+      if (!firstName || !lastName) {
         throw new Error('First and last name are required.');
+      }
+      if (!email) {
+        throw new Error('Email is required.');
+      }
+      if (!isValidEmail(email)) {
+        throw new Error('Provide a valid email address.');
+      }
+      if (!institution) {
+        throw new Error('Institution is required.');
+      }
+      if (!normalizedCountry) {
+        throw new Error('Country must be selected from the provided list.');
+      }
+      if (!proposal) {
+        throw new Error('Data use proposal is required.');
       }
       if (!form.plannedStart || !form.plannedEnd) {
         throw new Error('Planned start and end dates are required.');
@@ -259,6 +440,9 @@ export default function AdminRequestDetailPage() {
         if (!first || !last || !email) {
           throw new Error(`Collaborator ${index + 1} is missing required fields.`);
         }
+        if (!isValidEmail(email)) {
+          throw new Error(`Collaborator ${index + 1} email must look like name@domain.com.`);
+        }
         return {
           firstName: first,
           lastName: last,
@@ -267,7 +451,7 @@ export default function AdminRequestDetailPage() {
         };
       });
 
-      const piName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+      const piName = `${firstName} ${lastName}`.trim();
 
       const res = await fetch(`/api/data-access-portal/requests/${id}`, {
         method: 'PATCH',
@@ -276,12 +460,12 @@ export default function AdminRequestDetailPage() {
           action: 'update',
           patch: {
             piName,
-            piEmail: form.email,
-            piPhone: form.phone || null,
-            institution: form.institution,
-            country: form.country,
-            projectTitle: form.projectTitle || null,
-            dataUseProposal: form.dataUseProposal,
+            piEmail: email,
+            piPhone: phone || null,
+            institution,
+            country: normalizedCountry,
+            projectTitle: projectTitle || null,
+            dataUseProposal: proposal,
             plannedStart: form.plannedStart,
             plannedEnd: form.plannedEnd,
           },
@@ -348,7 +532,7 @@ export default function AdminRequestDetailPage() {
   const canRevoke = request && request.status === 'APPROVED';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-zinc-50">
+    <div className="min-h-screen bg-black text-zinc-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-12">
         {loading ? (
           <p className="text-xs text-zinc-500">Loading request...</p>
@@ -356,34 +540,55 @@ export default function AdminRequestDetailPage() {
           <p className="text-xs text-red-400">Request not found.</p>
         ) : (
           <>
-            <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  Demo - Admin - Request
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50">
-                  {request.piName}
-                </h1>
-                <p className="mt-2 text-xs text-zinc-400">
-                  {request.institution} -{' '}
-                  <span className="font-mono text-[11px] text-zinc-500">{request.piEmail}</span>
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`inline-flex items-center rounded-full border px-3 py-[5px] text-[11px] font-medium ${STATUS_COLORS[request.status]}`}
-                >
-                  {request.status.replace('_', ' ')}
-                </span>
-                <span className="text-[11px] text-zinc-500">
-                  Created {new Date(request.createdAt).toLocaleDateString()}
-                </span>
-                <Link
-                  href="/demos/data-access-portal/admin"
-                  className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
-                >
-                  Back to admin view
-                </Link>
+            <div className="rounded-2xl border border-zinc-900/60 bg-zinc-950/50 p-5 shadow-inner shadow-black/20">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                    Demo - Admin - Request
+                  </p>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50">
+                    {request.piName}
+                  </h1>
+                  <p className="mt-1 text-sm text-zinc-400">{request.institution}</p>
+                  <p className="text-[11px] text-zinc-500">
+                    <span className="font-mono">{request.piEmail}</span>
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-[5px] font-medium ${STATUS_COLORS[request.status]}`}
+                    >
+                      {request.status.replace('_', ' ')}
+                    </span>
+                    <span className="text-zinc-500">
+                      Updated {new Date(request.statusLastChangedAt).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 text-right">
+                  <Link
+                    href="/demos/data-access-portal/admin"
+                    className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
+                  >
+                    Back to admin view
+                  </Link>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAuditOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200"
+                    >
+                      View audit trail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveMetadata}
+                      disabled={saving}
+                      className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-1.5 text-[11px] font-medium text-zinc-950 shadow-sm shadow-emerald-500/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-700"
+                    >
+                      {saving ? 'Saving...' : 'Save changes'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -392,13 +597,21 @@ export default function AdminRequestDetailPage() {
                 {error}
               </div>
             )}
+            {formError && (
+              <div
+                ref={formErrorRef}
+                className="rounded-lg border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-200"
+              >
+                {formError}
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
-              <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4 flex h-[720px] flex-col">
+              <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
                 <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
                   Intake details
                 </h2>
-                <div className="mt-3 flex-1 space-y-6 overflow-y-auto pr-2">
+                <div className="mt-3 space-y-6">
                   {/* Contact */}
                   <section className="space-y-3">
                     <h3 className="text-sm font-medium text-zinc-100">Contact</h3>
@@ -624,22 +837,9 @@ export default function AdminRequestDetailPage() {
                     </div>
                   </section>
                 </div>
-                {formError && (
-                  <p className="mt-3 text-xs font-medium text-red-400">{formError}</p>
-                )}
-                <div className="mt-4 border-t border-zinc-900 pt-4 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={saveMetadata}
-                    disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-[11px] font-medium text-zinc-100 hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-500"
-                  >
-                    {saving ? 'Saving...' : 'Save changes'}
-                  </button>
-                </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 lg:sticky lg:top-24">
                 <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
                   <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
                     Decision & Status
@@ -760,6 +960,13 @@ export default function AdminRequestDetailPage() {
                 </div>
               </div>
             </div>
+
+            {auditOpen && (
+              <AuditTrailDrawer
+                trail={auditTrail}
+                onClose={() => setAuditOpen(false)}
+              />
+            )}
           </>
         )}
       </div>

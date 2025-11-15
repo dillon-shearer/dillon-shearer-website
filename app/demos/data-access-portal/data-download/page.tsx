@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GymDatasetSlug } from '@/types/data-access-portal';
 import {
   DATASET_DISPLAY_ORDER,
@@ -62,6 +62,38 @@ export default function DataDownloadPage() {
       : rawLabel.replace(/^Level\s*\d+\s*/i, '').trim();
     const suffix = summary || 'Dataset scope';
     return `Level ${canonicalLevel} - ${suffix}`;
+  };
+
+  const defaultOrigin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://datawithdillon.com';
+  const [siteOrigin, setSiteOrigin] = useState(() =>
+    typeof window !== 'undefined' ? window.location.origin : defaultOrigin
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setSiteOrigin(window.location.origin);
+    }
+  }, []);
+
+  const copyExampleToClipboard = async (text: string) => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setDownloadMessage('Copied API example to clipboard.');
+    } catch {
+      setDownloadMessage('Unable to copy automatically. Please copy manually.');
+    }
   };
 
   const handleUnlock = async () => {
@@ -125,7 +157,7 @@ export default function DataDownloadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-zinc-50">
+    <div className="min-h-screen bg-black text-zinc-50">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-12">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -204,16 +236,20 @@ export default function DataDownloadPage() {
                 Approved datasets
               </p>
               <p className="text-[11px] text-zinc-400">
-                Each card shows the Level 1, 2, or 3 scope tied to this API key so the download experience mirrors the approval.
+                Each card shows the Level 1, 2, or 3 scope tied to this API key. Copy the ready-made API call or download CSV.
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {sortedApprovedDatasets.map((dataset) => {
                   const loadingCsv = loadingDataset === dataset.slug;
                   const scopeLabel = formatDatasetScope(dataset);
+                  const apiUrl = `/api/data-access-portal/gym-data?dataset=${dataset.slug}`;
+                  const exampleUrl = `${siteOrigin}${apiUrl}${
+                    apiKey ? `&apiKey=${encodeURIComponent(apiKey)}` : ''
+                  }`;
                   return (
                     <div
                       key={dataset.slug}
-                      className="flex h-full flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4"
+                      className="flex h-full flex-col justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
@@ -225,8 +261,33 @@ export default function DataDownloadPage() {
                           </span>
                         </div>
                         <p className="text-xs text-zinc-400">
-                          {dataset.description || 'Approved slice of the gym dataset.'}
-                        </p>
+                            {dataset.description || 'Approved slice of the gym dataset.'}
+                          </p>
+                        <div className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                              API example
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => copyExampleToClipboard(exampleUrl)}
+                              className="text-[10px] text-emerald-300"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <div className="mt-2 overflow-x-auto whitespace-nowrap rounded-lg bg-black/40 px-3 py-2 font-mono text-[11px] text-emerald-100">
+                            GET{' '}
+                            <a
+                              href={exampleUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-300 underline"
+                            >
+                              {exampleUrl}
+                            </a>
+                          </div>
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -251,3 +312,7 @@ export default function DataDownloadPage() {
     </div>
   );
 }
+  const siteOrigin =
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_SITE_URL ?? 'https://datawithdillon.com';

@@ -6,8 +6,6 @@ export type DarRequestStatus =
   | 'APPROVED'
   | 'DENIED';
 
-export type ExpectedDurationCategory = '<6m' | '6-12m' | '>12m';
-
 export type GymDatasetSlug =
   | 'workout_sessions'
   | 'set_metrics'
@@ -47,7 +45,6 @@ export interface DarRequest {
   dataUseProposal: string;
   plannedStart?: string | null;
   plannedEnd?: string | null;
-  expectedDurationCategory?: ExpectedDurationCategory | null;
 
   status: DarRequestStatus;
   statusLastChangedAt: string;
@@ -66,4 +63,14 @@ export interface DarRequest {
 
   requestedDatasets?: DarRequestedDataset[];
   collaborators?: DarCollaborator[];
+  statusEvents?: DarStatusEvent[];
+}
+
+export interface DarStatusEvent {
+  id: string;
+  requestId: string;
+  status: string;
+  description?: string | null;
+  metadata?: string | null;
+  createdAt: string;
 }

@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
       dataUseProposal,
       plannedStart,
       plannedEnd,
-      expectedDurationCategory,
       datasets,
       collaborators,
     } = body;
@@ -156,7 +155,6 @@ export async function POST(req: NextRequest) {
       dataUseProposal,
       plannedStart: plannedStart || null,
       plannedEnd: plannedEnd || null,
-      expectedDurationCategory: expectedDurationCategory || null,
       datasets: normalizedDatasets,
       collaborators: normalizedCollaborators,
     });

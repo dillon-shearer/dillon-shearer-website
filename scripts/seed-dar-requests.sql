@@ -1,0 +1,172 @@
+BEGIN;
+
+TRUNCATE TABLE dar_status_events, dar_requested_datasets, dar_collaborators, dar_requests RESTART IDENTITY CASCADE;
+
+WITH request_seed AS (
+  SELECT *
+  FROM json_to_recordset($$
+  [
+    {"id":"11111111-1111-4111-8111-aaaaaaaaaaa1","pi_name":"Mae Chen","pi_email":"mae.chen@northfield.edu","pi_phone":"+1-617-555-1034","institution":"Northfield University","country":"United States","project_title":"Recovery Lab Pilot","data_use_proposal":"Correlation between RIR accuracy and block length.","planned_start":"2025-05-25","planned_end":"2025-08-20","status":"APPROVED","status_last_changed_at":"2025-05-28T14:00:00Z","created_at":"2025-05-22T15:30:00Z","updated_at":"2025-05-28T14:00:00Z","approved_at":"2025-05-28T14:00:00Z","approved_by":"demo-admin","denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":"dar_key_mae","api_key_issued_at":"2025-05-28T14:00:00Z"},
+    {"id":"22222222-2222-4222-8222-bbbbbbbbbbb2","pi_name":"Rafael Ortega","pi_email":"rortega@iberoanalytics.mx","pi_phone":"+52-55-5555-2190","institution":"Ibero Analytics","country":"Mexico","project_title":"Load Progression Study","data_use_proposal":"High-frequency pull metrics for collegiate swimmers.","planned_start":"2025-06-18","planned_end":"2025-09-18","status":"IN_REVIEW","status_last_changed_at":"2025-06-20T10:00:00Z","created_at":"2025-06-17T11:45:00Z","updated_at":"2025-06-20T10:00:00Z","approved_at":null,"approved_by":null,"denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"33333333-3333-4333-8333-ccccccccccc3","pi_name":"Claire Anderson","pi_email":"claire.anderson@orionhealth.ca","pi_phone":null,"institution":"Orion Health Research","country":"Canada","project_title":"Adaptive Tempo Exploration","data_use_proposal":"Wants set-level export to evaluate tempo drift.","planned_start":"2025-11-15","planned_end":"2026-01-30","status":"SUBMITTED","status_last_changed_at":"2025-11-10T09:15:00Z","created_at":"2025-11-10T09:15:00Z","updated_at":"2025-11-10T09:15:00Z","approved_at":null,"approved_by":null,"denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"44444444-4444-4444-8444-ddddddddddd4","pi_name":"Dr. Suraj Patel","pi_email":"suraj.patel@uni-mumbai.in","pi_phone":"+91-22-5555-0909","institution":"University of Mumbai","country":"India","project_title":"Youth Hypertrophy Controls","data_use_proposal":"Needs aggregated squat drive metrics for teen athletes.","planned_start":"2025-08-15","planned_end":"2025-12-15","status":"DENIED","status_last_changed_at":"2025-08-20T08:32:00Z","created_at":"2025-08-14T08:05:00Z","updated_at":"2025-08-20T08:32:00Z","approved_at":null,"approved_by":null,"denied_at":"2025-08-20T08:32:00Z","denied_by":"demo-admin","denied_reason":"Country-specific guardrails triggered.","revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"55555555-5555-4555-8555-eeeeeeeeeee5","pi_name":"Morgan Wu","pi_email":"morgan.wu@atlasperformance.com","pi_phone":"+1-415-555-4432","institution":"Atlas Performance Lab","country":"United States","project_title":"Block Periodization QA","data_use_proposal":"Compare workout_sessions with new athlete CRM.","planned_start":"2025-09-01","planned_end":"2025-12-01","status":"APPROVED","status_last_changed_at":"2025-09-04T18:10:00Z","created_at":"2025-09-01T10:30:00Z","updated_at":"2025-09-04T18:10:00Z","approved_at":"2025-09-04T18:10:00Z","approved_by":"demo-admin","denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":"dar_key_morgan","api_key_issued_at":"2025-09-04T18:10:00Z"},
+    {"id":"66666666-6666-4666-8666-fffffffffff6","pi_name":"Lena Stein","pi_email":"lena.stein@berlin-sport.de","pi_phone":"+49-30-555-0777","institution":"Berlin Sport Institut","country":"Germany","project_title":"Pull Day Compliance","data_use_proposal":"Investigate RIR manipulation across 60 athletes.","planned_start":"2025-05-25","planned_end":"2025-09-15","status":"DENIED","status_last_changed_at":"2025-06-01T11:00:00Z","created_at":"2025-05-29T07:20:00Z","updated_at":"2025-06-01T11:00:00Z","approved_at":null,"approved_by":null,"denied_at":"2025-06-01T11:00:00Z","denied_by":"demo-admin","denied_reason":"Proposal missing consent language.","revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"77777777-7777-4777-8777-777777777777","pi_name":"Noah Laurent","pi_email":"noah.laurent@renforce.fr","pi_phone":"+33-1-44-55-1298","institution":"Renforce Analytics","country":"France","project_title":"Time-Under-Tension Alerts","data_use_proposal":"Need aggregates plus set metrics to test alert logic.","planned_start":"2025-06-20","planned_end":"2025-10-20","status":"REVOKED","status_last_changed_at":"2025-08-10T13:30:00Z","created_at":"2025-06-22T09:10:00Z","updated_at":"2025-08-10T13:30:00Z","approved_at":"2025-06-25T15:40:00Z","approved_by":"demo-admin","denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":"2025-08-10T13:30:00Z","revoked_by":"demo-admin","api_key_hash":"dar_key_noah","api_key_issued_at":"2025-06-25T15:40:00Z"},
+    {"id":"88888888-8888-4888-8888-888888888888","pi_name":"Priya Nayar","pi_email":"pnayar@stridehealth.co","pi_phone":"+44-20-7777-2010","institution":"Stride Health Co.","country":"United Kingdom","project_title":"Hamstring Load Trial","data_use_proposal":"Need workout_sessions summary for remote leg program.","planned_start":"2025-07-01","planned_end":"2025-09-30","status":"IN_REVIEW","status_last_changed_at":"2025-07-03T16:00:00Z","created_at":"2025-07-02T11:12:00Z","updated_at":"2025-07-03T16:00:00Z","approved_at":null,"approved_by":null,"denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"99999999-9999-4999-8999-999999999999","pi_name":"Jonas Becker","pi_email":"jonas.becker@valkyrie.no","pi_phone":"+47-21-555-111","institution":"Valkyrie Performance","country":"Norway","project_title":"Cold-Weather Prep","data_use_proposal":"Cross-checking aggregates against Nordic testers.","planned_start":"2025-08-05","planned_end":"2025-11-05","status":"APPROVED","status_last_changed_at":"2025-08-08T07:55:00Z","created_at":"2025-08-05T10:15:00Z","updated_at":"2025-08-08T07:55:00Z","approved_at":"2025-08-08T07:55:00Z","approved_by":"demo-admin","denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":"dar_key_jonas","api_key_issued_at":"2025-08-08T07:55:00Z"},
+    {"id":"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa0","pi_name":"Vivian Ross","pi_email":"vivian.ross@emergebio.com","pi_phone":null,"institution":"Emerge Bio","country":"United States","project_title":"Glucose + Volume Research","data_use_proposal":"Need aggregated pull data to layer with CGM logs.","planned_start":"2025-10-01","planned_end":"2026-01-15","status":"SUBMITTED","status_last_changed_at":"2025-10-01T12:00:00Z","created_at":"2025-10-01T12:00:00Z","updated_at":"2025-10-01T12:00:00Z","approved_at":null,"approved_by":null,"denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1","pi_name":"Malik Green","pi_email":"malik.green@houstonelite.org","pi_phone":"+1-832-555-2299","institution":"Houston Elite Performance","country":"United States","project_title":"High School Volume Review","data_use_proposal":"Concerned with high-load weeks in SEP athletes.","planned_start":"2025-06-10","planned_end":"2025-09-10","status":"DENIED","status_last_changed_at":"2025-06-12T19:45:00Z","created_at":"2025-06-10T08:30:00Z","updated_at":"2025-06-12T19:45:00Z","approved_at":null,"approved_by":null,"denied_at":"2025-06-12T19:45:00Z","denied_by":"demo-admin","denied_reason":"Insufficient justification for PII scopes.","revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"ccccccc3-cccc-4ccc-8ccc-ccccccccccc2","pi_name":"Susana Valdez","pi_email":"svaldez@utadeportes.com","pi_phone":"+1-801-555-8181","institution":"UTA Deportes Lab","country":"United States","project_title":"RDL Velocity Monitor","data_use_proposal":"Need set_metrics plus aggregates to verify AI model.","planned_start":"2025-09-18","planned_end":"2026-01-05","status":"APPROVED","status_last_changed_at":"2025-09-21T11:05:00Z","created_at":"2025-09-18T14:42:00Z","updated_at":"2025-09-21T11:05:00Z","approved_at":"2025-09-21T11:05:00Z","approved_by":"demo-admin","denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":"dar_key_susana","api_key_issued_at":"2025-09-21T11:05:00Z"},
+    {"id":"ddddddd4-dddd-4ddd-8ddd-ddddddddddd3","pi_name":"Kaito Ishikawa","pi_email":"kaito@sendai-sport.jp","pi_phone":"+81-22-555-8970","institution":"Sendai Sport Science","country":"Japan","project_title":"Youth Lower-Body Diagnostics","data_use_proposal":"Looking for aggregates and workout_sessions pulses.","planned_start":"2025-08-25","planned_end":"2025-12-25","status":"IN_REVIEW","status_last_changed_at":"2025-08-27T10:10:00Z","created_at":"2025-08-26T09:51:00Z","updated_at":"2025-08-27T10:10:00Z","approved_at":null,"approved_by":null,"denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"eeeeeee5-eeee-4eee-8eee-eeeeeeeeeee4","pi_name":"Erin Park","pi_email":"erin.park@bluepeak.org","pi_phone":null,"institution":"Blue Peak Consulting","country":"United States","project_title":"Adaptive Split Analyzer","data_use_proposal":"Need aggregated outputs to feed dashboard prototype.","planned_start":"2025-10-12","planned_end":"2026-02-01","status":"SUBMITTED","status_last_changed_at":"2025-10-12T15:30:00Z","created_at":"2025-10-12T15:30:00Z","updated_at":"2025-10-12T15:30:00Z","approved_at":null,"approved_by":null,"denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":null,"api_key_issued_at":null},
+    {"id":"fffffff6-ffff-4fff-8fff-fffffffffff5","pi_name":"Henry Coates","pi_email":"henry.coates@charlotteiron.com","pi_phone":"+1-704-555-5532","institution":"Charlotte Ironworks","country":"United States","project_title":"Bench Density Evaluation","data_use_proposal":"Compare aggregates to in-house velocity sensors.","planned_start":"2025-07-05","planned_end":"2025-11-15","status":"APPROVED","status_last_changed_at":"2025-07-08T16:40:00Z","created_at":"2025-07-05T13:00:00Z","updated_at":"2025-07-08T16:40:00Z","approved_at":"2025-07-08T16:40:00Z","approved_by":"demo-admin","denied_at":null,"denied_by":null,"denied_reason":null,"revoked_at":null,"revoked_by":null,"api_key_hash":"dar_key_henry","api_key_issued_at":"2025-07-08T16:40:00Z"}
+  ]
+  $$) AS r(
+    id uuid,
+    pi_name text,
+    pi_email text,
+    pi_phone text,
+    institution text,
+    country text,
+    project_title text,
+    data_use_proposal text,
+    planned_start date,
+    planned_end date,
+    status text,
+    status_last_changed_at timestamptz,
+    created_at timestamptz,
+    updated_at timestamptz,
+    approved_at timestamptz,
+    approved_by text,
+    denied_at timestamptz,
+    denied_by text,
+    denied_reason text,
+    revoked_at timestamptz,
+    revoked_by text,
+    api_key_hash text,
+    api_key_issued_at timestamptz
+  )
+)
+INSERT INTO dar_requests (
+  id,
+  pi_name,
+  pi_email,
+  pi_phone,
+  institution,
+  country,
+  project_title,
+  data_use_proposal,
+  planned_start,
+  planned_end,
+  status,
+  status_last_changed_at,
+  created_at,
+  updated_at,
+  approved_at,
+  approved_by,
+  denied_at,
+  denied_by,
+  denied_reason,
+  revoked_at,
+  revoked_by,
+  api_key_hash,
+  api_key_issued_at
+)
+SELECT
+  id,
+  pi_name,
+  pi_email,
+  pi_phone,
+  institution,
+  country,
+  project_title,
+  data_use_proposal,
+  planned_start,
+  planned_end,
+  status,
+  status_last_changed_at,
+  created_at,
+  updated_at,
+  approved_at,
+  approved_by,
+  denied_at,
+  denied_by,
+  denied_reason,
+  revoked_at,
+  revoked_by,
+  api_key_hash,
+  api_key_issued_at
+FROM request_seed;
+
+INSERT INTO dar_requested_datasets (id, request_id, dataset_slug, level) VALUES
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000001','11111111-1111-4111-8111-aaaaaaaaaaa1','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000002','22222222-2222-4222-8222-bbbbbbbbbbb2','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000003','33333333-3333-4333-8333-ccccccccccc3','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000004','44444444-4444-4444-8444-ddddddddddd4','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000005','55555555-5555-4555-8555-eeeeeeeeeee5','workout_sessions',2),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000006','66666666-6666-4666-8666-fffffffffff6','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000007','77777777-7777-4777-8777-777777777777','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000008','77777777-7777-4777-8777-777777777777','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000009','88888888-8888-4888-8888-888888888888','workout_sessions',2),
+  ('7014c8e6-7fd0-4ab0-9b2f-00000000000a','99999999-9999-4999-8999-999999999999','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-00000000000b','aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa0','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-00000000000c','bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-00000000000d','ccccccc3-cccc-4ccc-8ccc-ccccccccccc2','set_metrics',1),
+  ('7014c8e6-7fd0-4ab0-9b2f-00000000000e','ccccccc3-cccc-4ccc-8ccc-ccccccccccc2','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-00000000000f','ddddddd4-dddd-4ddd-8ddd-ddddddddddd3','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000010','eeeeeee5-eeee-4eee-8eee-eeeeeeeeeee4','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000011','fffffff6-ffff-4fff-8fff-fffffffffff5','aggregates',3),
+  ('7014c8e6-7fd0-4ab0-9b2f-000000000012','fffffff6-ffff-4fff-8fff-fffffffffff5','set_metrics',1);
+
+INSERT INTO dar_collaborators (id, request_id, name, email, institution) VALUES
+  ('c47f1ca8-e4e7-4c7c-9210-100000000001','11111111-1111-4111-8111-aaaaaaaaaaa1','Dr. Olivia Price','olivia.price@northfield.edu',NULL),
+  ('c47f1ca8-e4e7-4c7c-9210-100000000002','55555555-5555-4555-8555-eeeeeeeeeee5','Shawn Ritter','shawn.ritter@atlasperformance.com',NULL),
+  ('c47f1ca8-e4e7-4c7c-9210-100000000003','77777777-7777-4777-8777-777777777777','Camille Duval','camille.duval@renforce.fr',NULL),
+  ('c47f1ca8-e4e7-4c7c-9210-100000000004','99999999-9999-4999-8999-999999999999','Isabel Falk','isabel.falk@valkyrie.no',NULL),
+  ('c47f1ca8-e4e7-4c7c-9210-100000000005','ccccccc3-cccc-4ccc-8ccc-ccccccccccc2','Dr. Tessa Mora','tessa.mora@utadeportes.com',NULL),
+  ('c47f1ca8-e4e7-4c7c-9210-100000000006','ddddddd4-dddd-4ddd-8ddd-ddddddddddd3','Dr. Rei Wakabayashi','rei.wakabayashi@sendai-sport.jp',NULL),
+  ('c47f1ca8-e4e7-4c7c-9210-100000000007','fffffff6-ffff-4fff-8fff-fffffffffff5','Logan Mills','logan.mills@charlotteiron.com',NULL);
+
+INSERT INTO dar_status_events (id, request_id, status, description, metadata, created_at) VALUES
+  ('edc90101-0000-4000-9000-aaaaaaaa0001','11111111-1111-4111-8111-aaaaaaaaaaa1','SUBMITTED','Mae Chen submitted the request.',NULL,'2025-05-22T15:30:00Z'),
+  ('edc90101-0000-4000-9000-aaaaaaaa0002','11111111-1111-4111-8111-aaaaaaaaaaa1','IN_REVIEW','Request moved to in review.',NULL,'2025-05-23T09:00:00Z'),
+  ('edc90101-0000-4000-9000-aaaaaaaa0003','11111111-1111-4111-8111-aaaaaaaaaaa1','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-05-28T14:00:00Z'),
+  ('edc90101-0000-4000-9000-bbbbbbbb0001','22222222-2222-4222-8222-bbbbbbbbbbb2','SUBMITTED','Rafael Ortega submitted the request.',NULL,'2025-06-17T11:45:00Z'),
+  ('edc90101-0000-4000-9000-bbbbbbbb0002','22222222-2222-4222-8222-bbbbbbbbbbb2','IN_REVIEW','Compliance reviewing scope.',NULL,'2025-06-20T10:00:00Z'),
+  ('edc90101-0000-4000-9000-cccccccc0001','33333333-3333-4333-8333-ccccccccccc3','SUBMITTED','Claire Anderson submitted the request.',NULL,'2025-11-10T09:15:00Z'),
+  ('edc90101-0000-4000-9000-dddddddd0001','44444444-4444-4444-8444-ddddddddddd4','SUBMITTED','Dr. Patel submitted the request.',NULL,'2025-08-14T08:05:00Z'),
+  ('edc90101-0000-4000-9000-dddddddd0002','44444444-4444-4444-8444-ddddddddddd4','IN_REVIEW','Moved to in review.',NULL,'2025-08-18T12:00:00Z'),
+  ('edc90101-0000-4000-9000-dddddddd0003','44444444-4444-4444-8444-ddddddddddd4','DENIED','Denied by demo-admin.','Country-specific guardrails triggered.','2025-08-20T08:32:00Z'),
+  ('edc90101-0000-4000-9000-eeeeeeee0001','55555555-5555-4555-8555-eeeeeeeeeee5','SUBMITTED','Morgan Wu submitted the request.',NULL,'2025-09-01T10:30:00Z'),
+  ('edc90101-0000-4000-9000-eeeeeeee0002','55555555-5555-4555-8555-eeeeeeeeeee5','IN_REVIEW','Request moved to in review.',NULL,'2025-09-02T12:00:00Z'),
+  ('edc90101-0000-4000-9000-eeeeeeee0003','55555555-5555-4555-8555-eeeeeeeeeee5','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-09-04T18:10:00Z'),
+  ('edc90101-0000-4000-9000-ffffffff0001','66666666-6666-4666-8666-fffffffffff6','SUBMITTED','Lena Stein submitted the request.',NULL,'2025-05-29T07:20:00Z'),
+  ('edc90101-0000-4000-9000-ffffffff0002','66666666-6666-4666-8666-fffffffffff6','IN_REVIEW','Policy flagged consent language gap.',NULL,'2025-05-30T09:45:00Z'),
+  ('edc90101-0000-4000-9000-ffffffff0003','66666666-6666-4666-8666-fffffffffff6','DENIED','Denied by demo-admin.','Proposal missing consent language.','2025-06-01T11:00:00Z'),
+  ('edc90101-0000-4000-9000-777777770001','77777777-7777-4777-8777-777777777777','SUBMITTED','Noah Laurent submitted the request.',NULL,'2025-06-22T09:10:00Z'),
+  ('edc90101-0000-4000-9000-777777770002','77777777-7777-4777-8777-777777777777','IN_REVIEW','Security screening in progress.',NULL,'2025-06-24T15:20:00Z'),
+  ('edc90101-0000-4000-9000-777777770003','77777777-7777-4777-8777-777777777777','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-06-25T15:40:00Z'),
+  ('edc90101-0000-4000-9000-777777770004','77777777-7777-4777-8777-777777777777','REVOKED','Access revoked by demo-admin.','API key invalidated.','2025-08-10T13:30:00Z'),
+  ('edc90101-0000-4000-9000-888888880001','88888888-8888-4888-8888-888888888888','SUBMITTED','Priya Nayar submitted the request.',NULL,'2025-07-02T11:12:00Z'),
+  ('edc90101-0000-4000-9000-888888880002','88888888-8888-4888-8888-888888888888','IN_REVIEW','Policy & compliance review.',NULL,'2025-07-03T16:00:00Z'),
+  ('edc90101-0000-4000-9000-999999990001','99999999-9999-4999-8999-999999999999','SUBMITTED','Jonas Becker submitted the request.',NULL,'2025-08-05T10:15:00Z'),
+  ('edc90101-0000-4000-9000-999999990002','99999999-9999-4999-8999-999999999999','IN_REVIEW','Risk review queued.',NULL,'2025-08-06T10:00:00Z'),
+  ('edc90101-0000-4000-9000-999999990003','99999999-9999-4999-8999-999999999999','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-08-08T07:55:00Z'),
+  ('edc90101-0000-4000-9000-aaaabbbb0001','aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa0','SUBMITTED','Vivian Ross submitted the request.',NULL,'2025-10-01T12:00:00Z'),
+  ('edc90101-0000-4000-9000-bbbbaaaa0001','bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1','SUBMITTED','Malik Green submitted the request.',NULL,'2025-06-10T08:30:00Z'),
+  ('edc90101-0000-4000-9000-bbbbaaaa0002','bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1','IN_REVIEW','Scope escalated to compliance.',NULL,'2025-06-11T14:10:00Z'),
+  ('edc90101-0000-4000-9000-bbbbaaaa0003','bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1','DENIED','Denied by demo-admin.','Insufficient justification for PII scopes.','2025-06-12T19:45:00Z'),
+  ('edc90101-0000-4000-9000-ccccaaaa0001','ccccccc3-cccc-4ccc-8ccc-ccccccccccc2','SUBMITTED','Susana Valdez submitted the request.',NULL,'2025-09-18T14:42:00Z'),
+  ('edc90101-0000-4000-9000-ccccaaaa0002','ccccccc3-cccc-4ccc-8ccc-ccccccccccc2','IN_REVIEW','Request moved to in review.',NULL,'2025-09-20T10:15:00Z'),
+  ('edc90101-0000-4000-9000-ccccaaaa0003','ccccccc3-cccc-4ccc-8ccc-ccccccccccc2','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-09-21T11:05:00Z'),
+  ('edc90101-0000-4000-9000-ddddaaaa0001','ddddddd4-dddd-4ddd-8ddd-ddddddddddd3','SUBMITTED','Kaito Ishikawa submitted the request.',NULL,'2025-08-26T09:51:00Z'),
+  ('edc90101-0000-4000-9000-ddddaaaa0002','ddddddd4-dddd-4ddd-8ddd-ddddddddddd3','IN_REVIEW','Request moved to in review.',NULL,'2025-08-27T10:10:00Z'),
+  ('edc90101-0000-4000-9000-eeeebbbb0001','eeeeeee5-eeee-4eee-8eee-eeeeeeeeeee4','SUBMITTED','Erin Park submitted the request.',NULL,'2025-10-12T15:30:00Z'),
+  ('edc90101-0000-4000-9000-ffffaaaa0001','fffffff6-ffff-4fff-8fff-fffffffffff5','SUBMITTED','Henry Coates submitted the request.',NULL,'2025-07-05T13:00:00Z'),
+  ('edc90101-0000-4000-9000-ffffaaaa0002','fffffff6-ffff-4fff-8fff-fffffffffff5','IN_REVIEW','Request moved to in review.',NULL,'2025-07-06T11:20:00Z'),
+  ('edc90101-0000-4000-9000-ffffaaaa0003','fffffff6-ffff-4fff-8fff-fffffffffff5','APPROVED','Approved by demo-admin.','API key minted at approval.','2025-07-08T16:40:00Z');
+
+COMMIT;
+
+

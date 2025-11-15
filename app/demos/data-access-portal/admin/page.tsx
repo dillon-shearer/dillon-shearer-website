@@ -16,6 +16,8 @@ export default function AdminRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'ALL' | DarRequestStatus>('ALL');
   const [search, setSearch] = useState('');
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     const load = async () => {
@@ -91,9 +93,25 @@ export default function AdminRequestsPage() {
   const completedTotal = completedRequests.length;
   const completedApproved = completedSummary.APPROVED ?? 0;
   const completedDenied = completedSummary.DENIED ?? 0;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const currentSlice = filtered.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, search, requests.length]);
+
+  const handlePageChange = (direction: 'prev' | 'next') => {
+    setCurrentPage((prev) => {
+      if (direction === 'prev') return Math.max(1, prev - 1);
+      return Math.min(totalPages, prev + 1);
+    });
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-zinc-50">
+    <div className="min-h-screen bg-black text-zinc-50">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-12">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
@@ -143,7 +161,7 @@ export default function AdminRequestsPage() {
             <div className="border-b border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
               Requests ({filtered.length})
             </div>
-            <div className="max-h-[480px] overflow-y-auto overflow-x-hidden">
+            <div className="max-h-[520px] min-h-[520px] overflow-y-auto overflow-x-hidden">
               <table className="min-w-full table-fixed text-xs">
                 <colgroup>
                   <col className="w-[18%]" />
@@ -184,7 +202,7 @@ export default function AdminRequestsPage() {
                       </td>
                     </tr>
                   )}
-                  {filtered.map((r) => (
+                  {currentSlice.map((r) => (
                     <tr
                       key={r.id}
                       className="border-t border-zinc-900/80 hover:bg-zinc-900/60"
@@ -233,6 +251,38 @@ export default function AdminRequestsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex items-center justify-between border-t border-zinc-900 px-4 py-3 text-[11px] text-zinc-400">
+              <span>
+                Showing{' '}
+                {filtered.length === 0
+                  ? 0
+                  : (currentPage - 1) * ITEMS_PER_PAGE + 1}{' '}
+                -
+                {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of{' '}
+                {filtered.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange('prev')}
+                  disabled={currentPage === 1}
+                  className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                <span className="text-zinc-500">
+                  Page {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange('next')}
+                  disabled={currentPage === totalPages}
+                  className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
 
