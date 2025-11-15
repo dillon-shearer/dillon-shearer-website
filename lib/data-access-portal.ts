@@ -61,10 +61,21 @@ async function logStatusEvent(
   }
 }
 
+export async function recordDeliverableMetadata(
+  requestId: string,
+  metadata: DeliverableMetadata,
+  description = 'Deliverable metadata updated.'
+) {
+  const payload = JSON.stringify(metadata);
+  await logStatusEvent(requestId, 'DELIVERABLE_METADATA', description, payload);
+}
+
 type DeliverableMetadata = {
   visualizationPresets?: DarVisualizationPreset[];
   visualizationCustomRequest?: string | null;
   visualizationPalette?: string[];
+  customDeliveryStatus?: 'pending' | 'fulfilled' | 'rejected';
+  customDeliveryNote?: string | null;
 };
 
 const DEMO_VISUALIZATION_ENRICHMENTS: Record<string, DeliverableMetadata> = {
@@ -119,7 +130,8 @@ function applyDeliverablePlan(request: DarRequest): DarRequest {
         parsed &&
         (parsed.visualizationPresets ||
           parsed.visualizationCustomRequest ||
-          parsed.visualizationPalette)
+          parsed.visualizationPalette ||
+          parsed.customDeliveryStatus)
       ) {
         meta = parsed;
         break;
@@ -146,6 +158,17 @@ function applyDeliverablePlan(request: DarRequest): DarRequest {
       : request.visualizationPalette && request.visualizationPalette.length > 0
         ? request.visualizationPalette
         : fallback?.visualizationPalette) ?? [];
+
+  request.customDeliveryStatus =
+    meta?.customDeliveryStatus ??
+    request.customDeliveryStatus ??
+    fallback?.customDeliveryStatus ??
+    (request.visualizationCustomRequest ? 'pending' : null);
+  request.customDeliveryNote =
+    meta?.customDeliveryNote ??
+    request.customDeliveryNote ??
+    fallback?.customDeliveryNote ??
+    null;
 
   return request;
 }
@@ -269,6 +292,8 @@ export async function createDarRequest(
       visualizationPresets: input.visualizationPresets ?? [],
       visualizationCustomRequest: input.visualizationCustomRequest ?? null,
       visualizationPalette: input.visualizationPalette ?? [],
+      customDeliveryStatus: input.visualizationCustomRequest ? 'pending' : undefined,
+      customDeliveryNote: null,
     });
 
     await logStatusEvent(id, 'SUBMITTED', `${input.piName} submitted the request.`, metadata);
@@ -277,6 +302,8 @@ export async function createDarRequest(
     mapped.visualizationPresets = input.visualizationPresets ?? [];
     mapped.visualizationCustomRequest = input.visualizationCustomRequest ?? null;
     mapped.visualizationPalette = input.visualizationPalette ?? [];
+    mapped.customDeliveryStatus = input.visualizationCustomRequest ? 'pending' : null;
+    mapped.customDeliveryNote = null;
     return mapped;
   } catch (error) {
     console.error('Error creating DAR request:', error);
@@ -720,6 +747,8 @@ function mapDarRequestFromDb(row: any): DarRequest {
     visualizationPresets: [],
     visualizationCustomRequest: null,
     visualizationPalette: [],
+    customDeliveryStatus: null,
+    customDeliveryNote: null,
     requestedDatasets: [],
     collaborators: [],
     statusEvents: [],

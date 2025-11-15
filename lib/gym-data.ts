@@ -231,7 +231,7 @@ async function buildSplitAllTime(palette: string[]): Promise<VisualizationPackag
     chart: {
       type: 'doughnut',
       xLabel: 'Split',
-      yLabel: 'Volume (kg-reps)',
+      yLabel: 'Volume (lb-reps)',
       series,
     },
     data: {
@@ -261,11 +261,11 @@ async function buildVolumeAllTime(palette: string[]): Promise<VisualizationPacka
     id: 'viz-volume-all-time',
     presetId: 'volume-all-time',
     title: 'All-time weekly volume',
-    description: 'Each dot is a week in the database with total kg-reps.',
+    description: 'Each dot is a week in the database with total lb-reps.',
     chart: {
       type: 'line',
       xLabel: 'Week',
-      yLabel: 'Total volume (kg-reps)',
+      yLabel: 'Total volume (lb-reps)',
       series,
     },
     data: { points: series },
@@ -278,7 +278,7 @@ async function buildRepBandsAllTime(palette: string[]): Promise<VisualizationPac
     WITH bands AS (
       SELECT
         CASE
-          WHEN reps <= 5 THEN '≤5 (strength)'
+          WHEN reps <= 5 THEN '<=5 (strength)'
           WHEN reps BETWEEN 6 AND 8 THEN '6-8'
           WHEN reps BETWEEN 9 AND 12 THEN '9-12'
           WHEN reps BETWEEN 13 AND 15 THEN '13-15'
@@ -293,7 +293,7 @@ async function buildRepBandsAllTime(palette: string[]): Promise<VisualizationPac
     FROM bands
     ORDER BY
       CASE band
-        WHEN '≤5 (strength)' THEN 1
+        WHEN '<=5 (strength)' THEN 1
         WHEN '6-8' THEN 2
         WHEN '9-12' THEN 3
         WHEN '13-15' THEN 4

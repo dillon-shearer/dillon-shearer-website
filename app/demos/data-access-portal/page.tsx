@@ -108,7 +108,7 @@ function HeroPreviewCard({ preview, step }: { preview: HeroPreview; step: number
       </div>
       <h3 className="mt-3 text-lg font-semibold text-zinc-50">{preview.title}</h3>
       <p className="mt-2 text-xs text-zinc-400">{preview.description}</p>
-      <MiniScreen accent={accent} />
+      <MiniScreen accent={accent} preview={preview} />
       <span className={`mt-3 text-[11px] font-medium text-zinc-200 ${accent.text}`}>
         Explore &rarr;
       </span>
@@ -118,30 +118,146 @@ function HeroPreviewCard({ preview, step }: { preview: HeroPreview; step: number
 
 type AccentStyle = (typeof ACCENT_STYLES)[keyof typeof ACCENT_STYLES];
 
-function MiniScreen({ accent }: { accent: AccentStyle }) {
+function MiniScreen({ accent, preview }: { accent: AccentStyle; preview: HeroPreview }) {
+  if (preview.href.includes('/request')) {
+    return (
+      <div className="mt-4 rounded-xl border border-zinc-900 bg-zinc-950/80 p-3 text-[10px]">
+        <div className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-red-400/60" />
+          <span className="h-2 w-2 rounded-full bg-amber-400/60" />
+          <span className="h-2 w-2 rounded-full bg-emerald-400/60" />
+        </div>
+        <div className="mt-3 space-y-2 text-zinc-400">
+          <div className="grid gap-2">
+            <div className="h-2 rounded bg-zinc-800/70" />
+            <div className="h-6 rounded-lg border border-zinc-900 bg-zinc-950/70" />
+          </div>
+          <div className="grid gap-2">
+            <div className="h-2 rounded bg-zinc-800/70" />
+            <div className="h-16 rounded-xl border border-zinc-900 bg-zinc-950/60" />
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {[0, 1, 2, 3].map((field) => (
+              <div key={field} className="space-y-1">
+                <div className="h-2 rounded bg-zinc-800/70" />
+                <div className="h-4 rounded-lg border border-zinc-900 bg-zinc-950/70" />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map((chip) => (
+              <span
+                key={chip}
+                className="rounded-full border border-zinc-800 px-2 py-0.5 text-[8px]"
+              >
+                Scope {chip + 1}
+              </span>
+            ))}
+          </div>
+          <div className="grid gap-1 md:grid-cols-2">
+            {[0, 1].map((action) => (
+              <div
+                key={action}
+                className="rounded-full border border-zinc-800 px-2 py-1 text-center text-[9px]"
+              >
+                {action === 0 ? 'Back' : 'Submit'}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.href.includes('/admin')) {
+    return (
+      <div className="mt-4 rounded-xl border border-zinc-900 bg-zinc-950/80 p-3 text-[10px] text-zinc-400">
+        <div className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-red-400/60" />
+          <span className="h-2 w-2 rounded-full bg-amber-400/60" />
+          <span className="h-2 w-2 rounded-full bg-emerald-400/60" />
+        </div>
+        <div className="mt-3 grid gap-2">
+          <div className="grid grid-cols-2 gap-1">
+            {['Submitted', 'In Review', 'Approved', 'Denied'].map((label) => (
+              <div
+                key={label}
+                className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-2 text-center text-[9px]"
+              >
+                <p className={`text-[8px] uppercase tracking-[0.2em] ${accent.text}`}>{label}</p>
+                <p className="mt-1 text-sm text-zinc-50">{Math.floor(Math.random() * 4)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-2">
+            <div className="flex items-center gap-2 text-[8px] uppercase tracking-[0.2em] text-zinc-500">
+              <span>PI</span>
+              <span>Institution</span>
+              <span>Status</span>
+            </div>
+            {[0, 1, 2].map((row) => (
+              <div
+                key={row}
+                className="mt-1 flex items-center justify-between rounded border border-zinc-900/60 bg-zinc-950/50 px-2 py-1 text-[9px]"
+              >
+                <span className="text-zinc-200">H. Patel</span>
+                <span className="text-zinc-400">Stanford</span>
+                <span className={`rounded-full border px-2 py-[1px] text-[8px] ${accent.ring}`}>
+                  {row === 0 ? 'Approved' : row === 1 ? 'Submitted' : 'Review'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="mt-4 rounded-xl border border-zinc-900 bg-zinc-950/80 p-3 text-[10px]">
+    <div className="mt-4 rounded-xl border border-zinc-900 bg-zinc-950/80 p-3 text-[10px] text-zinc-400">
       <div className="flex items-center gap-1">
         <span className="h-2 w-2 rounded-full bg-red-400/60" />
         <span className="h-2 w-2 rounded-full bg-amber-400/60" />
         <span className="h-2 w-2 rounded-full bg-emerald-400/60" />
       </div>
       <div className="mt-3 space-y-2">
-        <div className="h-2.5 rounded-full bg-zinc-800/80" />
-        <div className="h-2 rounded-full bg-zinc-800/60" />
-        <div className="rounded-xl border border-zinc-900 bg-zinc-950/80 p-2">
-          <div className={`h-2 w-1/3 rounded-full ${accent.dot}`} />
-          <div className="mt-2 h-2 w-2/3 rounded-full bg-zinc-800/80" />
-          <div className="mt-1 h-2 w-1/2 rounded-full bg-zinc-900/70" />
+        <div className="flex flex-col gap-1">
+          <div className="h-2 rounded bg-zinc-800/70" />
+          <div className="rounded-lg border border-zinc-900 bg-zinc-950/70 p-1 text-[9px]">
+            <p className="text-emerald-200">API key: dar_xxx</p>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {[0, 1, 2].map((index) => (
+        <div className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-2">
+          <div className="flex items-center justify-between text-[8px] uppercase tracking-[0.2em] text-zinc-500">
+            <span>Dataset</span>
+            <span>Status</span>
+          </div>
+          {[0, 1].map((card) => (
             <div
-              key={index}
-              className="h-10 rounded-lg border border-zinc-900 bg-zinc-950/60 p-1"
+              key={card}
+              className="mt-1 flex items-center justify-between rounded border border-zinc-900/60 bg-zinc-950/50 px-2 py-1 text-[9px]"
             >
-              <div className={`h-1.5 rounded ${accent.dot}`} />
-              <div className="mt-1 h-1 rounded bg-zinc-800/70" />
+              <span className="text-zinc-200">Set metrics</span>
+              <span className={`rounded-full border px-2 py-[1px] text-[8px] ${accent.ring}`}>
+                CSV
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-2">
+          <div className="flex items-center justify-between text-[8px] uppercase tracking-[0.2em] text-zinc-500">
+            <span>Visual bundle</span>
+            <span>Status</span>
+          </div>
+          {[0, 1].map((visual) => (
+            <div
+              key={visual}
+              className="mt-1 flex items-center justify-between rounded border border-zinc-900/60 bg-zinc-950/50 px-2 py-1 text-[9px]"
+            >
+              <span className="text-zinc-200">Weekly volume</span>
+              <span className={`rounded-full border px-2 py-[1px] text-[8px] ${accent.ring}`}>
+                ZIP
+              </span>
             </div>
           ))}
         </div>

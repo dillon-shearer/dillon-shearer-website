@@ -47,9 +47,17 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    if (datasets.length === 0) {
+    const visualizationPackages = await buildVisualizationPackages({
+      presets: fullRequest.visualizationPresets ?? [],
+      palette: fullRequest.visualizationPalette ?? [],
+    });
+
+    const hasVisualizationRequest =
+      visualizationPackages.length > 0 || Boolean(fullRequest.visualizationCustomRequest);
+
+    if (datasets.length === 0 && !hasVisualizationRequest) {
       return NextResponse.json(
-        { error: 'No datasets are approved for this request yet.' },
+        { error: 'No datasets or visualization packages are approved for this request yet.' },
         { status: 403 }
       );
     }
@@ -60,12 +68,11 @@ export async function POST(req: NextRequest) {
         piName: fullRequest.piName,
         projectTitle: fullRequest.projectTitle,
         datasets,
-        visualizationPackages: await buildVisualizationPackages({
-          presets: fullRequest.visualizationPresets ?? [],
-          palette: fullRequest.visualizationPalette ?? [],
-        }),
+        visualizationPackages,
         visualizationCustomRequest: fullRequest.visualizationCustomRequest ?? null,
         visualizationPalette: fullRequest.visualizationPalette ?? [],
+        customDeliveryStatus: fullRequest.customDeliveryStatus ?? null,
+        customDeliveryNote: fullRequest.customDeliveryNote ?? null,
       },
     });
   } catch (err) {

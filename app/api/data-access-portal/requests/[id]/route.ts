@@ -9,10 +9,15 @@ import {
   markDarRequestInReview,
   replaceRequestedDatasets,
   replaceDarCollaborators,
+  recordDeliverableMetadata,
 } from '@/lib/data-access-portal';
 import { PRIMARY_DATASET_LEVEL } from '@/lib/gym-datasets';
 import { COUNTRY_OPTIONS } from '@/lib/constants/countries';
-import type { DarRequest, GymDatasetSlug } from '@/types/data-access-portal';
+import type {
+  DarRequest,
+  DarVisualizationPreset,
+  GymDatasetSlug,
+} from '@/types/data-access-portal';
 
 type PathParams = { params: Promise<{ id: string }> };
 
@@ -252,6 +257,68 @@ export async function PATCH(req: NextRequest, { params }: PathParams) {
       if (!patched) return NextResponse.json({ error: 'Not found' }, { status: 404 });
       const hydrated = await getDarRequestWithRelations(id);
       return NextResponse.json({ data: hydrated ?? patched });
+    }
+
+    if (action === 'update-deliverables') {
+      const existing = await getDarRequestWithRelations(id);
+      if (!existing) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+
+      const allowedVizPresets: DarVisualizationPreset[] = [
+        'split-all-time',
+        'volume-all-time',
+        'rep-all-time',
+        'training-days-all-time',
+      ];
+
+      let nextPresets = existing.visualizationPresets ?? [];
+      if (Array.isArray(body.visualizationPresets)) {
+        nextPresets = (body.visualizationPresets as string[]).filter((preset) =>
+          allowedVizPresets.includes(preset as DarVisualizationPreset)
+        ) as DarVisualizationPreset[];
+      }
+
+      let nextCustomStatus = existing.customDeliveryStatus ?? null;
+      if (
+        body.customDeliveryStatus === 'pending' ||
+        body.customDeliveryStatus === 'fulfilled' ||
+        body.customDeliveryStatus === 'rejected'
+      ) {
+        nextCustomStatus = body.customDeliveryStatus;
+      } else if (!nextCustomStatus && existing.visualizationCustomRequest) {
+        nextCustomStatus = 'pending';
+      }
+
+      let nextCustomNote =
+        typeof body.customDeliveryNote === 'string'
+          ? body.customDeliveryNote.trim()
+          : '';
+      if (nextCustomStatus !== 'rejected') {
+        nextCustomNote = '';
+      } else if (!nextCustomNote) {
+        return NextResponse.json(
+          { error: 'Provide a note when rejecting a custom visualization request.' },
+          { status: 400 }
+        );
+      }
+
+      const metadata = {
+        visualizationPresets: nextPresets,
+        visualizationCustomRequest: existing.visualizationCustomRequest ?? null,
+        visualizationPalette: existing.visualizationPalette ?? [],
+        customDeliveryStatus: nextCustomStatus ?? undefined,
+        customDeliveryNote: nextCustomNote ? nextCustomNote : undefined,
+      };
+
+      await recordDeliverableMetadata(
+        id,
+        metadata,
+        'Deliverable metadata updated by admin.'
+      );
+
+      const refreshed = await getDarRequestWithRelations(id);
+      return NextResponse.json({ data: refreshed ?? existing });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

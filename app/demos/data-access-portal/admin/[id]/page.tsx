@@ -3,7 +3,11 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import type { DarRequest, DarRequestStatus } from '@/types/data-access-portal';
+import type {
+  DarRequest,
+  DarRequestStatus,
+  DarVisualizationPreset,
+} from '@/types/data-access-portal';
 import {
   AVAILABLE_GYM_DATASETS,
   DATASET_LEVEL_LABELS,
@@ -28,6 +32,28 @@ type AdminCollaboratorInput = {
 const MAX_FUTURE_DATE = '2999-12-31';
 const datasetOptions = AVAILABLE_GYM_DATASETS;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VISUAL_PRESETS: { id: DarVisualizationPreset; label: string; description: string }[] = [
+  {
+    id: 'split-all-time',
+    label: 'Split by gender',
+    description: 'Compare male vs female registered athletes for the last 24 months.',
+  },
+  {
+    id: 'volume-all-time',
+    label: 'Set volume',
+    description: 'Stacked bar showing total sets logged per discipline monthly.',
+  },
+  {
+    id: 'rep-all-time',
+    label: 'Average reps',
+    description: 'Rolling 3 month average of reps per set across all gyms.',
+  },
+  {
+    id: 'training-days-all-time',
+    label: 'Training days',
+    description: 'Line chart showing average number of training days per week.',
+  },
+];
 
 const isValidEmail = (value: string) => EMAIL_REGEX.test(value.trim());
 
@@ -236,6 +262,14 @@ export default function AdminRequestDetailPage() {
   );
   const [collaboratorsForm, setCollaboratorsForm] = useState<AdminCollaboratorInput[]>([]);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [vizPresetSelections, setVizPresetSelections] = useState<
+    Record<DarVisualizationPreset, boolean>
+  >({});
+  const [deliverablesDirty, setDeliverablesDirty] = useState(false);
+  const [customDeliveryStatusDraft, setCustomDeliveryStatusDraft] = useState<
+    'pending' | 'fulfilled' | 'rejected' | null
+  >(null);
+  const [customDeliveryNoteDraft, setCustomDeliveryNoteDraft] = useState('');
 
   const hydrateFormFromRequest = (r: DarRequest) => {
     setRequest(r);
@@ -268,6 +302,16 @@ export default function AdminRequestDetailPage() {
       })
     );
     setDenialReason(r.deniedReason ?? '');
+    const presetMap: Record<DarVisualizationPreset, boolean> = {};
+    (r.visualizationPresets ?? []).forEach((preset) => {
+      presetMap[preset] = true;
+    });
+    setVizPresetSelections(presetMap);
+    setCustomDeliveryStatusDraft(
+      r.customDeliveryStatus ?? (r.visualizationCustomRequest ? 'pending' : null)
+    );
+    setCustomDeliveryNoteDraft(r.customDeliveryNote ?? '');
+    setDeliverablesDirty(false);
   };
 
   const auditTrail = useMemo(() => buildAuditTrail(request), [request]);
@@ -339,7 +383,41 @@ export default function AdminRequestDetailPage() {
     setFormError(null);
   };
 
+  const handleVizPresetToggle = (presetId: DarVisualizationPreset) => {
+    setVizPresetSelections((prev) => {
+      const next = { ...prev };
+      if (next[presetId]) {
+        delete next[presetId];
+      } else {
+        next[presetId] = true;
+      }
+      return next;
+    });
+    setDeliverablesDirty(true);
+  };
+
+  const markCustomDeliveryStatus = (status: 'pending' | 'fulfilled' | 'rejected') => {
+    if (!request?.visualizationCustomRequest) return;
+    setCustomDeliveryStatusDraft(status);
+    if (status !== 'rejected') {
+      setCustomDeliveryNoteDraft('');
+    }
+    setDeliverablesDirty(true);
+  };
+
+  const handleCustomDeliveryNoteChange = (value: string) => {
+    setCustomDeliveryNoteDraft(value);
+    setDeliverablesDirty(true);
+  };
+
   const currentApiKey = apiKey ?? request?.apiKey ?? null;
+  const selectedVizPresetsList = useMemo(
+    () =>
+      Object.entries(vizPresetSelections)
+        .filter(([, active]) => active)
+        .map(([key]) => key as DarVisualizationPreset),
+    [vizPresetSelections]
+  );
 
   const copyApiKeyToClipboard = async () => {
     if (!currentApiKey) return;
@@ -362,6 +440,42 @@ export default function AdminRequestDetailPage() {
       console.error('Failed to copy API key', err);
       setApiKeyCopyState('error');
     }
+  };
+
+  const persistDeliverablesIfNeeded = async (base: DarRequest) => {
+    if (!id) return base;
+    const basePresets = base.visualizationPresets ?? [];
+    const baseSorted = [...basePresets].sort();
+    const selectedSorted = [...selectedVizPresetsList].sort();
+    const presetsChanged =
+      baseSorted.length !== selectedSorted.length ||
+      selectedSorted.some((preset, index) => preset !== baseSorted[index]);
+    const baseStatus =
+      base.customDeliveryStatus ?? (base.visualizationCustomRequest ? 'pending' : null);
+    const draftStatus =
+      customDeliveryStatusDraft ?? (base.visualizationCustomRequest ? 'pending' : null);
+    const baseNote = base.customDeliveryNote ?? '';
+    const draftNote = customDeliveryNoteDraft.trim();
+    if (!presetsChanged && baseStatus === draftStatus && baseNote === draftNote) {
+      setDeliverablesDirty(false);
+      return base;
+    }
+    const res = await fetch(`/api/data-access-portal/requests/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update-deliverables',
+        visualizationPresets: selectedVizPresetsList,
+        customDeliveryStatus: draftStatus ?? undefined,
+        customDeliveryNote: draftStatus === 'rejected' ? draftNote : undefined,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.error ?? 'Failed to update deliverables');
+    }
+    setDeliverablesDirty(false);
+    return json.data as DarRequest;
   };
 
   const saveMetadata = async () => {
@@ -477,7 +591,9 @@ export default function AdminRequestDetailPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Failed to save');
 
-      hydrateFormFromRequest(json.data as DarRequest);
+      let latest = json.data as DarRequest;
+      latest = await persistDeliverablesIfNeeded(latest);
+      hydrateFormFromRequest(latest);
     } catch (err: any) {
       setFormError(err.message ?? 'Failed to save metadata');
     } finally {
@@ -767,6 +883,152 @@ export default function AdminRequestDetailPage() {
                           </button>
                         );
                       })}
+                    </div>
+                  </section>
+
+                  {/* Visualization package */}
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-medium text-zinc-100">Visualization package</h3>
+                      <span className="text-[11px] text-zinc-500">
+                        {request.visualizationPresets?.length || request.visualizationCustomRequest
+                          ? 'Requested'
+                          : 'Not requested'}
+                      </span>
+                    </div>
+                    {(!request.visualizationPresets ||
+                      request.visualizationPresets.length === 0) &&
+                      !request.visualizationCustomRequest && (
+                        <p className="text-xs text-zinc-500">
+                          No visualization package was requested, but you can still toggle presets if you plan to deliver
+                          any.
+                        </p>
+                      )}
+                    <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                      <p className="text-[11px] text-zinc-400">
+                        Toggle presets to control which visuals you&apos;ll deliver. Changes save when you click the main
+                        Save button at the top.
+                      </p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {VISUAL_PRESETS.map((preset) => {
+                          const active = !!vizPresetSelections[preset.id];
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => handleVizPresetToggle(preset.id)}
+                              className={`flex h-full flex-col justify-between rounded-2xl border p-4 text-left transition ${
+                                active
+                                  ? 'border-emerald-500/70 bg-emerald-500/5 shadow-inner shadow-emerald-500/20'
+                                  : 'border-zinc-800 bg-zinc-950/60 hover:border-emerald-500/40 hover:text-emerald-100'
+                              }`}
+                            >
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <h4 className="text-sm font-semibold text-zinc-50">{preset.label}</h4>
+                                  <span
+                                    className={`h-2.5 w-2.5 rounded-full ${
+                                      active ? 'bg-emerald-400 shadow-sm shadow-emerald-500' : 'bg-zinc-700'
+                                    }`}
+                                  />
+                                </div>
+                                <p className="text-xs text-zinc-400">{preset.description}</p>
+                              </div>
+                              <p className="mt-3 text-[11px] text-zinc-400">
+                                {active ? 'Selected' : 'Tap to include this visual'}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {deliverablesDirty && (
+                        <p className="text-[11px] text-amber-300">
+                          Visualization changes are pending. Click Save details above to push them live.
+                        </p>
+                      )}
+                      {request.visualizationCustomRequest && (
+                        <div className="space-y-2 rounded-xl border border-sky-500/50 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-100">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-sky-200">Custom ask</p>
+                              <p className="mt-1 text-sky-100">{request.visualizationCustomRequest}</p>
+                            </div>
+                            <span
+                              className={`rounded-full border px-2 py-[1px] text-[10px] font-medium ${
+                                (customDeliveryStatusDraft ?? 'pending') === 'fulfilled'
+                                  ? 'border-emerald-500/50 text-emerald-200'
+                                  : customDeliveryStatusDraft === 'rejected'
+                                    ? 'border-red-500/50 text-red-200'
+                                    : 'border-yellow-500/50 text-yellow-200'
+                              }`}
+                            >
+                              {customDeliveryStatusDraft === 'fulfilled'
+                                ? 'Fulfilled'
+                                : customDeliveryStatusDraft === 'rejected'
+                                  ? 'Rejected'
+                                  : 'Pending'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-sky-200">
+                            Promise delivery via email within 3-5 business days. Update the status once you send the bundle
+                            or reject the request.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => markCustomDeliveryStatus('pending')}
+                              className="rounded-full border border-sky-400/70 px-3 py-1 text-[10px] font-medium text-sky-100 transition hover:border-sky-300"
+                            >
+                              Mark pending
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => markCustomDeliveryStatus('fulfilled')}
+                              className="rounded-full border border-emerald-400/70 px-3 py-1 text-[10px] font-medium text-emerald-100 transition hover:border-emerald-300"
+                            >
+                              Mark fulfilled
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => markCustomDeliveryStatus('rejected')}
+                              className="rounded-full border border-red-400/70 px-3 py-1 text-[10px] font-medium text-red-100 transition hover:border-red-300"
+                            >
+                              Reject custom ask
+                            </button>
+                          </div>
+                          {customDeliveryStatusDraft === 'rejected' && (
+                            <div className="space-y-1">
+                              <label className="text-[10px] uppercase tracking-[0.2em] text-sky-200">
+                                Rejection reason (shown to requester)
+                              </label>
+                              <textarea
+                                className="min-h-[80px] w-full rounded-lg border border-sky-500/40 bg-black/30 px-3 py-2 text-[11px] text-sky-100 outline-none focus:border-sky-400"
+                                value={customDeliveryNoteDraft}
+                                onChange={(e) => handleCustomDeliveryNoteChange(e.target.value)}
+                                placeholder="Explain why this custom package can’t be fulfilled."
+                              />
+                              {!customDeliveryNoteDraft.trim() && (
+                                <p className="text-[10px] text-yellow-200">
+                                  Provide a note before rejecting—this message appears in the download room.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {request.visualizationPalette && request.visualizationPalette.length > 0 && (
+                        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
+                          Palette:
+                          {request.visualizationPalette.slice(0, 5).map((color) => (
+                            <span
+                              key={color}
+                              className="h-4 w-4 rounded-full border border-zinc-800"
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </section>
 

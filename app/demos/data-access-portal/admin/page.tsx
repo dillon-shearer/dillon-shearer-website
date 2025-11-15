@@ -165,10 +165,10 @@ export default function AdminRequestsPage() {
               <table className="min-w-full table-fixed text-xs">
                 <colgroup>
                   <col className="w-[18%]" />
-                  <col className="w-[34%]" />
+                  <col className="w-[36%]" />
                   <col className="w-[22%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[6%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[8%]" />
                   <col className="w-[4%]" />
                 </colgroup>
                 <thead className="sticky top-0 bg-zinc-950/95 backdrop-blur">
@@ -288,16 +288,20 @@ export default function AdminRequestsPage() {
 
           <div className="flex w-full flex-col gap-4 xl:min-h-[480px]">
             <div className="grid grid-cols-2 gap-3">
-              <SummaryCard label="Total requests" value={totalRequests} />
               <SummaryCard
-                label="Approved"
-                value={statusSummary.APPROVED ?? 0}
-                accent="text-emerald-300"
+                label="Submitted"
+                value={statusSummary.SUBMITTED ?? 0}
+                accent="text-zinc-200"
               />
               <SummaryCard
                 label="In review"
                 value={statusSummary.IN_REVIEW ?? 0}
                 accent="text-sky-300"
+              />
+              <SummaryCard
+                label="Approved"
+                value={statusSummary.APPROVED ?? 0}
+                accent="text-emerald-300"
               />
               <SummaryCard
                 label="Denied"
