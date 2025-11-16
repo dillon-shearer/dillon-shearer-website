@@ -96,6 +96,7 @@ export interface DarRequest {
 
   requestedDatasets?: DarRequestedDataset[];
   collaborators?: DarCollaborator[];
+  collaboratorCount?: number;
   statusEvents?: DarStatusEvent[];
 }
 

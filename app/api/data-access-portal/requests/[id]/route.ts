@@ -279,14 +279,28 @@ export async function PATCH(req: NextRequest, { params }: PathParams) {
         ) as DarVisualizationPreset[];
       }
 
-      let nextCustomStatus = existing.customDeliveryStatus ?? null;
+      let nextCustomRequest: string | null =
+        typeof body.visualizationCustomRequest === 'string'
+          ? body.visualizationCustomRequest.trim()
+          : existing.visualizationCustomRequest ?? '';
+      if (!nextCustomRequest) {
+        nextCustomRequest = null;
+      }
+      const hasCustomRequest = !!nextCustomRequest;
+
+      let nextCustomStatus: 'pending' | 'fulfilled' | 'rejected' | null =
+        existing.customDeliveryStatus ?? null;
       if (
         body.customDeliveryStatus === 'pending' ||
         body.customDeliveryStatus === 'fulfilled' ||
         body.customDeliveryStatus === 'rejected'
       ) {
         nextCustomStatus = body.customDeliveryStatus;
-      } else if (!nextCustomStatus && existing.visualizationCustomRequest) {
+      }
+
+      if (!hasCustomRequest) {
+        nextCustomStatus = null;
+      } else if (!nextCustomStatus) {
         nextCustomStatus = 'pending';
       }
 
@@ -294,18 +308,26 @@ export async function PATCH(req: NextRequest, { params }: PathParams) {
         typeof body.customDeliveryNote === 'string'
           ? body.customDeliveryNote.trim()
           : '';
-      if (nextCustomStatus !== 'rejected') {
+      if (nextCustomStatus === 'rejected') {
+        if (!hasCustomRequest) {
+          return NextResponse.json(
+            { error: 'Cannot reject a custom visualization request when none is set.' },
+            { status: 400 }
+          );
+        }
+        if (!nextCustomNote) {
+          return NextResponse.json(
+            { error: 'Provide a note when rejecting a custom visualization request.' },
+            { status: 400 }
+          );
+        }
+      } else {
         nextCustomNote = '';
-      } else if (!nextCustomNote) {
-        return NextResponse.json(
-          { error: 'Provide a note when rejecting a custom visualization request.' },
-          { status: 400 }
-        );
       }
 
       const metadata = {
         visualizationPresets: nextPresets,
-        visualizationCustomRequest: existing.visualizationCustomRequest ?? null,
+        visualizationCustomRequest: nextCustomRequest,
         customDeliveryStatus: nextCustomStatus ?? undefined,
         customDeliveryNote: nextCustomNote ? nextCustomNote : undefined,
       };

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { PortalPageShell } from '../_components/page-shell';
 import type { DarRequest, DarRequestStatus } from '@/types/data-access-portal';
 
@@ -13,12 +14,14 @@ const STATUS_COLORS: Record<DarRequestStatus, string> = {
 };
 
 export default function AdminRequestsPage() {
+  const router = useRouter();
   const [requests, setRequests] = useState<DarRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'ALL' | DarRequestStatus>('ALL');
   const [search, setSearch] = useState('');
   const ITEMS_PER_PAGE = 10;
   const [currentPage, setCurrentPage] = useState(1);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -102,8 +105,8 @@ export default function AdminRequestsPage() {
   const activeQueue = submittedCount + inReviewCount;
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentSlice = filtered.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
   );
 
   useEffect(() => {
@@ -115,6 +118,32 @@ export default function AdminRequestsPage() {
       if (direction === 'prev') return Math.max(1, prev - 1);
       return Math.min(totalPages, prev + 1);
     });
+  };
+
+  const handleAdminExport = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch('/api/data-access-portal/requests/export', {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch export');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'dar-admin-export.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download admin data', err);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -132,24 +161,34 @@ export default function AdminRequestsPage() {
       }
     >
       <div className="flex flex-col gap-8">
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            placeholder="Search name, email, institution..."
-            className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-sky-500/70 md:w-72"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select
-            className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-sky-500/70 md:w-auto"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <div className="flex flex-1 flex-wrap items-center gap-3">
+            <input
+              placeholder="Search name, email, institution..."
+              className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-sky-500/70 md:w-72"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              className="w-full rounded-full border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-sky-500/70 md:w-auto"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+            >
+              <option value="ALL">All statuses</option>
+              <option value="SUBMITTED">Submitted</option>
+              <option value="IN_REVIEW">In review</option>
+              <option value="APPROVED">Approved</option>
+              <option value="DENIED">Denied</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleAdminExport}
+            disabled={downloading}
+            className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900/70 px-4 py-2 text-xs font-medium text-zinc-200 transition hover:border-emerald-500/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <option value="ALL">All statuses</option>
-            <option value="SUBMITTED">Submitted</option>
-            <option value="IN_REVIEW">In review</option>
-            <option value="APPROVED">Approved</option>
-            <option value="DENIED">Denied</option>
-          </select>
+            {downloading ? 'Preparing CSV...' : 'Download Admin Data'}
+          </button>
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,2.6fr)_minmax(320px,1fr)] xl:items-stretch">
@@ -160,28 +199,30 @@ export default function AdminRequestsPage() {
             <div className="overflow-hidden">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[13%]" />
-                  <col className="w-[29%]" />
-                  <col className="w-[20%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[14%]" />
+                  <col className="w-[24%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
                 </colgroup>
                 <thead className="sticky top-0 bg-zinc-950/95 backdrop-blur">
                   <tr className="border-b border-zinc-800/80 text-xs uppercase tracking-[0.16em] text-zinc-500">
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                     <th className="px-3 py-2 text-left font-medium">Requester</th>
-                    <th className="px-3 py-2 text-left font-medium">Institution</th>
-                    <th className="px-3 py-2 text-left font-medium">Country</th>
                     <th className="px-3 py-2 text-left font-medium">Created</th>
-                    <th className="px-3 py-2 text-right font-medium">Open</th>
+                    <th className="px-3 py-2 text-left font-medium">Project Title</th>
+                    <th className="px-3 py-2 text-left font-medium">Institution</th>
+                    <th className="px-3 py-2 text-left font-medium">Collaborators</th>
+                    <th className="px-3 py-2 text-left font-medium">Country</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm">
                   {loading && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-3 py-6 text-center text-sm text-zinc-500"
                       >
                         Loading requests...
@@ -191,18 +232,30 @@ export default function AdminRequestsPage() {
                   {!loading && filtered.length === 0 && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-3 py-6 text-center text-[11px] text-zinc-500"
                       >
                         No requests match the current filters.
                       </td>
                     </tr>
                   )}
-                  {currentSlice.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="border-t border-zinc-900/80 hover:bg-zinc-900/60"
-                    >
+                  {currentSlice.map((r) => {
+                    const collaboratorCount =
+                      r.collaboratorCount ?? r.collaborators?.length ?? 0;
+                    return (
+                      <tr
+                        key={r.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => router.push(`/demos/data-access-portal/admin/${r.id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            router.push(`/demos/data-access-portal/admin/${r.id}`);
+                          }
+                        }}
+                        className="border-t border-zinc-900/80 transition hover:bg-zinc-900/60 focus-visible:outline focus-visible:outline-emerald-500/50 cursor-pointer"
+                      >
                       <td className="px-3 py-2 align-top whitespace-nowrap">
                         <span
                           className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${STATUS_COLORS[r.status]}`}
@@ -227,6 +280,22 @@ export default function AdminRequestsPage() {
                           </span>
                         </div>
                       </td>
+                      <td className="px-3 py-2 align-top whitespace-nowrap">
+                        <span
+                          className="block truncate text-sm text-zinc-400"
+                          title={new Date(r.createdAt).toLocaleString()}
+                        >
+                          {new Date(r.createdAt).toLocaleDateString()}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <span
+                          className="block truncate text-sm text-zinc-200"
+                          title={r.projectTitle ?? 'No project title'}
+                        >
+                          {r.projectTitle ?? 'Untitled project'}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 align-top">
                         <span
                           className="block truncate text-sm text-zinc-200"
@@ -236,29 +305,22 @@ export default function AdminRequestsPage() {
                         </span>
                       </td>
                       <td className="px-3 py-2 align-top">
+                        {collaboratorCount > 0 ? (
+                          <span className="font-mono text-xs text-zinc-200">
+                            {collaboratorCount}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-zinc-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
                         <span className="block truncate text-sm text-zinc-300">
                           {r.country}
                         </span>
                       </td>
-                      <td className="px-3 py-2 align-top whitespace-nowrap">
-                        <span
-                          className="block truncate text-sm text-zinc-400"
-                          title={new Date(r.createdAt).toLocaleDateString()}
-                        >
-                          {new Date(r.createdAt).toLocaleDateString()}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right align-top whitespace-nowrap">
-                        <Link
-                          href={`/demos/data-access-portal/admin/${r.id}`}
-                          className="inline-flex items-center justify-end text-sm text-sky-400 hover:text-sky-300"
-                          title="View request"
-                        >
-                          View
-                        </Link>
-                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

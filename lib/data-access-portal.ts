@@ -353,6 +353,8 @@ export async function createDarRequest(
     mapped.visualizationCustomRequest = input.visualizationCustomRequest ?? null;
     mapped.customDeliveryStatus = input.visualizationCustomRequest ? 'pending' : null;
     mapped.customDeliveryNote = null;
+    mapped.collaborators = input.collaborators ?? [];
+    mapped.collaboratorCount = mapped.collaborators.length;
     return mapped;
   } catch (error) {
     console.error('Error creating DAR request:', error);
@@ -370,7 +372,8 @@ export async function getAllDarRequests(): Promise<DarRequest[]> {
       SELECT
         r.*,
         se.metadata AS latest_metadata,
-        se.created_at AS latest_metadata_at
+        se.created_at AS latest_metadata_at,
+        COALESCE(collab.collaborator_count, 0) AS collaborator_count
       FROM dar_requests r
       LEFT JOIN LATERAL (
         SELECT metadata, created_at
@@ -379,6 +382,11 @@ export async function getAllDarRequests(): Promise<DarRequest[]> {
         ORDER BY created_at DESC
         LIMIT 1
       ) se ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS collaborator_count
+        FROM dar_collaborators dc
+        WHERE dc.request_id = r.id
+      ) collab ON TRUE
       ORDER BY r.created_at DESC
     `;
     return result.rows.map((row) => {
@@ -448,6 +456,7 @@ export async function getDarRequestById(
       email: row.email,
       phone: row.institution,
     }));
+    request.collaboratorCount = request.collaborators.length;
 
     await ensureStatusEventsTable();
     const eventsResult = await sql`
@@ -799,6 +808,10 @@ function mapDarRequestFromDb(row: any): DarRequest {
     customDeliveryNote: null,
     requestedDatasets: [],
     collaborators: [],
+    collaboratorCount:
+      typeof row.collaborator_count === 'number'
+        ? Number(row.collaborator_count)
+        : undefined,
     statusEvents: [],
   };
 }

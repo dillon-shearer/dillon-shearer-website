@@ -94,8 +94,8 @@ export default function DataAccessRequestPage() {
   const [emailDuplicate, setEmailDuplicate] = useState(false);
   const [emailDuplicateMessage, setEmailDuplicateMessage] = useState<string | null>(null);
   const [emailChecking, setEmailChecking] = useState(false);
-  const [emailCheckNonce, setEmailCheckNonce] = useState(0);
   const emailCheckAbortRef = useRef<AbortController | null>(null);
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
 
   const [piFirstName, setPiFirstName] = useState('');
   const [piLastName, setPiLastName] = useState('');
@@ -118,52 +118,12 @@ export default function DataAccessRequestPage() {
   const [collaborators, setCollaborators] = useState<CollaboratorInput[]>([]);
 
   useEffect(() => {
-    const emailValue = piEmail.trim();
     emailCheckAbortRef.current?.abort();
-
-    if (!emailValue || !isValidEmail(emailValue)) {
-      setEmailChecking(false);
-      setEmailDuplicate(false);
-      setEmailDuplicateMessage(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    emailCheckAbortRef.current = controller;
-    setEmailChecking(true);
-
-    const checkEmail = async () => {
-      try {
-        const res = await fetch('/api/data-access-portal/requests/check-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailValue }),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          throw new Error('Failed to verify email');
-        }
-        const json = await res.json();
-        if (controller.signal.aborted) return;
-        const exists = Boolean(json.exists);
-        setEmailDuplicate(exists);
-        setEmailDuplicateMessage(exists ? DUPLICATE_EMAIL_MESSAGE : null);
-      } catch (err: any) {
-        if (err?.name === 'AbortError') return;
-        console.error('Email availability check failed', err);
-      } finally {
-        if (!controller.signal.aborted) {
-          setEmailChecking(false);
-        }
-      }
-    };
-
-    checkEmail();
-
-    return () => {
-      controller.abort();
-    };
-  }, [piEmail, emailCheckNonce]);
+    setEmailChecking(false);
+    setEmailDuplicate(false);
+    setEmailDuplicateMessage(null);
+    setVerifiedEmail(null);
+  }, [piEmail]);
 
   const submitDisabled = submitting;
 
@@ -222,6 +182,64 @@ export default function DataAccessRequestPage() {
     return true;
   };
 
+  const ensureEmailAvailable = async () => {
+    const emailValue = piEmail.trim();
+    if (!emailValue || !isValidEmail(emailValue)) {
+      return false;
+    }
+
+    if (verifiedEmail === emailValue) {
+      if (emailDuplicate) {
+        setEmailError(DUPLICATE_EMAIL_MESSAGE);
+        return false;
+      }
+      setEmailError(null);
+      return true;
+    }
+
+    emailCheckAbortRef.current?.abort();
+    const controller = new AbortController();
+    emailCheckAbortRef.current = controller;
+    setEmailChecking(true);
+
+    try {
+      const res = await fetch('/api/data-access-portal/requests/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailValue }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new Error('Failed to verify email');
+      }
+      const json = await res.json();
+      if (controller.signal.aborted) {
+        return false;
+      }
+      const exists = Boolean(json.exists);
+      setEmailDuplicate(exists);
+      setEmailDuplicateMessage(exists ? DUPLICATE_EMAIL_MESSAGE : null);
+      setVerifiedEmail(emailValue);
+      if (exists) {
+        setEmailError(DUPLICATE_EMAIL_MESSAGE);
+        return false;
+      }
+      setEmailError(null);
+      return true;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return false;
+      }
+      console.error('Email availability check failed', err);
+      setEmailError('Could not verify email. Please try again.');
+      return false;
+    } finally {
+      if (!controller.signal.aborted) {
+        setEmailChecking(false);
+      }
+    }
+  };
+
   const validateContactSection = () => {
     const firstName = piFirstName.trim();
     const lastName = piLastName.trim();
@@ -248,16 +266,6 @@ export default function DataAccessRequestPage() {
 
     if (!org) {
       setError('Institution is required.');
-      return false;
-    }
-
-    if (isValidEmail(email) && emailChecking) {
-      setEmailError('Checking email availability. Please wait a moment.');
-      return false;
-    }
-
-    if (emailDuplicate) {
-      setEmailError(DUPLICATE_EMAIL_MESSAGE);
       return false;
     }
 
@@ -337,6 +345,18 @@ export default function DataAccessRequestPage() {
   };
 
   const handleNextStep = () => {
+    if (activeStep === 0) {
+      if (!validateContactSection() || emailChecking) {
+        return;
+      }
+      void (async () => {
+        const available = await ensureEmailAvailable();
+        if (available) {
+          setActiveStep((prev) => Math.min(prev + 1, lastStepIndex));
+        }
+      })();
+      return;
+    }
     if (ensureStepValid(activeStep)) {
       setActiveStep((prev) => Math.min(prev + 1, lastStepIndex));
     }
@@ -395,6 +415,11 @@ export default function DataAccessRequestPage() {
       setActiveStep(0);
       return;
     }
+    const emailAvailable = await ensureEmailAvailable();
+    if (!emailAvailable) {
+      setActiveStep(0);
+      return;
+    }
     if (!validateProjectSection()) {
       setActiveStep(1);
       return;
@@ -408,16 +433,6 @@ export default function DataAccessRequestPage() {
     const normalizedEmail = trimmedEmail.toLowerCase();
 
     if (lastSubmittedEmail && normalizedEmail === lastSubmittedEmail) {
-      setEmailError(DUPLICATE_EMAIL_MESSAGE);
-      return;
-    }
-
-    if (isValidEmail(trimmedEmail) && emailChecking) {
-      setEmailError('Checking email availability. Please wait a moment.');
-      return;
-    }
-
-    if (emailDuplicate) {
       setEmailError(DUPLICATE_EMAIL_MESSAGE);
       return;
     }
@@ -475,7 +490,9 @@ export default function DataAccessRequestPage() {
       const json = await res.json();
       setSuccessId(json.data.id);
       setLastSubmittedEmail(normalizedEmail);
-      setEmailCheckNonce((nonce) => nonce + 1);
+      setVerifiedEmail(trimmedEmail);
+      setEmailDuplicate(false);
+      setEmailDuplicateMessage(null);
       setEmailError(null);
     } catch (err: any) {
       const message = err.message ?? 'Something went wrong';
@@ -483,7 +500,7 @@ export default function DataAccessRequestPage() {
         setEmailError(DUPLICATE_EMAIL_MESSAGE);
         setEmailDuplicate(true);
         setEmailDuplicateMessage(DUPLICATE_EMAIL_MESSAGE);
-        setEmailCheckNonce((nonce) => nonce + 1);
+        setVerifiedEmail(trimmedEmail);
         setLastSubmittedEmail(normalizedEmail);
       } else {
         setError(message);

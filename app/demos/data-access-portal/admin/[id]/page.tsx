@@ -270,6 +270,7 @@ export default function AdminRequestDetailPage() {
     'pending' | 'fulfilled' | 'rejected' | null
   >(null);
   const [customDeliveryNoteDraft, setCustomDeliveryNoteDraft] = useState('');
+  const [customVizRequestDraft, setCustomVizRequestDraft] = useState('');
 
   const hydrateFormFromRequest = (r: DarRequest) => {
     setRequest(r);
@@ -311,6 +312,7 @@ export default function AdminRequestDetailPage() {
       r.customDeliveryStatus ?? (r.visualizationCustomRequest ? 'pending' : null)
     );
     setCustomDeliveryNoteDraft(r.customDeliveryNote ?? '');
+    setCustomVizRequestDraft(r.visualizationCustomRequest ?? '');
     setDeliverablesDirty(false);
   };
 
@@ -397,7 +399,7 @@ export default function AdminRequestDetailPage() {
   };
 
   const markCustomDeliveryStatus = (status: 'pending' | 'fulfilled' | 'rejected') => {
-    if (!request?.visualizationCustomRequest) return;
+    if (!customVizRequestDraft.trim()) return;
     setCustomDeliveryStatusDraft(status);
     if (status !== 'rejected') {
       setCustomDeliveryNoteDraft('');
@@ -406,7 +408,17 @@ export default function AdminRequestDetailPage() {
   };
 
   const handleCustomDeliveryNoteChange = (value: string) => {
+    if (!customVizRequestDraft.trim()) return;
     setCustomDeliveryNoteDraft(value);
+    setDeliverablesDirty(true);
+  };
+
+  const handleCustomVizRequestChange = (value: string) => {
+    setCustomVizRequestDraft(value);
+    if (!value.trim()) {
+      setCustomDeliveryStatusDraft(null);
+      setCustomDeliveryNoteDraft('');
+    }
     setDeliverablesDirty(true);
   };
 
@@ -418,6 +430,19 @@ export default function AdminRequestDetailPage() {
         .map(([key]) => key as DarVisualizationPreset),
     [vizPresetSelections]
   );
+  const hasCustomVizRequest = customVizRequestDraft.trim().length > 0;
+  const customStatusLabel =
+    customDeliveryStatusDraft === 'fulfilled'
+      ? 'Fulfilled'
+      : customDeliveryStatusDraft === 'rejected'
+        ? 'Rejected'
+        : 'Pending';
+  const customStatusClass =
+    customDeliveryStatusDraft === 'fulfilled'
+      ? 'border-emerald-500/50 text-emerald-200'
+      : customDeliveryStatusDraft === 'rejected'
+        ? 'border-red-500/50 text-red-200'
+        : 'border-yellow-500/50 text-yellow-200';
 
   const copyApiKeyToClipboard = async () => {
     if (!currentApiKey) return;
@@ -450,13 +475,23 @@ export default function AdminRequestDetailPage() {
     const presetsChanged =
       baseSorted.length !== selectedSorted.length ||
       selectedSorted.some((preset, index) => preset !== baseSorted[index]);
+    const baseCustomRequest = (base.visualizationCustomRequest ?? '').trim();
+    const draftCustomRequest = customVizRequestDraft.trim();
+    const customRequestChanged = baseCustomRequest !== draftCustomRequest;
+    const hasDraftCustom = !!draftCustomRequest;
     const baseStatus =
-      base.customDeliveryStatus ?? (base.visualizationCustomRequest ? 'pending' : null);
-    const draftStatus =
-      customDeliveryStatusDraft ?? (base.visualizationCustomRequest ? 'pending' : null);
+      base.customDeliveryStatus ?? (baseCustomRequest ? 'pending' : null);
+    const draftStatus = hasDraftCustom
+      ? customDeliveryStatusDraft ?? 'pending'
+      : null;
     const baseNote = base.customDeliveryNote ?? '';
     const draftNote = customDeliveryNoteDraft.trim();
-    if (!presetsChanged && baseStatus === draftStatus && baseNote === draftNote) {
+    if (
+      !presetsChanged &&
+      baseStatus === draftStatus &&
+      baseNote === draftNote &&
+      !customRequestChanged
+    ) {
       setDeliverablesDirty(false);
       return base;
     }
@@ -466,6 +501,7 @@ export default function AdminRequestDetailPage() {
       body: JSON.stringify({
         action: 'update-deliverables',
         visualizationPresets: selectedVizPresetsList,
+        visualizationCustomRequest: draftCustomRequest || null,
         customDeliveryStatus: draftStatus ?? undefined,
         customDeliveryNote: draftStatus === 'rejected' ? draftNote : undefined,
       }),
@@ -946,76 +982,84 @@ export default function AdminRequestDetailPage() {
                           Visualization changes are pending. Click Save details above to push them live.
                         </p>
                       )}
-                      {request.visualizationCustomRequest && (
-                        <div className="space-y-2 rounded-xl border border-sky-500/50 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-100">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-sky-200">Custom ask</p>
-                              <p className="mt-1 text-sky-100">{request.visualizationCustomRequest}</p>
-                            </div>
-                            <span
-                              className={`rounded-full border px-2 py-[1px] text-[10px] font-medium ${
-                                (customDeliveryStatusDraft ?? 'pending') === 'fulfilled'
-                                  ? 'border-emerald-500/50 text-emerald-200'
-                                  : customDeliveryStatusDraft === 'rejected'
-                                    ? 'border-red-500/50 text-red-200'
-                                    : 'border-yellow-500/50 text-yellow-200'
-                              }`}
-                            >
-                              {customDeliveryStatusDraft === 'fulfilled'
-                                ? 'Fulfilled'
-                                : customDeliveryStatusDraft === 'rejected'
-                                  ? 'Rejected'
-                                  : 'Pending'}
+                      <div className="space-y-2 rounded-2xl border border-sky-500/50 bg-sky-500/10 px-3 py-3 text-[11px] text-sky-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-sky-200">Custom ask (optional)</p>
+                            <p className="mt-1 text-sky-100">
+                              Capture bespoke visualization or export work even if they email the request later.
+                            </p>
+                          </div>
+                          {hasCustomVizRequest ? (
+                            <span className={`rounded-full border px-2 py-[1px] text-[10px] font-medium ${customStatusClass}`}>
+                              {customStatusLabel}
                             </span>
-                          </div>
-                          <p className="text-[10px] text-sky-200">
-                            Promise delivery via email within 3-5 business days. Update the status once you send the bundle
-                            or reject the request.
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => markCustomDeliveryStatus('pending')}
-                              className="rounded-full border border-sky-400/70 px-3 py-1 text-[10px] font-medium text-sky-100 transition hover:border-sky-300"
-                            >
-                              Mark pending
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => markCustomDeliveryStatus('fulfilled')}
-                              className="rounded-full border border-emerald-400/70 px-3 py-1 text-[10px] font-medium text-emerald-100 transition hover:border-emerald-300"
-                            >
-                              Mark fulfilled
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => markCustomDeliveryStatus('rejected')}
-                              className="rounded-full border border-red-400/70 px-3 py-1 text-[10px] font-medium text-red-100 transition hover:border-red-300"
-                            >
-                              Reject custom ask
-                            </button>
-                          </div>
-                          {customDeliveryStatusDraft === 'rejected' && (
-                            <div className="space-y-1">
-                              <label className="text-[10px] uppercase tracking-[0.2em] text-sky-200">
-                                Rejection reason (shown to requester)
-                              </label>
-                              <textarea
-                                className="min-h-[80px] w-full rounded-lg border border-sky-500/40 bg-black/30 px-3 py-2 text-[11px] text-sky-100 outline-none focus:border-sky-400"
-                                value={customDeliveryNoteDraft}
-                                onChange={(e) => handleCustomDeliveryNoteChange(e.target.value)}
-                                placeholder="Explain why this custom package can’t be fulfilled."
-                              />
-                              {!customDeliveryNoteDraft.trim() && (
-                                <p className="text-[10px] text-yellow-200">
-                                  Provide a note before rejecting—this message appears in the download room.
-                                </p>
-                              )}
-                            </div>
+                          ) : (
+                            <span className="rounded-full border border-sky-500/40 px-2 py-[1px] text-[10px] font-medium text-sky-200">
+                              Optional
+                            </span>
                           )}
                         </div>
-                      )}
+                        <textarea
+                          className="min-h-[80px] w-full rounded-lg border border-sky-500/40 bg-black/30 px-3 py-2 text-[11px] text-sky-100 outline-none focus:border-sky-400"
+                          value={customVizRequestDraft}
+                          onChange={(e) => handleCustomVizRequestChange(e.target.value)}
+                          placeholder="Describe the bespoke chart or bundle promised over email."
+                        />
+                        {hasCustomVizRequest ? (
+                          <>
+                            <p className="text-[10px] text-sky-200">
+                              Promise delivery via email within 3-5 business days. Update the status once you send the
+                              bundle or reject the request.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => markCustomDeliveryStatus('pending')}
+                                className="rounded-full border border-sky-400/70 px-3 py-1 text-[10px] font-medium text-sky-100 transition hover:border-sky-300"
+                              >
+                                Mark pending
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => markCustomDeliveryStatus('fulfilled')}
+                                className="rounded-full border border-emerald-400/70 px-3 py-1 text-[10px] font-medium text-emerald-100 transition hover:border-emerald-300"
+                              >
+                                Mark fulfilled
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => markCustomDeliveryStatus('rejected')}
+                                className="rounded-full border border-red-400/70 px-3 py-1 text-[10px] font-medium text-red-100 transition hover:border-red-300"
+                              >
+                                Reject custom ask
+                              </button>
+                            </div>
+                            {customDeliveryStatusDraft === 'rejected' && (
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase tracking-[0.2em] text-sky-200">
+                                  Rejection reason (shown to requester)
+                                </label>
+                                <textarea
+                                  className="min-h-[80px] w-full rounded-lg border border-sky-500/40 bg-black/30 px-3 py-2 text-[11px] text-sky-100 outline-none focus:border-sky-400"
+                                  value={customDeliveryNoteDraft}
+                                  onChange={(e) => handleCustomDeliveryNoteChange(e.target.value)}
+                                  placeholder="Explain why this custom package can’t be fulfilled."
+                                />
+                                {!customDeliveryNoteDraft.trim() && (
+                                  <p className="text-[10px] text-yellow-200">
+                                    Provide a note before rejecting—this message appears in the download room.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-[10px] text-sky-300">
+                            Add the request details here if they change their mind and need a bespoke delivery.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </section>
 
