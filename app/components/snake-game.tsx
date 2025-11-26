@@ -302,14 +302,15 @@ const HiddenSnakeButton: React.FC = () => {
         onClick={() => setIsGameOpen(true)}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        aria-label="Launch hidden snake game"
         className={`
           fixed bottom-4 right-4 w-8 h-8 rounded-full transition-all duration-500 z-40
           ${isHovered 
-            ? 'bg-green-500 dark:bg-green-600 shadow-lg scale-110 opacity-100' 
-            : 'bg-gray-300 dark:bg-gray-700 shadow-sm opacity-5 hover:opacity-15'
+            ? 'bg-green-500 dark:bg-green-600 shadow-lg motion-safe:scale-110 opacity-100' 
+            : 'bg-gray-300 dark:bg-gray-700 shadow-sm opacity-5 hover:opacity-15 motion-safe:scale-100'
           }
           border ${isHovered ? 'border-green-400 dark:border-green-500' : 'border-gray-400 dark:border-gray-600'}
-          flex items-center justify-center
+          flex items-center justify-center motion-reduce:transition-none motion-reduce:transform-none
         `}
       >
         <span className={`transition-all duration-500 ${isHovered ? 'text-lg scale-125 opacity-100' : 'text-xs scale-75 opacity-30'}`}>

@@ -1,114 +1,57 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-interface GitHubCommit {
+interface RepoCommit {
   sha: string
-  commit: {
-    message: string
-    author: {
-      name: string
-      email: string
-      date: string
-    }
-    committer: {
-      name: string
-      email: string
-      date: string
-    }
-  }
-  author: {
-    login: string
-    avatar_url: string
-  } | null
-  html_url: string
+  message: string
+  authorName: string
+  authorLogin: string | null
+  avatarUrl: string | null
+  committedAt: string
+  htmlUrl: string
+}
+
+interface ActivityResponse {
+  commits: RepoCommit[]
+  repo: string
+  fetchedAt: string
 }
 
 export default function GitHubWidget() {
-  const [commits, setCommits] = useState<GitHubCommit[]>([])
+  const [commits, setCommits] = useState<RepoCommit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [showModal, setShowModal] = useState(false)
-  const [modalLoading, setModalLoading] = useState(false)
-  const [allCommits, setAllCommits] = useState<GitHubCommit[]>([])
-
-  // Replace with your actual GitHub username and repo name
-  const GITHUB_USERNAME = 'dillon-shearer'
-  const REPO_NAME = 'dillon-shearer-website' // Update this to your actual repo name
+  const [repoName, setRepoName] = useState('dillon-shearer/dillon-shearer-website')
 
   useEffect(() => {
-    const fetchCommits = async () => {
+    const controller = new AbortController()
+
+    async function loadActivity() {
       try {
-        // Fetch more commits initially to get accurate monthly count
-        const response = await fetch(
-          `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO_NAME}/commits?per_page=100`,
-          {
-            headers: {
-              'Accept': 'application/vnd.github.v3+json',
-            }
-          }
-        )
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch commits')
-        }
-
-        const data = await response.json()
-        setCommits(data)
+        const response = await fetch('/api/github-activity', { signal: controller.signal })
+        if (!response.ok) throw new Error('Request failed')
+        const data = (await response.json()) as ActivityResponse
+        setCommits(data.commits)
+        setRepoName(data.repo)
       } catch (err) {
-        console.error('Error fetching GitHub commits:', err)
-        setError(true)
+        if ((err as Error).name !== 'AbortError') {
+          console.error('Error fetching GitHub activity:', err)
+          setError(true)
+        }
       } finally {
         setLoading(false)
       }
     }
 
-    fetchCommits()
+    loadActivity()
+    return () => controller.abort()
   }, [])
 
-  const fetchAllCommits = async () => {
-    setModalLoading(true)
-    try {
-      // Fetch up to 1000 commits for complete history
-      let allCommitsData: GitHubCommit[] = []
-      let page = 1
-      const perPage = 100
-
-      while (allCommitsData.length < 1000) {
-        const response = await fetch(
-          `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO_NAME}/commits?per_page=${perPage}&page=${page}`,
-          {
-            headers: {
-              'Accept': 'application/vnd.github.v3+json',
-            }
-          }
-        )
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch all commits')
-        }
-
-        const data = await response.json()
-        
-        if (data.length === 0) break // No more commits
-        
-        allCommitsData = [...allCommitsData, ...data]
-        page++
-      }
-
-      setAllCommits(allCommitsData.slice(0, 1000)) // Limit to 1000 commits
-    } catch (err) {
-      console.error('Error fetching all commits:', err)
-    } finally {
-      setModalLoading(false)
-    }
-  }
-
   const handleCardClick = () => {
+    if (!commits.length) return
     setShowModal(true)
-    if (allCommits.length === 0) {
-      fetchAllCommits()
-    }
   }
 
   const formatDate = (dateString: string) => {
@@ -156,19 +99,17 @@ export default function GitHubWidget() {
   }
 
   const latestCommit = commits[0]
-  const lastUpdated = new Date(latestCommit.commit.author.date)
-  const timeAgo = formatTimeAgo(latestCommit.commit.author.date)
+  const timeAgo = formatTimeAgo(latestCommit.committedAt)
 
   // Count commits from this month (exact count)
   const currentMonth = new Date().getMonth()
   const currentYear = new Date().getFullYear()
   const commitsThisMonth = commits.filter(commit => {
-    const commitDate = new Date(commit.commit.author.date)
+    const commitDate = new Date(commit.committedAt)
     return commitDate.getMonth() === currentMonth && commitDate.getFullYear() === currentYear
   }).length
 
-  // Clean up commit message (remove any prefixes, limit length)
-  const commitMessage = latestCommit.commit.message
+  const commitMessage = latestCommit.message
     .split('\n')[0] // Take first line only
     .substring(0, 60) // Limit length
     .trim()
@@ -215,65 +156,58 @@ export default function GitHubWidget() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {modalLoading ? (
-                <div className="flex justify-center items-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="ml-3 text-gray-600 dark:text-gray-400">Loading commits...</span>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {allCommits.map((commit, index) => (
-                    <div key={commit.sha} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
-                            {commit.author && (
-                              <img 
-                                src={commit.author.avatar_url} 
-                                alt={commit.author.login}
-                                className="w-6 h-6 rounded-full"
-                              />
-                            )}
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {commit.author?.login || commit.commit.author.name}
-                            </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {formatDate(commit.commit.author.date)}
-                            </span>
-                          </div>
-                          <p className="text-gray-800 dark:text-gray-200 mb-2 break-words">
-                            {commit.commit.message.split('\n')[0]}
-                          </p>
-                          {commit.commit.message.split('\n').length > 1 && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line">
-                              {commit.commit.message.split('\n').slice(1).join('\n').trim()}
-                            </p>
+              <div className="space-y-4">
+                {commits.map(commit => (
+                  <div key={commit.sha} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2">
+                          {commit.avatarUrl && (
+                            <img 
+                              src={commit.avatarUrl} 
+                              alt={commit.authorLogin ?? commit.authorName}
+                              className="w-6 h-6 rounded-full"
+                            />
                           )}
-                          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            <span className="font-mono">{commit.sha.substring(0, 7)}</span>
-                            <a 
-                              href={commit.html_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                            >
-                              View on GitHub →
-                            </a>
-                          </div>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {commit.authorLogin || commit.authorName}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatDate(commit.committedAt)}
+                          </span>
+                        </div>
+                        <p className="text-gray-800 dark:text-gray-200 mb-2 break-words">
+                          {commit.message.split('\n')[0]}
+                        </p>
+                        {commit.message.split('\n').length > 1 && (
+                          <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line">
+                            {commit.message.split('\n').slice(1).join('\n').trim()}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span className="font-mono">{commit.sha.substring(0, 7)}</span>
+                          <a 
+                            href={commit.html_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          >
+                            View on GitHub →
+                          </a>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Footer */}
             <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4 bg-gray-50 dark:bg-gray-800">
               <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400">
-                <span>Repository: {GITHUB_USERNAME}/{REPO_NAME}</span>
+                <span>Repository: {repoName}</span>
                 <a 
-                  href={`https://github.com/${GITHUB_USERNAME}/${REPO_NAME}`}
+                  href={`https://github.com/${repoName}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"

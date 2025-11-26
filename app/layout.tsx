@@ -8,23 +8,33 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import Footer from './components/footer'
 import { baseUrl } from './sitemap'
 
+const siteDescription = 'Healthcare-focused data scientist building analytics portals, dashboards, and AI copilots for life-science teams.'
+
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: {
     default: 'Home | DWD',
     template: '%s',
   },
-  description: '',
+  description: siteDescription,
   icons: {
     icon: '/favicon.ico', // updated to favicon
   },
   openGraph: {
     title: 'Data With Dillon',
-    description: '',
+    description: siteDescription,
     url: baseUrl,
     siteName: 'Data With Dillon',
     locale: 'en_US',
     type: 'website',
+    images: [
+      {
+        url: `${baseUrl}/og`,
+        width: 1200,
+        height: 630,
+        alt: 'Data With Dillon',
+      }
+    ],
   },
   robots: {
     index: true,
@@ -48,6 +58,31 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Person',
+        name: 'Dillon Shearer',
+        url: baseUrl,
+        sameAs: [
+          'https://github.com/dillon-shearer',
+          'https://www.linkedin.com/in/dillonshearer/',
+        ],
+        jobTitle: 'Data Scientist',
+        worksFor: {
+          '@type': 'Organization',
+          name: 'Data With Dillon',
+        },
+      },
+      {
+        '@type': 'WebSite',
+        name: 'Data With Dillon',
+        url: baseUrl,
+      },
+    ],
+  }
+
   return (
     <html
       lang="en"
@@ -68,6 +103,11 @@ export default function RootLayout({
           <Analytics />
           <SpeedInsights />
         </main>
+        <script
+          type="application/ld+json"
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </body>
     </html>
   )

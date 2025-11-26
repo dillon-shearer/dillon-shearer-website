@@ -3,8 +3,19 @@
 import { useState } from 'react'
 import { submitContactForm } from './actions'
 
+type FormStatus =
+  | 'idle'
+  | 'sending'
+  | 'success'
+  | 'error'
+  | 'missing'
+  | 'invalid-email'
+  | 'rate-limit'
+  | 'spam'
+  | 'forbidden'
+
 export default function ContactForm() {
-  const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error' | 'missing' | 'invalid-email'>('idle')
+  const [status, setStatus] = useState<FormStatus>('idle')
 
   function isValidEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -30,10 +41,23 @@ export default function ContactForm() {
     if (result?.success) {
       setStatus('success')
       form.reset()
-    } else if (result?.error === 'missing') {
-      setStatus('missing')
     } else {
-      setStatus('error')
+      switch (result?.error) {
+        case 'missing':
+          setStatus('missing')
+          break
+        case 'rate-limit':
+          setStatus('rate-limit')
+          break
+        case 'spam':
+          setStatus('spam')
+          break
+        case 'forbidden':
+          setStatus('forbidden')
+          break
+        default:
+          setStatus('error')
+      }
     }
   }
 
@@ -56,6 +80,30 @@ export default function ContactForm() {
         </div>
       )}
 
+      {status === 'rate-limit' && (
+        <div className="mb-6 p-4 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg">
+          <p className="text-yellow-900 dark:text-yellow-100">
+            ⚠️ You’ve reached the hourly message limit. Please try again later or email me directly.
+          </p>
+        </div>
+      )}
+
+      {status === 'spam' && (
+        <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-red-800 dark:text-red-200">
+            ❌ Something felt off about that submission. Please try again or email me directly.
+          </p>
+        </div>
+      )}
+
+      {status === 'forbidden' && (
+        <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-red-800 dark:text-red-200">
+            ❌ Please submit the form directly from datawithdillon.com.
+          </p>
+        </div>
+      )}
+
       {status === 'invalid-email' && (
         <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <p className="text-red-800 dark:text-red-200">
@@ -73,6 +121,17 @@ export default function ContactForm() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="hidden" aria-hidden="true">
+          <label htmlFor="company">Company</label>
+          <input
+            type="text"
+            id="company"
+            name="company"
+            tabIndex={-1}
+            autoComplete="off"
+          />
+        </div>
+
         <div>
           <label htmlFor="name" className="block text-sm font-medium mb-2">
             Name *
