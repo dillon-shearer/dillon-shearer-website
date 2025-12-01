@@ -391,10 +391,8 @@ export function KoreaderRemotePanel() {
     }
   }
 
-  function openPanelFromButton(force = false) {
-    if (!hasEndpoint || force) {
-      setIsPanelOpen(true)
-    }
+  function openPanelFromButton() {
+    setIsPanelOpen(true)
   }
 
   function handleStatusClick() {
@@ -441,7 +439,11 @@ export function KoreaderRemotePanel() {
             <Link href="/" className="flex-1">
               <RemoteButtonNav label="← Home" helper="Back to site" />
             </Link>
-            <button type="button" onClick={() => openPanelFromButton()} className="flex-1">
+            <button
+              type="button"
+              onClick={() => openPanelFromButton()}
+              className="relative z-10 flex-1 pointer-events-auto"
+            >
               <RemoteButtonNav label="Setup" helper="Instructions" />
             </button>
           </div>
