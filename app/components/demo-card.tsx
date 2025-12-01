@@ -99,7 +99,7 @@ export default function DemoCard({ demo }: DemoCardProps) {
           ) : (
             <>
               <Link
-                href={`/demos/${demo.slug}`}
+                href={`/${demo.slug === 'koreader-remote' ? 'koreader-remote' : `demos/${demo.slug}`}`}
                 className={`${demo.mobileReady ? 'flex' : 'hidden md:flex'} flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all duration-200`}
               >
                 Explore demo
