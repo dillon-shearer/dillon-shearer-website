@@ -14,4 +14,5 @@ export interface Demo {
   liveUrl?: string
   demoUrl?: string
   highlights: string[]
+  mobileReady?: boolean
 }

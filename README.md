@@ -77,3 +77,26 @@ This project is tailored to my workflow but feel free to fork it. If you add dem
 - Adding MDX files under `app/blog/(posts)` for new articles
 
 Enjoy exploring the demos and adapting them to your own stack.
+
+## KOReader Remote Demo
+
+The `/koreader-remote` surface lets you flip KOReader pages from your phone or laptop while your Kindle stays on a stand nearby. It never proxies LAN traffic through a server—commands originate from the browser that you have open.
+
+### Prerequisites
+
+1. On your Kindle, open KOReader and enable the HTTP remote server (Tools → Remote control).
+2. Note the IP and port displayed in KOReader (e.g., `192.168.1.67:8080`).
+3. Connect your phone/computer and Kindle to the same Wi-Fi network or hotspot.
+
+### Using the demo
+
+1. Open `https://www.datawithdillon.com/koreader-remote` (or `http://localhost:3000/koreader-remote` during development).
+2. Enter the KOReader IP & port into the form and hit **Save**. The value persists in `localStorage` so it is remembered in that browser.
+3. Tap **◀ Page Up** or **Page Down ▶**. The page issues `fetch()` calls with `mode: "no-cors"` directly to your Kindle.
+
+### Troubleshooting
+
+- Double-check that the IP & port in KOReader match what you saved.
+- Ensure the Kindle is awake and KOReader’s HTTP server is still running.
+- Keep the browser and Kindle on the same LAN; remote or cellular networks will not work.
+- Some browsers block HTTP requests from HTTPS pages. If that happens, open the site via HTTP on your LAN or allow mixed content for the page.

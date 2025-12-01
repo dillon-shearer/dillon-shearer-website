@@ -27,6 +27,8 @@ export function middleware(req: NextRequest) {
     '/demos',
     '/demos/mobile-warning',
     '/demos/gym-dashboard/form', // mobile data-entry page
+    '/koreader-remote',
+    '/demos/koreader-remote',
   ])
   const allowPrefixes = ['/demos/gym-dashboard/form/'] // nested under form
 

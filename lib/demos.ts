@@ -67,6 +67,29 @@ const demos: Demo[] = [
       'Responsive dark theme design',
       'Real-time statistics dashboard'
     ]
+  },
+  {
+    slug: 'koreader-remote',
+    title: 'KOReader Remote',
+    description:
+      'Control KOReader page turns from your browser on the same Wi-Fi network. Configure the Kindle IP & port, then trigger Page Up or Page Down with a tap.',
+    image: '/images/demos/koreader-remote-preview.jpg',
+    techStack: ['Next.js', 'React', 'Tailwind CSS'],
+    category: 'frontend',
+    complexity: 'beginner',
+    buildTime: '1 day',
+    status: 'live',
+    featured: false,
+    githubUrl:
+      'https://github.com/dillon-shearer/dillon-shearer-website/tree/main/app/demos/koreader-remote',
+    liveUrl: 'https://www.datawithdillon.com/koreader-remote',
+    highlights: [
+      'LocalStorage-backed configuration for the Kindle IP and port.',
+      'Browser-native fetch commands that speak directly to KOReader on your LAN.',
+      'Status log with timestamps for the last action sent.',
+      'Responsive layout that mirrors the Data Access Workflow demo aesthetic.'
+    ],
+    mobileReady: true,
   }
 ]
 

@@ -7,9 +7,10 @@ interface DemoCardProps {
 
 export default function DemoCard({ demo }: DemoCardProps) {
   const isInProgress = demo.status !== 'live'
+  const mobileOrderClass = demo.mobileReady ? 'order-first md:order-none' : ''
 
   return (
-    <div className="group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 overflow-hidden">
+    <div className={`group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 overflow-hidden ${mobileOrderClass}`}>
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-900/20 dark:to-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       <div className="relative p-4 sm:p-6 md:p-8">
         <div className="flex items-start justify-between mb-4 md:mb-6">
@@ -99,13 +100,15 @@ export default function DemoCard({ demo }: DemoCardProps) {
             <>
               <Link
                 href={`/demos/${demo.slug}`}
-                className="hidden md:flex flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all duration-200"
+                className={`${demo.mobileReady ? 'flex' : 'hidden md:flex'} flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all duration-200`}
               >
                 Explore demo
               </Link>
-              <div className="md:hidden flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold">
-                Best viewed on desktop
-              </div>
+              {demo.mobileReady ? null : (
+                <div className="md:hidden flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold">
+                  Best viewed on desktop
+                </div>
+              )}
             </>
           )}
 
