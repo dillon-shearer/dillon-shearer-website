@@ -87,7 +87,7 @@ const demos: Demo[] = [
       'LocalStorage-backed configuration for the Kindle IP and port.',
       'Browser-native fetch commands that speak directly to KOReader on your LAN.',
       'Status log with timestamps for the last action sent.',
-      'Responsive layout that mirrors the Data Access Workflow demo aesthetic.'
+      'Responsive layout supporting swipe and tap navigation.'
     ],
     mobileReady: true,
   }

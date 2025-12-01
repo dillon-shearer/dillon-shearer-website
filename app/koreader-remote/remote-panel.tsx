@@ -274,12 +274,19 @@ function SetupPanel({
       <div className="w-full max-w-lg rounded-3xl border border-zinc-800 bg-black p-6 text-zinc-50 shadow-2xl">
         <div className="space-y-3">
           <h2 className="text-xl font-semibold">Setup &amp; Endpoint</h2>
-        <p className="text-sm text-zinc-300">
-          1. Enable KOReader&apos;s HTTP remote server.<br />
-          2. Note the IP &amp; port shown on the Kindle.<br />
-          3. Enter it once below. We store it in this browser.<br />
-          4. If your phone or tablet sleeps too quickly, bump the system screen-timeout so the remote stays visible.
-        </p>
+          <p className="text-sm text-zinc-300 space-y-2">
+            <span>
+              1. Turn on the KOReader HTTP inspector, then toggle it on (default port is 8080 but it&apos;s listed there).<br />
+              <span className="text-xs text-zinc-500">Menu path: fourth settings menu from the top-left (person + gear) → More tools → KOReader HTTP inspector.</span><br />
+              <span className="text-xs text-zinc-500">Tip: enable “Auto start HTTP server” so it boots automatically next time.</span>
+            </span><br />
+            <span>
+              2. Grab the Kindle IP: open Network info and copy the IP value.<br />
+              <span className="text-xs text-zinc-500">Menu path: third settings menu from the top-left (gear icon) → Network → Network info.</span>
+            </span><br />
+            3. Enter the IP:Port below once; we store it only in this browser.<br />
+            4. If your phone or tablet sleeps too quickly, bump the system screen-timeout so the remote stays visible.
+          </p>
           <label className="block text-sm font-medium text-zinc-200">
             Kindle IP &amp; Port
             <input
