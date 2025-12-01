@@ -73,6 +73,21 @@ export function KoreaderRemotePanel() {
     }
   }
 
+  function markConnectedOptimistically() {
+    const message: StatusState = {
+      tone: 'success',
+      headline: 'KOReader server detected',
+    }
+    connectionStatusRef.current = message
+    if (!isConnectedRef.current) {
+      isConnectedRef.current = true
+      setIsConnected(true)
+      if (!processingRef.current && activeActionRef.current === null) {
+        setStatus(message)
+      }
+    }
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const hasSeen = window.localStorage.getItem(INTRO_STORAGE_KEY) === 'seen'
@@ -305,7 +320,11 @@ export function KoreaderRemotePanel() {
       activeActionRef.current = null
 
       if (result.ok) {
-        connectionControllerRef.current?.markConnected('command')
+        if (connectionControllerRef.current) {
+          connectionControllerRef.current.markConnected('command')
+        } else {
+          markConnectedOptimistically()
+        }
         setStatus({
           tone: 'success',
           headline: `${action.label} sent`,
@@ -528,7 +547,7 @@ function StatusBar({
       }`}
       {...interactiveProps}
     >
-      <p className="font-semibold">{message}</p>
+      <p className="font-semibold text-center">{message}</p>
     </div>
   )
 }
