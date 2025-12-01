@@ -2,13 +2,16 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import {
   KOREADER_ACTIONS,
+  prefetchKoreaderConnection,
   sendKoreaderCommand,
   warmKoreaderEndpoint,
   type KoreaderActionId,
 } from '@/lib/koreader/client'
 import { useKoreaderEndpoint } from './hooks/use-koreader-endpoint'
+import { useScreenWakeLock } from './hooks/use-screen-wake-lock'
 
 const INTRO_STORAGE_KEY = 'dwd:koreader:intro:v1'
 
@@ -21,11 +24,12 @@ type StatusState = {
   url?: string
 }
 
-const INITIAL_STATUS: StatusState = {
+const CTA_STATUS: StatusState = {
   tone: 'idle',
-  headline: 'Waiting for a command',
-  detail: 'Tap Next or Previous (or swipe) to control KOReader.',
+  headline: 'Click here to connect to KOReader',
 }
+
+const INITIAL_STATUS: StatusState = CTA_STATUS
 
 export function KoreaderRemotePanel() {
   const { endpoint, hasEndpoint, inputValue, setInputValue, saveEndpoint, savedAt, isReady } =
@@ -34,29 +38,228 @@ export function KoreaderRemotePanel() {
   const [activeAction, setActiveAction] = useState<KoreaderActionId | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const [hasUserInitiatedConnection, setHasUserInitiatedConnection] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
   const queueRef = useRef<KoreaderActionId[]>([])
   const processingRef = useRef(false)
+  const activeActionRef = useRef<KoreaderActionId | null>(null)
+  const connectionStatusRef = useRef<StatusState | null>(null)
+  const connectionControllerRef = useRef<{
+    handleFailure: (error: string) => void
+    markConnected: (source: 'ping' | 'command') => void
+    restart: () => void
+  } | null>(null)
+  const isConnectedRef = useRef(false)
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [initialCheckComplete, setInitialCheckComplete] = useState(false)
+  useScreenWakeLock(true)
+
+  function applyConnectionStatus(nextStatus: StatusState) {
+    connectionStatusRef.current = nextStatus
+    if (!processingRef.current && activeActionRef.current === null) {
+      setStatus(nextStatus)
+    }
+  }
+
+  function restoreConnectionStatus() {
+    if (
+      !isConnectedRef.current &&
+      connectionStatusRef.current &&
+      !processingRef.current &&
+      activeActionRef.current === null
+    ) {
+      setStatus(connectionStatusRef.current)
+    }
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     const hasSeen = window.localStorage.getItem(INTRO_STORAGE_KEY) === 'seen'
     setIsPanelOpen(!hasSeen || !endpoint)
     setInitialCheckComplete(true)
-  }, [endpoint])
+  }, [endpoint, hasUserInitiatedConnection])
+
+  useEffect(
+    () => () => {
+      if (prefetchTimerRef.current) {
+        clearTimeout(prefetchTimerRef.current)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
-    if (!endpoint) return
-    setStatus({
-      tone: 'idle',
-      headline: 'Warming connection…',
-      detail: 'Pinging KOReader so commands send instantly.',
-    })
-    warmKoreaderEndpoint(endpoint)
-    const timer = setInterval(() => warmKoreaderEndpoint(endpoint), 5000)
-    return () => clearInterval(timer)
-  }, [endpoint])
+    if (!endpoint) {
+      connectionStatusRef.current = CTA_STATUS
+      connectionControllerRef.current = null
+      isConnectedRef.current = false
+      if (!hasUserInitiatedConnection) {
+        setStatus(CTA_STATUS)
+      } else {
+        setStatus({
+          tone: 'error',
+          headline: 'No endpoint configured',
+          detail: 'Open Setup to add your Kindle IP & port.',
+        })
+      }
+      return
+    }
+
+    if (!hasUserInitiatedConnection) {
+      connectionStatusRef.current = CTA_STATUS
+      connectionControllerRef.current = null
+      isConnectedRef.current = false
+      setStatus({
+        tone: 'idle',
+        headline: 'Click here to connect to KOReader',
+      })
+      return
+    }
+
+    let cancelled = false
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+    let restartTimer: ReturnType<typeof setTimeout> | null = null
+    let searchToken = 0
+    const FALLBACK_DELAY_MS = 3000
+    const QUICK_ATTEMPTS = 3
+    const QUICK_DELAY_MS = 250
+
+    const clearFallbackTimer = () => {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer)
+        fallbackTimer = null
+      }
+    }
+
+    const clearRestart = () => {
+      if (restartTimer) {
+        clearTimeout(restartTimer)
+        restartTimer = null
+      }
+    }
+
+    const nextToken = () => {
+      searchToken += 1
+      return searchToken
+    }
+
+    function markConnected(source: 'ping' | 'command') {
+      if (cancelled) return
+      clearFallbackTimer()
+      clearRestart()
+      nextToken()
+      if (!isConnectedRef.current) {
+        isConnectedRef.current = true
+        setIsConnected(true)
+        const message: StatusState = {
+          tone: 'success',
+          headline: 'KOReader server detected',
+        }
+        connectionStatusRef.current = message
+        if (!processingRef.current && activeActionRef.current === null) {
+          setStatus(message)
+        }
+      }
+    }
+
+    async function runQuickProbes(token: number): Promise<boolean> {
+      for (let attempt = 0; attempt < QUICK_ATTEMPTS; attempt += 1) {
+        try {
+          const result = await warmKoreaderEndpoint(endpoint)
+          if (cancelled || token !== searchToken) return false
+          if (result.ok) {
+            markConnected('ping')
+            return true
+          }
+        } catch (error) {
+          if (cancelled || token !== searchToken) return false
+        }
+        await new Promise((resolve) => setTimeout(resolve, QUICK_DELAY_MS))
+      }
+      return false
+    }
+
+    const pingEndpoint = async (token: number) => {
+      const result = await warmKoreaderEndpoint(endpoint)
+      if (cancelled || token !== searchToken) return
+      if (result.ok) {
+        markConnected('ping')
+      } else {
+        handleFailure(result.error)
+      }
+    }
+
+    function startFallbackProbe(token: number) {
+      applyConnectionStatus({
+        tone: 'idle',
+        headline: 'Searching for KOReader server…',
+      })
+      clearFallbackTimer()
+      fallbackTimer = setTimeout(() => {
+        if (!cancelled && !isConnectedRef.current && token === searchToken) {
+          void pingEndpoint(token)
+        }
+      }, FALLBACK_DELAY_MS)
+    }
+
+    function startSearchCycle(delayMs = 0) {
+      const launch = () => {
+        const token = nextToken()
+        isConnectedRef.current = false
+        setIsConnected(false)
+        void runQuickProbes(token).then((success) => {
+          if (cancelled || token !== searchToken || isConnectedRef.current) return
+          if (!success) {
+            startFallbackProbe(token)
+          }
+        })
+      }
+
+      if (delayMs > 0) {
+        clearRestart()
+        restartTimer = setTimeout(() => {
+          if (!cancelled) {
+            launch()
+          }
+        }, delayMs)
+      } else {
+        launch()
+      }
+    }
+
+    function handleFailure(errorMessage: string) {
+      if (cancelled) return
+      const wasConnected = isConnectedRef.current
+      isConnectedRef.current = false
+      setIsConnected(false)
+      applyConnectionStatus({
+        tone: 'error',
+        headline: wasConnected ? 'Connection lost. Tap to reconnect.' : 'Server not found. Tap to retry.',
+      })
+      startSearchCycle(500)
+    }
+
+    startSearchCycle()
+    connectionControllerRef.current = {
+      handleFailure,
+      markConnected: (source) => markConnected(source),
+      restart: () => startSearchCycle(),
+    }
+
+    return () => {
+      cancelled = true
+      clearFallbackTimer()
+      clearRestart()
+      nextToken()
+      connectionControllerRef.current = null
+      if (prefetchTimerRef.current) {
+        clearTimeout(prefetchTimerRef.current)
+        prefetchTimerRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint, hasUserInitiatedConnection])
 
   useEffect(() => {
     function handleSwipe(event: Event) {
@@ -90,25 +293,27 @@ export function KoreaderRemotePanel() {
       const action = KOREADER_ACTIONS[actionId]
       const timestamp = new Date().toISOString()
       setActiveAction(actionId)
+      activeActionRef.current = actionId
       setStatus({
         tone: 'idle',
         headline: `Sending ${action.label}`,
-        detail: 'Command is being dispatched to KOReader.',
         timestamp,
         actionLabel: action.label,
       })
       const result = await sendKoreaderCommand(endpoint, actionId)
       setActiveAction(null)
+      activeActionRef.current = null
 
       if (result.ok) {
+        connectionControllerRef.current?.markConnected('command')
         setStatus({
           tone: 'success',
           headline: `${action.label} sent`,
-          detail: 'If you are on the same LAN, the Kindle should react immediately.',
           timestamp,
           actionLabel: action.label,
           url: result.url,
         })
+        schedulePrefetchHint(actionId)
       } else {
         setStatus({
           tone: 'error',
@@ -118,10 +323,14 @@ export function KoreaderRemotePanel() {
           actionLabel: action.label,
           url: result.url,
         })
+        connectionControllerRef.current?.handleFailure(result.error)
+        queueRef.current = []
+        break
       }
       await new Promise((resolve) => setTimeout(resolve, 150))
     }
     processingRef.current = false
+    restoreConnectionStatus()
   }
 
   async function handleSend(actionId: KoreaderActionId) {
@@ -144,6 +353,18 @@ export function KoreaderRemotePanel() {
     }
   }
 
+  function schedulePrefetchHint(latestAction: KoreaderActionId) {
+    if (!endpoint) return
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current)
+    }
+    const delay = latestAction === 'next' ? 125 : 175
+    prefetchTimerRef.current = setTimeout(() => {
+      prefetchTimerRef.current = null
+      void prefetchKoreaderConnection(endpoint)
+    }, delay)
+  }
+
   function closePanel() {
     setIsPanelOpen(false)
     if (typeof window !== 'undefined') {
@@ -154,6 +375,34 @@ export function KoreaderRemotePanel() {
   function openPanelFromButton(force = false) {
     if (!hasEndpoint || force) {
       setIsPanelOpen(true)
+    }
+  }
+
+  function handleStatusClick() {
+    if (!hasUserInitiatedConnection) {
+      setHasUserInitiatedConnection(true)
+      if (!hasEndpoint) {
+        setStatus({
+          tone: 'error',
+          headline: 'No endpoint configured',
+          detail: 'Open Setup to add your Kindle IP & port.',
+        })
+        setIsPanelOpen(true)
+        return
+      }
+      setStatus({
+        tone: 'idle',
+        headline: 'Checking KOReader server…',
+      })
+      return
+    }
+
+    if (!isConnected) {
+      setStatus({
+        tone: 'idle',
+        headline: 'Reconnecting to KOReader…',
+      })
+      connectionControllerRef.current?.restart()
     }
   }
 
@@ -173,7 +422,7 @@ export function KoreaderRemotePanel() {
             <Link href="/" className="flex-1">
               <RemoteButtonNav label="← Home" helper="Back to site" />
             </Link>
-            <button type="button" onClick={openPanelFromButton} className="flex-1">
+            <button type="button" onClick={() => openPanelFromButton()} className="flex-1">
               <RemoteButtonNav label="Setup" helper="Instructions" />
             </button>
           </div>
@@ -208,7 +457,11 @@ export function KoreaderRemotePanel() {
               </span>
             </button>
           </div>
-          <StatusBar status={status} />
+          <StatusBar
+            status={status}
+            interactive={!isConnected}
+            onClick={handleStatusClick}
+          />
         </div>
       </div>
 
@@ -236,16 +489,46 @@ function RemoteButtonNav({ label, helper }: { label: string; helper: string }) {
   )
 }
 
-function StatusBar({ status }: { status: StatusState }) {
+function StatusBar({
+  status,
+  interactive = false,
+  onClick,
+}: {
+  status: StatusState
+  interactive?: boolean
+  onClick?: () => void
+}) {
   const toneClasses: Record<StatusState['tone'], string> = {
     idle: 'text-zinc-300 border-zinc-800',
     success: 'text-emerald-200 border-emerald-500/40 bg-emerald-500/10',
     error: 'text-rose-200 border-rose-500/40 bg-rose-500/10',
   }
+  const message = status.detail ? `${status.headline} — ${status.detail}` : status.headline
+  const interactiveProps = interactive
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick,
+        onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onClick?.()
+          }
+        },
+      }
+    : {}
   return (
-    <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${toneClasses[status.tone]}`}>
-      <p className="font-semibold">{status.headline}</p>
-      {status.detail ? <p className="text-xs opacity-80">{status.detail}</p> : null}
+    <div
+      className={`mt-4 rounded-2xl border px-4 py-3 text-sm transition ${
+        toneClasses[status.tone]
+      } ${
+        interactive
+          ? 'cursor-pointer hover:border-sky-500 hover:bg-zinc-900/50 active:bg-zinc-900/70 active:scale-[0.995] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500'
+          : ''
+      }`}
+      {...interactiveProps}
+    >
+      <p className="font-semibold">{message}</p>
     </div>
   )
 }
