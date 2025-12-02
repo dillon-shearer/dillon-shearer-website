@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
+import { CopyContactCard } from '@/app/components/copy-contact-card'
 
 export const metadata: Metadata = {
   title: 'Thanks for tapping | DWD',
@@ -74,25 +75,15 @@ export default function ThanksForTappingPage() {
         <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-transparent p-6 sm:p-8 md:p-10">
           <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_280px] md:items-center">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-white/50 sm:text-sm">
+              <p className="text-xs uppercase tracking-[0.35em] text-white/60 sm:text-sm">
                 Thanks for tapping in
               </p>
               <h1 className="mt-3 text-3xl font-semibold leading-tight text-balance sm:text-4xl">
-                Great meeting you—let&apos;s keep the momentum going while the conversation is fresh.
+                I&apos;m <span className="font-bold">Dillon Shearer</span> - it was great to meet you! Let&apos;s keep the momentum going while the conversation is fresh.
               </h1>
               <p className="mt-4 text-base text-white/85 sm:text-lg">
-                I build analytics portals, copilots, and enablement workflows that health and
-                life-science operators rely on day-to-day. This page is just for people I meet IRL.
+                I build analytics portals, enablement workflows, and copilots that health and life science teams depend on daily. This page is reserved for the people I meet in person.
               </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <a
-                  href="/dillon-shearer-contact.vcf"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                >
-                  <span>Save contact card</span>
-                  <span aria-hidden className="text-lg">+</span>
-                </a>
-              </div>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {quickFacts.map(fact => (
                   <div
@@ -195,6 +186,15 @@ export default function ThanksForTappingPage() {
                   </li>
                 )
               })}
+              <li>
+                <CopyContactCard
+                  label="Save my number"
+                  helper="Tap to copy my cell for text or call."
+                  value="+14704543924"
+                  displayValue="+1 (470) 454-3924"
+                  analyticsId="nfc-phone"
+                />
+              </li>
             </ul>
           </div>
         </section>
