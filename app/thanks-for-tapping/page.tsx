@@ -75,11 +75,8 @@ export default function ThanksForTappingPage() {
         <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-transparent p-6 sm:p-8 md:p-10">
           <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_280px] md:items-center">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-white/60 sm:text-sm">
-                Thanks for tapping in
-              </p>
               <h1 className="mt-3 text-3xl font-semibold leading-tight text-balance sm:text-4xl">
-                I&apos;m <span className="font-bold">Dillon Shearer</span> - it was great to meet you! Let&apos;s keep the momentum going while the conversation is fresh.
+                I&apos;m <span className="font-bold">Dillon Shearer</span> - it was great to meet you!
               </h1>
               <p className="mt-4 text-base text-white/85 sm:text-lg">
                 I build analytics portals, enablement workflows, and copilots that health and life science teams depend on daily. This page is reserved for the people I meet in person.
@@ -112,13 +109,6 @@ export default function ThanksForTappingPage() {
               </div>
             </div>
           </div>
-
-          <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70 sm:text-base">
-              Translating in-person context into next steps: I’m currently helping clinical
-              operations teams connect intake, approvals, and monitoring so nothing slips.
-            </div>
-          </div>
         </section>
 
         <section className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -127,7 +117,7 @@ export default function ThanksForTappingPage() {
               Primary next step
             </p>
             <h2 className="mt-4 text-2xl font-semibold text-balance sm:text-[26px]">
-              Drop a line while we&apos;re both still in event-mode.
+              Drop a line while we&apos;re both still in chatting-mode.
             </h2>
             <p className="mt-3 text-base text-white/80">
               {primaryAction.helper}
