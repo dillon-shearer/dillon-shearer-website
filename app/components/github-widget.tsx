@@ -16,6 +16,7 @@ interface ActivityResponse {
   commits: RepoCommit[]
   repo: string
   fetchedAt: string
+  stale?: boolean
 }
 
 export default function GitHubWidget() {
@@ -24,6 +25,7 @@ export default function GitHubWidget() {
   const [error, setError] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [repoName, setRepoName] = useState('dillon-shearer/dillon-shearer-website')
+  const [isStale, setIsStale] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -35,6 +37,7 @@ export default function GitHubWidget() {
         const data = (await response.json()) as ActivityResponse
         setCommits(data.commits)
         setRepoName(data.repo)
+        setIsStale(Boolean(data.stale))
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.error('Error fetching GitHub activity:', err)
@@ -94,8 +97,17 @@ export default function GitHubWidget() {
     )
   }
 
-  if (error || commits.length === 0) {
-    return null // Hide widget if there's an error
+  if (!loading && (error || commits.length === 0)) {
+    return (
+      <div className="flex justify-center mt-16">
+        <div className="bg-gray-50 dark:bg-gray-800 border border-red-200 dark:border-red-700 rounded-lg p-5 max-w-md w-full text-center">
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-2">GitHub activity unavailable</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            GitHub is rate-limiting or unreachable right now. Please try again in a few minutes.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   const latestCommit = commits[0]
@@ -122,9 +134,16 @@ export default function GitHubWidget() {
           onClick={handleCardClick}
         >
           <div className="text-sm text-center">
-            <h3 className="font-medium text-gray-900 dark:text-white mb-1">
-              Site Development
-            </h3>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <h3 className="font-medium text-gray-900 dark:text-white">
+                Site Development
+              </h3>
+              {isStale && (
+                <span className="text-[10px] uppercase tracking-widest text-amber-400 border border-amber-500/40 rounded-full px-2 py-0.5">
+                  cached
+                </span>
+              )}
+            </div>
             <div className="text-gray-600 dark:text-gray-400 space-y-1">
               <div>
                 Last updated: {timeAgo} • {commitsThisMonth} commit{commitsThisMonth === 1 ? '' : 's'} this month
