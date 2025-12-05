@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server'
 const DEFAULT_USER = 'dillon-shearer'
 const DEFAULT_REPO = 'dillon-shearer-website'
 const MAX_COMMITS = 200
+const USER_AGENT = 'dillon-shearer-website'
+
+export const revalidate = 0
+export const dynamic = 'force-dynamic'
 
 type CommitShape = {
   sha: string
@@ -24,11 +28,12 @@ export async function GET() {
   url.searchParams.set('per_page', '100')
 
   const response = await fetch(url, {
+    cache: 'no-store',
     headers: {
       Accept: 'application/vnd.github+json',
+      'User-Agent': USER_AGENT,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    next: { revalidate: 3600 },
   })
 
   if (!response.ok) {
@@ -57,7 +62,7 @@ export async function GET() {
     },
     {
       headers: {
-        'Cache-Control': 's-maxage=900, stale-while-revalidate=3600',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
     }
   )
