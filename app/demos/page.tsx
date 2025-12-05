@@ -1,6 +1,6 @@
 // app/demos/page.tsx
 import { Metadata } from 'next'
-import DemoCard from '@/app/components/demo-card'
+import DemoGrid from '@/app/components/demo-grid'
 import { getAllDemos } from '@/lib/demos'
 
 export const metadata: Metadata = {
@@ -47,11 +47,7 @@ export default function DemosPage() {
         </div>
 
         {/* Demos Grid */}
-        <div className="flex flex-wrap justify-center gap-10 [&>*]:w-full [&>*]:max-w-2xl lg:[&>*]:w-[calc(50%-1.25rem)] lg:[&>*]:max-w-none">
-          {demos.map((demo) => (
-            <DemoCard key={demo.slug} demo={demo} />
-          ))}
-        </div>
+        <DemoGrid demos={demos} />
 
         {/* Call to Action - Now constrained to max-w-4xl to match content width */}
         <div className="max-w-4xl mx-auto">

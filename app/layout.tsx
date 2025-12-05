@@ -6,6 +6,7 @@ import { Navbar } from './components/nav'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import Footer from './components/footer'
+import EmbedToggle from './components/embed-toggle'
 import { baseUrl } from './sitemap'
 
 const siteDescription = 'Healthcare-focused data scientist building analytics portals, dashboards, and AI copilots for life-science teams.'
@@ -94,12 +95,17 @@ export default function RootLayout({
       )}
     >
       <body className="antialiased overflow-x-hidden">
-        <main className="flex-auto min-w-0 mt-6 flex flex-col px-2 md:px-0 max-w-7xl mx-auto">
-          <Navbar />
-          <div className="w-full overflow-x-hidden">
+        <EmbedToggle />
+        <main className="site-shell flex-auto min-w-0 mt-6 flex flex-col px-2 md:px-0 max-w-7xl mx-auto">
+          <div data-embed-hide="true">
+            <Navbar />
+          </div>
+          <div className="w-full overflow-x-hidden site-shell-content">
             {children}
           </div>
-          <Footer />
+          <div data-embed-hide="true">
+            <Footer />
+          </div>
           <Analytics />
           <SpeedInsights />
         </main>

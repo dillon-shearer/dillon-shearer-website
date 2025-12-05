@@ -17,15 +17,16 @@
   --sh-entity: #e25a1c;
 }
 
+html {
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --sh-class: #4c97f8;
     --sh-identifier: white;
     --sh-keyword: #f47067;
     --sh-string: #0fa295;
-  }
-  html {
-    color-scheme: dark;
   }
 }
 
@@ -197,6 +198,27 @@ table {
 .hero-title:hover::before {
   transform-origin: 0% 50%;
   transform: scaleX(1);
+}
+
+body[data-embed-preview='true'] {
+  background-color: #000;
+}
+
+body[data-embed-preview='true'] .site-shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-left: 0;
+  padding-right: 0;
+  margin-top: 0;
+}
+
+body[data-embed-preview='true'] .site-shell-content {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+body[data-embed-preview='true'] [data-embed-hide='true'] {
+  display: none !important;
 }
 
 .hero-title:hover::after {

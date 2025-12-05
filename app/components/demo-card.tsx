@@ -1,147 +1,215 @@
+'use client'
+
 import Link from 'next/link'
 import { Demo } from '@/types/demo'
 
 interface DemoCardProps {
   demo: Demo
+  isExpanded: boolean
+  onToggle: () => void
 }
 
-export default function DemoCard({ demo }: DemoCardProps) {
+export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) {
   const isInProgress = demo.status !== 'live'
   const mobileOrderClass = demo.mobileReady ? 'order-first md:order-none' : ''
+  const exploreHref = demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`
+  const previewBase = demo.demoUrl ?? exploreHref
+  const previewSrc = previewBase.includes('?') ? `${previewBase}&embed=1` : `${previewBase}?embed=1`
+  const detailsId = `${demo.slug}-details`
+  const frameScaleClasses = isExpanded
+    ? 'scale-[0.48] sm:scale-[0.54] md:scale-[0.6]'
+    : 'scale-[0.22] sm:scale-[0.26] md:scale-[0.3]'
+  const frameHeightClasses = isExpanded
+    ? 'h-[420px] sm:h-[480px] md:h-[560px]'
+    : 'h-[200px] sm:h-[240px] md:h-[280px]'
 
   return (
-    <div className={`group relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 overflow-hidden ${mobileOrderClass}`}>
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-900/20 dark:to-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      <div className="relative p-4 sm:p-6 md:p-8">
-        <div className="flex items-start justify-between mb-4 md:mb-6">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-300 leading-tight">
+    <article
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-[#0c1424] text-white shadow-lg transition-all duration-300 dark:border-gray-700 ${mobileOrderClass} ${
+        isExpanded ? 'ring-2 ring-blue-500/40' : 'hover:-translate-y-1 hover:shadow-2xl'
+      }`}
+      data-expanded={isExpanded}
+    >
+      <div className={`relative w-full overflow-hidden rounded-t-2xl bg-black transition-[height] duration-500 ${frameHeightClasses}`}>
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
+          <div className={`origin-top transition-transform duration-500 ease-out ${frameScaleClasses}`}>
+            <iframe
+              src={previewSrc}
+              title={`${demo.title} live preview`}
+              tabIndex={-1}
+              loading="lazy"
+              aria-hidden="true"
+              className="h-[900px] w-[1440px] border-0 shadow-2xl"
+              style={{ pointerEvents: 'none' }}
+            />
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <Link
+          href={exploreHref}
+          className="absolute inset-0 z-10 flex items-end justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 hover:opacity-100 focus-visible:opacity-100"
+          aria-label={`Open ${demo.title} demo`}
+        >
+          <span className="mb-3 mr-3 rounded-full bg-white/15 px-3 py-1 text-xs font-medium tracking-wide text-white backdrop-blur">
+            Open demo
+          </span>
+        </Link>
+      </div>
+
+      <div className="flex flex-col gap-3 px-4 pb-4 pt-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="text-[0.65rem] uppercase tracking-[0.2em] text-blue-200/80">Demo — {demo.category}</p>
+            <h3 className="text-lg font-semibold text-white">
               {demo.title}
             </h3>
-            <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-3 flex-wrap">
-              <span className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold rounded-full ${
-                demo.status === 'live' 
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-              }`}>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.65rem] font-semibold">
+              <span
+                className={`rounded-full px-2.5 py-1 ${
+                  demo.status === 'live'
+                    ? 'bg-green-100/10 text-green-300'
+                    : 'bg-yellow-100/10 text-yellow-200'
+                }`}
+              >
                 {demo.status === 'live' ? '✓ Live' : '⏳ In Progress'}
               </span>
               {demo.featured && (
-                <span className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 text-white">
+                <span className="rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 px-2.5 py-1 text-white">
                   ⭐ Featured
                 </span>
               )}
-              <span className={`px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold rounded-full ${
-                demo.complexity === 'advanced' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                demo.complexity === 'intermediate' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-              }`}>
+              <span
+                className={`rounded-full px-2.5 py-1 capitalize ${
+                  demo.complexity === 'advanced'
+                    ? 'bg-red-100/10 text-red-300'
+                    : demo.complexity === 'intermediate'
+                      ? 'bg-blue-100/10 text-blue-300'
+                      : 'bg-gray-100/10 text-gray-200'
+                }`}
+              >
                 {demo.complexity}
               </span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={isExpanded}
+            aria-controls={detailsId}
+            className="inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-100 transition-colors duration-200 hover:border-blue-300 hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          >
+            {isExpanded ? 'Close' : 'See more'}
+            <svg
+              className={`h-3.5 w-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.585l3.71-3.354a.75.75 0 111.02 1.1l-4.23 3.825a.75.75 0 01-1.02 0L5.25 8.29a.75.75 0 01-.02-1.08z" />
+            </svg>
+          </button>
         </div>
 
-        <p className="text-gray-600 dark:text-gray-300 text-base sm:text-lg leading-relaxed mb-4 sm:mb-6">
-          {demo.description}
-        </p>
-
-        <div className="mb-4 sm:mb-6">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 sm:mb-3 uppercase tracking-wide">
-            Tech Stack
-          </h4>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
-            {demo.techStack.map((tech) => (
-              <span
-                key={tech}
-                className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 text-gray-800 dark:text-gray-200 rounded-lg font-medium hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-800 dark:hover:to-blue-700 transition-all duration-200"
-              >
-                {tech}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-6 sm:mb-8">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 sm:mb-3 uppercase tracking-wide">
-            Key Features
-          </h4>
-          <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-            {demo.highlights.slice(0, 4).map((highlight, index) => (
-              <div key={index} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full flex-shrink-0"></div>
-                <span>{highlight}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 sm:gap-6 text-sm text-gray-500 dark:text-gray-400 mb-6 sm:mb-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex flex-wrap gap-4 text-[0.65rem] uppercase tracking-[0.2em] text-gray-400">
+          <div className="flex items-center gap-1">
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="font-medium text-xs sm:text-sm">{demo.buildTime}</span>
+            <span>{demo.buildTime}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center gap-1 capitalize tracking-normal">
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
             </svg>
-            <span className="font-medium text-xs sm:text-sm capitalize">{demo.category.replace('-', ' ')}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3">
-          {isInProgress ? (
-            <div className="flex-1 bg-gray-400 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold text-sm sm:text-base">
-              Demo coming soon
-            </div>
-          ) : (
-            <>
-              <Link
-                href={`/${demo.slug === 'koreader-remote' ? 'koreader-remote' : `demos/${demo.slug}`}`}
-                className={`${demo.mobileReady ? 'flex' : 'hidden md:flex'} flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold transition-all duration-200`}
-              >
-                Explore demo
-              </Link>
-              {demo.mobileReady ? null : (
-                <div className="md:hidden flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-center py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl font-semibold">
-                  Best viewed on desktop
-                </div>
-              )}
-            </>
-          )}
-
-          <div className="flex gap-2 justify-center sm:justify-start">
-            {demo.githubUrl && (
-              <a
-                href={demo.githubUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center p-2.5 sm:p-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-200 group/btn"
-                title="View source code"
-              >
-                <svg className="w-4 sm:w-5 h-4 sm:h-5 text-gray-600 dark:text-gray-400 group-hover/btn:text-blue-600 dark:group-hover/btn:text-blue-400 transition-colors" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                </svg>
-              </a>
-            )}
-            {demo.liveUrl && (
-              <a
-                href={demo.liveUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center p-2.5 sm:p-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:border-green-500 dark:hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all duration-200 group/btn"
-                title="Open live demo"
-              >
-                <svg className="w-4 sm:w-5 h-4 sm:h-5 text-gray-600 dark:text-gray-400 group-hover/btn:text-green-600 dark:group-hover/btn:text-green-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
-            )}
+            <span>{demo.category.replace('-', ' ')}</span>
           </div>
         </div>
       </div>
-    </div>
+
+      {isExpanded && (
+        <div
+          id={detailsId}
+          className="px-4 pb-6 text-sm text-gray-200"
+        >
+          <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:gap-8">
+            <div className="space-y-5">
+              <p className="text-sm leading-relaxed text-gray-100 sm:text-base">{demo.description}</p>
+
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Key Features</h4>
+                <ul className="mt-2 space-y-2 text-sm text-gray-100">
+                  {demo.highlights.slice(0, 5).map((highlight, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-400" aria-hidden="true" />
+                      <span>{highlight}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {!isInProgress ? (
+                <Link
+                  href={exploreHref}
+                  className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:from-blue-700 hover:to-blue-800"
+                >
+                  Explore full demo
+                </Link>
+              ) : (
+                <div className="w-full rounded-xl bg-gray-800 px-4 py-2.5 text-center text-sm font-semibold text-gray-300">
+                  Demo coming soon
+                </div>
+              )}
+
+              {!demo.mobileReady && (
+                <p className="text-xs font-medium text-amber-400">
+                  Best experienced on desktop devices
+                </p>
+              )}
+
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Tech Stack</h4>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {demo.techStack.map((tech) => (
+                    <span
+                      key={tech}
+                      className="rounded-lg bg-white/5 px-2.5 py-1 text-xs font-medium text-gray-100"
+                    >
+                      {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                {demo.githubUrl && (
+                  <a
+                    href={demo.githubUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-blue-400 hover:text-blue-200"
+                    title="View source code"
+                  >
+                    Source
+                  </a>
+                )}
+                {demo.liveUrl && (
+                  <a
+                    href={demo.liveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-green-400 hover:text-green-200"
+                    title="Open live demo"
+                  >
+                    Live site
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </article>
   )
 }
