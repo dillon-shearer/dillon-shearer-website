@@ -2,6 +2,7 @@ import './global.css'
 import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+import { Suspense } from 'react'
 import { Navbar } from './components/nav'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
@@ -95,7 +96,9 @@ export default function RootLayout({
       )}
     >
       <body className="antialiased overflow-x-hidden">
-        <EmbedToggle />
+        <Suspense fallback={null}>
+          <EmbedToggle />
+        </Suspense>
         <main className="site-shell flex-auto min-w-0 mt-6 flex flex-col px-2 md:px-0 max-w-7xl mx-auto">
           <div data-embed-hide="true">
             <Navbar />

@@ -14,7 +14,8 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
   const mobileOrderClass = demo.mobileReady ? 'order-first md:order-none' : ''
   const exploreHref = demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`
   const previewBase = demo.demoUrl ?? exploreHref
-  const previewSrc = previewBase.includes('?') ? `${previewBase}&embed=1` : `${previewBase}?embed=1`
+  const queryJoiner = previewBase.includes('?') ? '&' : '?'
+  const previewSrc = `${previewBase}${queryJoiner}embed=1&nosplash=1`
   const detailsId = `${demo.slug}-details`
   const frameScaleClasses = isExpanded
     ? 'scale-[0.48] sm:scale-[0.54] md:scale-[0.6]'
