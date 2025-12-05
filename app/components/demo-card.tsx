@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { Demo } from '@/types/demo'
 
 interface DemoCardProps {
@@ -10,6 +11,16 @@ interface DemoCardProps {
 }
 
 export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) {
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobileViewport(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
   const isInProgress = demo.status !== 'live'
   const mobileOrderClass = demo.mobileReady ? 'order-first md:order-none' : ''
   const exploreHref = demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`
@@ -17,6 +28,7 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
   const queryJoiner = previewBase.includes('?') ? '&' : '?'
   const previewSrc = `${previewBase}${queryJoiner}embed=1&nosplash=1`
   const detailsId = `${demo.slug}-details`
+  const mobileBlocked = !demo.mobileReady && isMobileViewport
   const frameScaleClasses = isExpanded
     ? 'scale-[0.48] sm:scale-[0.54] md:scale-[0.6]'
     : 'scale-[0.22] sm:scale-[0.26] md:scale-[0.3]'
@@ -48,8 +60,11 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         <Link
           href={exploreHref}
-          className="absolute inset-0 z-10 flex items-end justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 hover:opacity-100 focus-visible:opacity-100"
+          className={`absolute inset-0 z-10 flex items-end justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 ${
+            mobileBlocked ? 'pointer-events-none opacity-0' : 'opacity-0 hover:opacity-100 focus-visible:opacity-100'
+          }`}
           aria-label={`Open ${demo.title} demo`}
+          tabIndex={mobileBlocked ? -1 : 0}
         >
           <span className="mb-3 mr-3 rounded-full bg-white/15 px-3 py-1 text-xs font-medium tracking-wide text-white backdrop-blur">
             Open demo
@@ -94,10 +109,13 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
           </div>
           <button
             type="button"
-            onClick={onToggle}
+            onClick={mobileBlocked ? undefined : onToggle}
             aria-expanded={isExpanded}
             aria-controls={detailsId}
-            className="inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-100 transition-colors duration-200 hover:border-blue-300 hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            aria-disabled={mobileBlocked}
+            className={`inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-100 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+              mobileBlocked ? 'cursor-not-allowed opacity-50' : 'hover:border-blue-300 hover:text-blue-200'
+            }`}
           >
             {isExpanded ? 'Close' : 'See more'}
             <svg

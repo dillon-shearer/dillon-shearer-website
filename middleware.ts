@@ -10,6 +10,7 @@ export function middleware(req: NextRequest) {
   const url = req.nextUrl
   const ua = req.headers.get('user-agent') || ''
   const path = url.pathname
+  const isEmbed = url.searchParams.get('embed') === '1'
 
   // Let crawlers through for SEO & link previews
   const isBot = /bot|crawler|spider|crawling|preview|facebookexternalhit|linkedinbot|twitterbot/i.test(ua)
@@ -17,7 +18,7 @@ export function middleware(req: NextRequest) {
 
   // Basic mobile detection
   const isMobile = /iphone|ipod|ipad|android|mobile|blackberry|iemobile|opera mini/i.test(ua)
-  if (!isMobile) return NextResponse.next() // always allow desktop
+  if (!isMobile || isEmbed) return NextResponse.next() // always allow desktop or iframe previews
 
   // Safety: if we're already on the warning page, do nothing
   if (path === '/demos/mobile-warning') return NextResponse.next()
