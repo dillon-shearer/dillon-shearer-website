@@ -74,15 +74,15 @@ export function Navbar() {
             {/* Mobile Menu with slide animation */}
             <div
               className={`
-                relative overflow-hidden transition-all duration-300 ease-in-out mx-auto w-full max-w-md
-                rounded-lg border border-gray-200 dark:border-gray-700
-                ring-1 ring-blue-200/60 dark:ring-blue-500/30
+                relative overflow-hidden transition-all duration-300 ease-in-out mx-auto w-fit max-w-full
+                rounded-2xl border border-gray-200 dark:border-gray-700
+                ring-1 ring-blue-200/60 dark:ring-blue-500/30 px-2
                 ${mobileMenuOpen ? 'max-h-[90vh] opacity-100 mt-6' : 'max-h-0 opacity-0 mt-0'}
               `}
             >
               {/* Even top/bottom spacing via spacers */}
-              <nav className="bg-white dark:bg-black shadow-lg backdrop-blur-sm">
-                <div className="flex flex-col">
+              <nav className="inline-flex flex-col items-center px-2">
+                <div className="flex flex-col items-center">
                   {/* Equal top spacer */}
                   <div className="h-6" />
 
@@ -95,8 +95,8 @@ export function Navbar() {
                         onClick={() => setMobileMenuOpen(false)}
                         className={`
                           transition-all hover:text-neutral-800 dark:hover:text-neutral-200 
-                          hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-3 text-base text-center
-                          transform transition-all duration-300
+                          hover:bg-gray-50 dark:hover:bg-gray-800 px-6 py-2.5 text-base text-center rounded-full
+                          transform transition-all duration-300 inline-flex justify-center
                           ${mobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}
                         `}
                         style={{ transitionDelay: mobileMenuOpen ? `${index * 50}ms` : '0ms' }}

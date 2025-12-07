@@ -8,6 +8,7 @@ import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import Footer from './components/footer'
 import EmbedToggle from './components/embed-toggle'
+import RouteWarmup from './components/route-warmup'
 import { baseUrl } from './sitemap'
 
 const siteDescription = 'Healthcare-focused data scientist building analytics portals, dashboards, and AI copilots for life-science teams.'
@@ -99,6 +100,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <EmbedToggle />
         </Suspense>
+        <RouteWarmup />
         <main className="site-shell flex-auto min-w-0 mt-6 flex flex-col px-2 md:px-0 max-w-7xl mx-auto">
           <div data-embed-hide="true">
             <Navbar />

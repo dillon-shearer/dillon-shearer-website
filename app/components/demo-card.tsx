@@ -109,12 +109,11 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
           </div>
           <button
             type="button"
-            onClick={mobileBlocked ? undefined : onToggle}
+            onClick={onToggle}
             aria-expanded={isExpanded}
             aria-controls={detailsId}
-            aria-disabled={mobileBlocked}
             className={`inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-100 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-              mobileBlocked ? 'cursor-not-allowed opacity-50' : 'hover:border-blue-300 hover:text-blue-200'
+              mobileBlocked ? 'opacity-80' : 'hover:border-blue-300 hover:text-blue-200'
             }`}
           >
             {isExpanded ? 'Close' : 'See more'}
