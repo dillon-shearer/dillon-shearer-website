@@ -171,6 +171,8 @@ type SheetPreview = {
   dedupeRemovals: number
   lookupAdds: number
   totalRows: number
+  highlightMask?: boolean[][]
+  highlightNotice?: string | null
 }
 
 type FileInfo = {
@@ -837,6 +839,7 @@ type TransformOptions = {
   dedupState: DedupState
   lookupState: LookupState
   limitRows?: number
+  highlightStep?: WorkflowStepId
 }
 
 function transformSheet({
@@ -856,6 +859,7 @@ function transformSheet({
   dedupState,
   lookupState,
   limitRows,
+  highlightStep,
 }: TransformOptions): SheetPreview {
   if (!rows.length) {
     return {
@@ -877,6 +881,25 @@ function transformSheet({
 
   const { rows: orderedRows, order } = applyColumnOrder(rows, columnOrderState, sheetName)
   const working = orderedRows.map(row => [...row])
+  const canHighlightCells =
+    Boolean(highlightStep) && highlightStep !== 'column-order' && highlightStep !== 'dedupe' && highlightStep !== 'run-download'
+  const highlightMask: boolean[][] | null = canHighlightCells ? working.map(row => row.map(() => false)) : null
+  const markHighlight = (rowIndex: number, columnIndex: number) => {
+    if (!highlightMask) return
+    if (!highlightMask[rowIndex]) highlightMask[rowIndex] = []
+    highlightMask[rowIndex][columnIndex] = true
+  }
+  const pushHighlightColumn = (rowIndex: number, highlighted: boolean) => {
+    if (!highlightMask) return
+    if (!highlightMask[rowIndex]) highlightMask[rowIndex] = []
+    highlightMask[rowIndex].push(highlighted)
+  }
+  const markStepHighlight = (step: WorkflowStepId, rowIndex: number, columnIndex: number) => {
+    if (highlightStep === step) {
+      markHighlight(rowIndex, columnIndex)
+    }
+  }
+  let highlightNotice: string | null = null
   const originalWidth = rows[0]?.length ?? 0
   const previewMode = typeof limitRows === 'number'
   const dedupConfig = dedupState.configsBySheet[sheetName]
@@ -889,23 +912,31 @@ function transformSheet({
       lookupConfig.importColumns.some(index => index != null) &&
       lookupConfig.joins.some(hasLookupJoinColumns),
   )
+  if (highlightStep === 'column-order' && columnOrderState.enabled) {
+    highlightNotice = 'Preview uses your custom column order.'
+  }
 
   const originalIndexByPosition = order.reduce<Record<number, number>>((acc, originalIndex, position) => {
     acc[position] = originalIndex
     return acc
   }, {})
 
-  const columnLabelFor = (originalIndex: number, columnIndex: number) => {
-    return (
-      columnNames[originalIndex] ?? renderCell(working[0][columnIndex]) ?? `Column ${originalIndex + 1}`
-    )
-  }
-
   let headerChanges = 0
-  working[0] = working[0].map(cell => {
+  working[0] = working[0].map((cell, columnIndex) => {
     const current = cell == null ? '' : String(cell)
-    const next = headerState.enabled ? applyHeaderFormatting(cell, headerState) : current
-    if (next !== current) headerChanges += 1
+    let next = headerState.enabled ? applyHeaderFormatting(cell, headerState) : current
+    let changed = next !== current
+    if (headerState.enabled && !next.trim().length) {
+      const fallback = `Column ${columnIndex + 1}`
+      if (fallback !== next) {
+        next = fallback
+        changed = true
+      }
+    }
+    if (changed) {
+      headerChanges += 1
+      markStepHighlight('headers', 0, columnIndex)
+    }
     return next
   })
 
@@ -963,7 +994,6 @@ function transformSheet({
     const row = working[rowIndex]
     for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
       const originalIndex = originalIndexByPosition[columnIndex] ?? columnIndex
-      const columnLabel = columnLabelFor(originalIndex, columnIndex)
       let cellValue = row[columnIndex]
 
       if (dateState.enabled && isDateColumn(originalIndex)) {
@@ -977,6 +1007,7 @@ function transformSheet({
           if (formatted !== cellValue) {
             cellValue = formatted
             dateChanges += 1
+            markStepHighlight('dates', rowIndex, columnIndex)
           }
         }
       }
@@ -987,6 +1018,7 @@ function transformSheet({
           if (changed) {
             cellValue = next
             textNormalizeChanges += 1
+            markStepHighlight('text-normalize', rowIndex, columnIndex)
           }
         } else {
           const config = textColumns[originalIndex]
@@ -995,6 +1027,7 @@ function transformSheet({
             if (changed) {
               cellValue = next
               textNormalizeChanges += 1
+              markStepHighlight('text-normalize', rowIndex, columnIndex)
             }
           }
         }
@@ -1007,6 +1040,7 @@ function transformSheet({
           if (changed) {
             cellValue = next
             numericChanges += 1
+            markStepHighlight('numeric', rowIndex, columnIndex)
           }
         }
       }
@@ -1018,6 +1052,7 @@ function transformSheet({
           if (nextValue !== cellValue) {
             cellValue = nextValue
             nullChanges += 1
+            markStepHighlight('nulls', rowIndex, columnIndex)
           }
         }
       }
@@ -1027,6 +1062,7 @@ function transformSheet({
         if (changes > 0) {
           cellValue = next
           findChanges += changes
+          markStepHighlight('find-replace', rowIndex, columnIndex)
         }
       }
 
@@ -1041,6 +1077,9 @@ function transformSheet({
         const delimiter = rule.delimiter ?? ''
         const result = computeCalculatedValue(rule.type, sourceValues, delimiter)
         row.push(result)
+        if (highlightMask) {
+          pushHighlightColumn(rowIndex, highlightStep === 'calculated')
+        }
         if (result.length) calculatedChanges += 1
       })
     }
@@ -1050,28 +1089,36 @@ function transformSheet({
   if (applicableCalculatedRules.length) {
     applicableCalculatedRules.forEach(rule => {
       working[0].push(rule.label || 'Calculated field')
+      if (highlightMask) {
+        pushHighlightColumn(0, highlightStep === 'calculated')
+      }
     })
   }
 
   if (dedupConfig && hasDedupForSheet) {
     const headerRow = working[0]
+    const headerMaskRow = highlightMask ? highlightMask[0] : null
     const keptRows: CellValue[][] = []
-    const seen = new Map<string, { row: CellValue[]; index: number }>()
-    working.slice(1).forEach(row => {
+    const keptMaskRows: (boolean[] | null)[] = []
+    const seen = new Map<string, { row: CellValue[]; index: number; mask: boolean[] | null }>()
+    working.slice(1).forEach((row, relativeIndex) => {
+      const maskRow = highlightMask ? highlightMask[relativeIndex + 1] ?? null : null
       const key = buildJoinKey(
         dedupConfig.keyColumns.map(originalIndex => getValueByOriginalIndex(row, originalIndex)),
       )
       if (!seen.has(key)) {
         const index = keptRows.length
         keptRows.push(row)
-        seen.set(key, { row, index })
+        keptMaskRows.push(maskRow)
+        seen.set(key, { row, index, mask: maskRow })
         return
       }
       dedupeRemovals += 1
       const existing = seen.get(key)!
       if (dedupConfig.keepStrategy === 'last') {
         keptRows[existing.index] = row
-        seen.set(key, { row, index: existing.index })
+        keptMaskRows[existing.index] = maskRow
+        seen.set(key, { row, index: existing.index, mask: maskRow })
       }
       const target = keptRows[existing.index]
       for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
@@ -1095,6 +1142,21 @@ function transformSheet({
     })
     working.length = 0
     working.push(headerRow, ...keptRows)
+    if (highlightMask) {
+      const nextMaskRows: boolean[][] = []
+      nextMaskRows.push(headerMaskRow ? [...headerMaskRow] : [])
+      keptMaskRows.forEach(mask => {
+        nextMaskRows.push(mask ? [...mask] : [])
+      })
+      highlightMask.length = 0
+      nextMaskRows.forEach(rowMask => highlightMask.push(rowMask))
+    }
+    if (highlightStep === 'dedupe' && hasDedupForSheet) {
+      highlightNotice =
+        dedupeRemovals > 0
+          ? `${dedupeRemovals} duplicate rows removed in this preview.`
+          : 'No duplicates detected in the preview rows.'
+    }
   }
 
   if (lookupConfig && hasLookupForSheet) {
@@ -1167,12 +1229,16 @@ function transformSheet({
           referenceMap.set(key, refRow)
         }
       })
-      working.slice(1).forEach(row => {
+      working.slice(1).forEach((row, relativeRowIndex) => {
+        const previewRowIndex = relativeRowIndex + 1
         const key = buildJoinKey(joinPairs.map(pair => getValueByOriginalIndex(row, pair.sourceColumn)))
         const refRow = referenceMap.get(key)
         importColumns.forEach(refIndex => {
           const value = refRow ? transformReferenceCell(refRow[refIndex], refIndex) : ''
           row.push(value ?? '')
+          if (highlightMask) {
+            pushHighlightColumn(previewRowIndex, highlightStep === 'lookup')
+          }
           if (value != null && String(value).trim().length) lookupAdds += 1
         })
       })
@@ -1180,6 +1246,9 @@ function transformSheet({
       importColumns.forEach(refIndex => {
         const label = referenceHeaders[refIndex] ?? `Column ${refIndex + 1}`
         working[0].push(`${lookupConfig.prefix || 'Lookup'}: ${label}`)
+        if (highlightMask) {
+          pushHighlightColumn(0, highlightStep === 'lookup')
+        }
       })
     }
     }
@@ -1190,6 +1259,13 @@ function transformSheet({
   }
 
   const finalRows = typeof limitRows === 'number' ? working.slice(0, limitRows + 1) : working
+  const finalMask =
+    highlightMask && canHighlightCells
+      ? finalRows.map((row, index) => {
+          const rowMask = highlightMask[index] ?? []
+          return row.map((_, columnIndex) => rowMask[columnIndex] ?? false)
+        })
+      : undefined
 
   return {
     name: sheetName,
@@ -1205,6 +1281,8 @@ function transformSheet({
     dedupeRemovals,
     lookupAdds,
     totalRows: working.length - 1,
+    highlightMask: finalMask,
+    highlightNotice,
   }
 }
 
@@ -1239,6 +1317,7 @@ export default function DillonsDataCleanerClient() {
   const [isDragActive, setIsDragActive] = useState(false)
   const [columnOrderSheet, setColumnOrderSheet] = useState<string | null>(null)
   const [findReplaceSheet, setFindReplaceSheet] = useState<string | null>(null)
+  const [activeFindReplaceRuleId, setActiveFindReplaceRuleId] = useState<string | null>(null)
   const [dateSheet, setDateSheet] = useState<string | null>(null)
   const [calculatedSheet, setCalculatedSheet] = useState<string | null>(null)
   const [textNormalizeSheet, setTextNormalizeSheet] = useState<string | null>(null)
@@ -1534,6 +1613,7 @@ export default function DillonsDataCleanerClient() {
           dedupState,
           lookupState,
           limitRows: PREVIEW_ROW_LIMIT,
+          highlightStep: activeStep,
         }),
       )
   }, [
@@ -1550,6 +1630,7 @@ export default function DillonsDataCleanerClient() {
     findReplaceState,
     dedupState,
     lookupState,
+    activeStep,
   ])
 
   const aggregatedStats = useMemo(() => {
@@ -1582,11 +1663,98 @@ export default function DillonsDataCleanerClient() {
     )
   }, [previewSheets])
 
+  const aggregatedPreviewSummary = useMemo(() => {
+    return [
+      { label: 'Header tweaks', value: aggregatedStats.headerChanges },
+      { label: 'Column reorders', value: aggregatedStats.columnOrderChanges },
+      { label: 'Date formats', value: aggregatedStats.dateChanges },
+      { label: 'Text cleanups', value: aggregatedStats.textNormalizeChanges },
+      { label: 'Numeric cleanups', value: aggregatedStats.numericChanges },
+      { label: 'Null replacements', value: aggregatedStats.nullChanges },
+      { label: 'Find & replace hits', value: aggregatedStats.findChanges },
+      { label: 'Calculated values', value: aggregatedStats.calculatedChanges },
+      { label: 'Dedup removals', value: aggregatedStats.dedupeRemovals },
+      { label: 'Lookup values', value: aggregatedStats.lookupAdds },
+    ].filter(entry => entry.value > 0)
+  }, [aggregatedStats])
+
   const activePreview = useMemo(() => {
     if (!previewSheets.length) return null
     if (!activeSheet) return previewSheets[0]
     return previewSheets.find(sheet => sheet.name === activeSheet) ?? previewSheets[0]
   }, [activeSheet, previewSheets])
+
+  const formatChangeCount = (count: number, noun: string) => {
+    const plural = count === 1 ? '' : 's'
+    return `${count.toLocaleString()} ${noun}${plural}`
+  }
+
+  const previewWindowLabel = (preview: SheetPreview | null) => {
+    if (!preview) return ''
+    const previewRows = Math.max(0, preview.rows.length - 1)
+    if (!previewRows) return 'preview rows'
+    return `${previewRows} preview row${previewRows === 1 ? '' : 's'}`
+  }
+
+  const getPreviewSummaryForStep = (stepId: WorkflowStepId, preview: SheetPreview | null) => {
+    if (!preview) return null
+    const windowLabel = previewWindowLabel(preview)
+    switch (stepId) {
+      case 'headers':
+        if (!headerState.enabled) return 'Header cleanup is currently disabled.'
+        return preview.headerChanges
+          ? `${formatChangeCount(preview.headerChanges, 'header tweak')} in ${preview.name} (${windowLabel}).`
+          : `No header changes detected in ${windowLabel}.`
+      case 'column-order':
+        return columnOrderState.enabled
+          ? `Preview uses your drag-and-drop column order for ${preview.name}.`
+          : 'Column order step is currently disabled.'
+      case 'dates':
+        if (!dateState.enabled) return 'Date formatting is currently disabled.'
+        return preview.dateChanges
+          ? `${formatChangeCount(preview.dateChanges, 'date reformat')} in ${windowLabel}.`
+          : `No date matches found in ${windowLabel}.`
+      case 'text-normalize':
+        if (!textNormalizeState.enabled) return 'Case & whitespace normalization is currently disabled.'
+        return preview.textNormalizeChanges
+          ? `${formatChangeCount(preview.textNormalizeChanges, 'text normalization')} in ${windowLabel}.`
+          : `No text normalization changes detected in ${windowLabel}.`
+      case 'numeric':
+        if (!numericCleanupState.enabled) return 'Numeric cleanup is currently disabled.'
+        return preview.numericChanges
+          ? `${formatChangeCount(preview.numericChanges, 'numeric cleanup')} in ${windowLabel}.`
+          : `No numeric cleanups detected in ${windowLabel}.`
+      case 'nulls':
+        if (!nullState.enabled) return 'Null replacement is currently disabled.'
+        return preview.nullChanges
+          ? `${formatChangeCount(preview.nullChanges, 'null replacement')} in ${windowLabel}.`
+          : `No null-like tokens collapsed in ${windowLabel}.`
+      case 'find-replace':
+        if (!findReplaceState.enabled) return 'Find & replace is currently disabled.'
+        return preview.findChanges
+          ? `${formatChangeCount(preview.findChanges, 'replacement hit')} in ${windowLabel}.`
+          : `No replacements triggered in ${windowLabel}.`
+      case 'calculated':
+        if (!calculatedState.enabled) return 'Calculated fields are currently disabled.'
+        return preview.calculatedChanges
+          ? `${formatChangeCount(preview.calculatedChanges, 'calculated cell')} appended in ${windowLabel}.`
+          : 'Calculated fields added no values in the preview rows.'
+      case 'dedupe':
+        return dedupState.enabled
+          ? preview.dedupeRemovals
+            ? `${formatChangeCount(preview.dedupeRemovals, 'duplicate row')} removed in ${windowLabel}.`
+            : `No duplicates detected in ${windowLabel}.`
+          : 'Deduplication is currently disabled.'
+      case 'lookup':
+        return lookupState.enabled
+          ? preview.lookupAdds
+            ? `${formatChangeCount(preview.lookupAdds, 'lookup value')} appended in ${windowLabel}.`
+            : `No lookup matches found in ${windowLabel}.`
+          : 'Lookup step is currently disabled.'
+      default:
+        return null
+    }
+  }
 
   const handleRunTransformations = useCallback(() => {
     if (!fileInfo) {
@@ -1803,6 +1971,100 @@ export default function DillonsDataCleanerClient() {
       default:
         return false
     }
+  }
+
+  type ColumnCheckboxMultiSelectProps = {
+    label?: string
+    columns: string[]
+    selected: number[]
+    onChange: (next: number[]) => void
+    showSelectControls?: boolean
+    emptyMessage?: string
+  }
+
+  const ColumnCheckboxMultiSelect = ({
+    label,
+    columns,
+    selected,
+    onChange,
+    showSelectControls = false,
+    emptyMessage = 'No columns available.',
+  }: ColumnCheckboxMultiSelectProps) => {
+    const toggleColumn = (index: number) => {
+      const exists = selected.includes(index)
+      const next = exists ? selected.filter(value => value !== index) : [...selected, index]
+      const normalized = [...next].sort((a, b) => a - b)
+      onChange(normalized)
+    }
+    const handleSelectAll = () => {
+      if (!columns.length) return
+      onChange(columns.map((_, idx) => idx))
+    }
+    const handleClear = () => {
+      if (!selected.length) return
+      onChange([])
+    }
+    return (
+      <div className="space-y-2 text-xs text-white/80">
+        {label ? <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/50">{label}</p> : null}
+        {showSelectControls ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] uppercase tracking-[0.3em] text-white/40">
+            <span>{selected.length ? `${selected.length} selected` : 'None selected'}</span>
+            <div className="flex items-center gap-2 tracking-normal">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                disabled={!columns.length}
+                className="text-white/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                Select all
+              </button>
+              <span className="text-white/20">•</span>
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={!selected.length}
+                className="text-white/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <div className="rounded-2xl border border-white/15 bg-black/30">
+          {columns.length ? (
+            <ul className="max-h-48 divide-y divide-white/5 overflow-auto">
+              {columns.map((name, index) => {
+                const displayName = name?.length ? name : `Column ${index + 1}`
+                const checked = selected.includes(index)
+                return (
+                  <li key={`column-picker-${label ?? 'columns'}-${index}`}>
+                    <label
+                      className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2 transition ${
+                        checked ? 'bg-blue-500/20 text-white' : 'text-white/80 hover:bg-white/5'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-semibold">{displayName}</p>
+                        <p className="text-[11px] uppercase tracking-[0.3em] text-white/40">Col {index + 1}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-white/40 bg-transparent text-blue-400 focus:ring-blue-400"
+                        checked={checked}
+                        onChange={() => toggleColumn(index)}
+                      />
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="px-3 py-4 text-xs text-white/60">{emptyMessage}</p>
+          )}
+        </div>
+      </div>
+    )
   }
 
 
@@ -2054,26 +2316,28 @@ export default function DillonsDataCleanerClient() {
   }
 
   const addFindReplaceRule = (sheetName: string) => {
+    const newRule: FindReplaceRule = {
+      id: `rule-${Date.now()}`,
+      scope: 'sheet',
+      columns: [],
+      matchMode: 'equals',
+      caseSensitive: false,
+      find: '',
+      replace: '',
+      enabled: true,
+      regexError: null,
+    }
     setFindReplaceState(current => ({
       ...current,
       rulesBySheet: {
         ...current.rulesBySheet,
         [sheetName]: [
           ...(current.rulesBySheet[sheetName] ?? []),
-          {
-            id: `rule-${Date.now()}`,
-            scope: 'sheet',
-            columns: [],
-            matchMode: 'equals',
-            caseSensitive: false,
-            find: '',
-            replace: '',
-            enabled: true,
-            regexError: null,
-          },
+          newRule,
         ],
       },
     }))
+    setActiveFindReplaceRuleId(newRule.id)
   }
 
   const updateFindReplaceRule = (sheetName: string, ruleId: string, partial: Partial<FindReplaceRule>) => {
@@ -2100,6 +2364,7 @@ export default function DillonsDataCleanerClient() {
         [sheetName]: (current.rulesBySheet[sheetName] ?? []).filter(rule => rule.id !== ruleId),
       },
     }))
+    setActiveFindReplaceRuleId(current => (current === ruleId ? null : current))
     resetTransforms()
   }
 
@@ -2222,11 +2487,28 @@ export default function DillonsDataCleanerClient() {
   const renderFindReplaceRules = (sheetName: string) => {
     const rules = findReplaceState.rulesBySheet[sheetName] ?? []
     const names = columnNamesForSheet(sheetName)
+    const hasInvalidRegex = rules.some(rule => Boolean(rule.regexError))
     return (
       <div className="space-y-4">
         {rules.length === 0 ? <p className="text-xs text-white/60">No rules yet. Add one to get started.</p> : null}
+        {hasInvalidRegex ? (
+          <div className="rounded-2xl border border-red-500/60 bg-red-500/10 px-4 py-2 text-xs text-red-200">
+            Fix invalid regex patterns to apply replacements.
+          </div>
+        ) : null}
         {rules.map(rule => (
-          <div key={rule.id} className="rounded-2xl border border-white/15 bg-white/5 p-4 text-xs text-white/80">
+          <div
+            key={rule.id}
+            className={`rounded-2xl border p-4 text-xs text-white/80 transition ${
+              rule.regexError
+                ? 'border-red-500/60 bg-red-500/5'
+                : activeFindReplaceRuleId === rule.id
+                  ? 'border-blue-400/70 bg-blue-500/5 shadow-[0_0_20px_rgba(96,165,250,0.2)]'
+                  : 'border-white/15 bg-white/5'
+            }`}
+            onFocusCapture={() => setActiveFindReplaceRuleId(rule.id)}
+            onMouseDown={() => setActiveFindReplaceRuleId(rule.id)}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="flex items-center gap-2">
                 <input
@@ -2271,24 +2553,15 @@ export default function DillonsDataCleanerClient() {
               </label>
             </div>
             {rule.scope === 'columns' ? (
-              <label className="mt-3 flex flex-col gap-1">
-                Columns (Ctrl/Cmd-click to select multiple)
-                <select
-                  multiple
-                  value={rule.columns.map(index => index.toString())}
-                  onChange={event => {
-                    const selected = Array.from(event.target.selectedOptions).map(option => Number(option.value))
-                    updateFindReplaceRule(sheetName, rule.id, { columns: selected })
-                  }}
-                  className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
-                >
-                  {names.map((name, index) => (
-                    <option key={`${sheetName}-${name}`} value={index}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="mt-3">
+                <ColumnCheckboxMultiSelect
+                  label="Columns (click to toggle)"
+                  columns={names}
+                  selected={rule.columns}
+                  onChange={selected => updateFindReplaceRule(sheetName, rule.id, { columns: selected })}
+                  emptyMessage="No columns detected."
+                />
+              </div>
             ) : null}
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
@@ -2311,7 +2584,9 @@ export default function DillonsDataCleanerClient() {
               </label>
             </div>
             {rule.regexError ? (
-              <p className="mt-2 text-xs font-semibold text-red-300">{rule.regexError}</p>
+              <p className="mt-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+                {rule.regexError}
+              </p>
             ) : null}
             <label className="mt-3 flex items-center gap-2">
               <input
@@ -2691,24 +2966,14 @@ export default function DillonsDataCleanerClient() {
     const names = columnNamesForSheet(sheetName)
     return (
       <div className="space-y-4 text-xs text-white/80">
-        <label className="flex flex-col gap-1">
-          Key columns (Ctrl/Cmd + click)
-          <select
-            multiple
-            value={config.keyColumns.map(index => index.toString())}
-            onChange={event => {
-              const selected = Array.from(event.target.selectedOptions).map(option => Number(option.value))
-              updateDedupConfig(sheetName, { keyColumns: selected })
-            }}
-            className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
-          >
-            {names.map((name, index) => (
-              <option key={`${sheetName}-dedup-${name}`} value={index}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ColumnCheckboxMultiSelect
+          label="Key columns"
+          columns={names}
+          selected={config.keyColumns}
+          onChange={selected => updateDedupConfig(sheetName, { keyColumns: selected })}
+          showSelectControls
+          emptyMessage="Add headers to select keys."
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             Keep strategy
@@ -2809,11 +3074,14 @@ export default function DillonsDataCleanerClient() {
                   className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
                 >
                   <option value="">Choose column</option>
-                  {names.map((name, index) => (
-                    <option key={`${sheetName}-lookup-source-${name}`} value={index}>
-                      {name}
-                    </option>
-                  ))}
+                  {names.map((name, index) => {
+                    const displayName = name?.length ? name : `Column ${index + 1}`
+                    return (
+                      <option key={`${sheetName}-lookup-source-${displayName}-${index}`} value={index}>
+                        {displayName} (Col {index + 1})
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
               <label className="flex flex-col gap-1">
@@ -2828,11 +3096,14 @@ export default function DillonsDataCleanerClient() {
                   className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
                 >
                   <option value="">Choose column</option>
-                  {referenceNames.map((name, index) => (
-                    <option key={`${sheetName}-lookup-ref-${name}`} value={index}>
-                      {name}
-                    </option>
-                  ))}
+                  {referenceNames.map((name, index) => {
+                    const displayName = name?.length ? name : `Column ${index + 1}`
+                    return (
+                      <option key={`${sheetName}-lookup-ref-${displayName}-${index}`} value={index}>
+                        {displayName} (Col {index + 1})
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
               <button
@@ -2845,24 +3116,19 @@ export default function DillonsDataCleanerClient() {
             </div>
           ))}
         </div>
-        <label className="flex flex-col gap-1">
-          Columns to pull in (Ctrl/Cmd + click)
-          <select
-            multiple
-            value={config.importColumns.map(index => index.toString())}
-            onChange={event => {
-              const selected = Array.from(event.target.selectedOptions).map(option => Number(option.value))
-              updateLookupConfig(sheetName, { importColumns: selected })
-            }}
-            className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
-          >
-            {referenceNames.map((name, index) => (
-              <option key={`${sheetName}-lookup-import-${name}`} value={index}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="space-y-2">
+          <ColumnCheckboxMultiSelect
+            label="Columns to pull in"
+            columns={referenceNames}
+            selected={config.importColumns}
+            onChange={selected => updateLookupConfig(sheetName, { importColumns: selected })}
+            showSelectControls
+            emptyMessage="Choose a reference sheet to pick columns."
+          />
+          <p className="text-[11px] uppercase tracking-[0.3em] text-white/50">
+            Selected {config.importColumns.length} column{config.importColumns.length === 1 ? '' : 's'}
+          </p>
+        </div>
       </div>
     )
   }
@@ -2931,26 +3197,15 @@ export default function DillonsDataCleanerClient() {
                 <div />
               )}
             </div>
-            <label className="mt-3 flex flex-col gap-1">
-              Source columns (Ctrl/Cmd-click to select multiple)
-              <select
-                multiple
-                value={rule.sources.map(index => index.toString())}
-                onChange={event => {
-                  const selected = Array.from(event.target.selectedOptions).map(option => Number(option.value))
-                  const persisted = rule.sources.filter(value => selected.includes(value))
-                  const additions = selected.filter(value => !persisted.includes(value))
-                  updateCalculatedRule(sheetName, rule.id, { sources: [...persisted, ...additions] })
-                }}
-                className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
-              >
-                {names.map((name, index) => (
-                  <option key={`${sheetName}-calc-${name}`} value={index}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="mt-3">
+              <ColumnCheckboxMultiSelect
+                label="Source columns"
+                columns={names}
+                selected={rule.sources}
+                onChange={selected => updateCalculatedRule(sheetName, rule.id, { sources: selected })}
+                emptyMessage="Add columns to this sheet to build new fields."
+              />
+            </div>
           </div>
         ))}
         <button
@@ -3032,6 +3287,7 @@ export default function DillonsDataCleanerClient() {
 
   const isStepDisabled = (stepId: WorkflowStepId) => stepId === 'lookup' && lookupDisabled
   const activeStepMeta = WORKFLOW_STEPS.find(step => step.id === activeStep) ?? WORKFLOW_STEPS[0]
+  const activeStepSummary = getPreviewSummaryForStep(activeStep, activePreview)
   const activeStepIndex = WORKFLOW_STEP_ORDER.indexOf(activeStep)
 
   const findNavigableStep = (startIndex: number, direction: 1 | -1): WorkflowStepId | null => {
@@ -3230,6 +3486,9 @@ export default function DillonsDataCleanerClient() {
                     ))}
                   </div>
                 </div>
+                <p className="text-[11px] text-white/50">
+                  Blank headers automatically fall back to "Column N" after cleanup.
+                </p>
               </div>
             ) : (
               <p className="text-xs text-white/50">Toggle on to trim whitespace and recase column headers before other transforms.</p>
@@ -3457,6 +3716,11 @@ export default function DillonsDataCleanerClient() {
               />
               Normalize null-like tokens
             </label>
+            {activePreview ? (
+              <div className="rounded-2xl border border-white/15 bg-black/30 px-4 py-2 text-[11px] text-white/60">
+                {getPreviewSummaryForStep('nulls', activePreview)}
+              </div>
+            ) : null}
             {nullState.enabled ? (
               <div className="space-y-4 text-xs text-white/80">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -3738,6 +4002,22 @@ export default function DillonsDataCleanerClient() {
                 {statusMessage}
               </div>
             ) : null}
+            {aggregatedPreviewSummary.length ? (
+              <div className="rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-xs text-white/70">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-white/50">Preview summary</p>
+                <p className="text-white/50">Counts reflect the visible preview rows across selected sheets.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {aggregatedPreviewSummary.map(entry => (
+                    <span
+                      key={entry.label}
+                      className="rounded-full border border-white/15 px-3 py-1 text-white/80"
+                    >
+                      {entry.value.toLocaleString()} {entry.label.toLowerCase()}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         )
       default:
@@ -3960,27 +4240,54 @@ export default function DillonsDataCleanerClient() {
                   </div>
                 ) : null}
               </div>
+              {activePreview ? (
+                <div className="mt-4 space-y-1 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white/70">
+                  {activeStepSummary ? <p>{activeStepSummary}</p> : null}
+                  <p className="text-white/50">Highlighted cells show changes from: {activeStepMeta.label}.</p>
+                  {activePreview.highlightNotice ? (
+                    <p className="text-white/60">{activePreview.highlightNotice}</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
                 <div className="overflow-auto">
                   {activePreview ? (
                     <table className="min-w-full text-left text-xs text-white/90">
                       <thead className="bg-white/5 tracking-wide text-[11px] text-white/70">
                         <tr>
-                          {activePreview.rows[0]?.map((cell, idx) => (
-                            <th key={`${activePreview.name}-header-${idx}`} className="px-3 py-2">
-                              {renderCell(cell)}
-                            </th>
-                          ))}
+                          {activePreview.rows[0]?.map((cell, idx) => {
+                            const isHighlighted = Boolean(activePreview.highlightMask?.[0]?.[idx])
+                            return (
+                              <th
+                                key={`${activePreview.name}-header-${idx}`}
+                                className={`px-3 py-2 ${
+                                  isHighlighted ? 'bg-amber-500/20 text-white ring-1 ring-amber-300 ring-opacity-40' : ''
+                                }`}
+                              >
+                                {renderCell(cell)}
+                              </th>
+                            )
+                          })}
                         </tr>
                       </thead>
                       <tbody className="bg-black/20">
                         {activePreview.rows.slice(1).map((row, rowIndex) => (
                           <tr key={`${activePreview.name}-row-${rowIndex}`} className="odd:bg-white/5">
-                            {row.map((cell, cellIndex) => (
-                              <td key={`${activePreview.name}-cell-${rowIndex}-${cellIndex}`} className="px-3 py-2 text-white/80">
-                                {renderCell(cell)}
-                              </td>
-                            ))}
+                            {row.map((cell, cellIndex) => {
+                              const isHighlighted = Boolean(activePreview.highlightMask?.[rowIndex + 1]?.[cellIndex])
+                              return (
+                                <td
+                                  key={`${activePreview.name}-cell-${rowIndex}-${cellIndex}`}
+                                  className={`px-3 py-2 ${
+                                    isHighlighted
+                                      ? 'bg-amber-500/30 text-white ring-1 ring-amber-400 ring-opacity-50'
+                                      : 'text-white/80'
+                                  }`}
+                                >
+                                  {renderCell(cell)}
+                                </td>
+                              )
+                            })}
                           </tr>
                         ))}
                       </tbody>
