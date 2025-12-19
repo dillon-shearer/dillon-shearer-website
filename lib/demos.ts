@@ -90,6 +90,29 @@ const demos: Demo[] = [
       'Responsive layout supporting swipe and tap navigation.'
     ],
     mobileReady: true,
+  },
+  {
+    slug: 'dillons-data-cleaner',
+    title: "Dillon's Data Cleaner",
+    description:
+      'Drop in CSV or XLSX files, normalize null-like cells, standardize column headers, and download the cleaned file without leaving your browser.',
+    image: '/images/demos/dillons-data-cleaner-preview.jpg',
+    techStack: ['Next.js', 'TypeScript', 'Tailwind CSS', 'xlsx'],
+    category: 'frontend',
+    complexity: 'beginner',
+    buildTime: '1 day',
+    status: 'live',
+    featured: false,
+    githubUrl:
+      'https://github.com/dillon-shearer/dillon-shearer-website/tree/main/app/demos/dillons-data-cleaner',
+    liveUrl: 'https://www.datawithdillon.com/demos/dillons-data-cleaner',
+    highlights: [
+      'Upload CSV or XLSX files with multi-sheet support.',
+      'Toggle common null-like patterns or add your own replacements.',
+      'Normalize column headers with trim, upper, lower, or snake case.',
+      'Preview transformations instantly and export the cleaned data back to CSV/XLSX.',
+      'All processing runs client-side for privacy.'
+    ]
   }
 ]
 

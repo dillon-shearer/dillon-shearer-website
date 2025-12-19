@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "test": "tsx tests/koreader-remote.test.ts",
@@ -35,7 +35,8 @@
     "sugar-high": "^0.6.0",
     "tailwindcss": "4.0.0-alpha.13",
     "three": "^0.180.0",
-    "typescript": "5.3.3"
+    "typescript": "5.3.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "dotenv": "^17.2.3",
