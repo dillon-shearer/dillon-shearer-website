@@ -32,18 +32,26 @@ type HeaderState = {
   letterCase: HeaderCase
   whitespace: HeaderWhitespace
   replacement: string
+  collapseWhitespace: boolean
+  scope: 'all' | 'some'
+  sheets: string[]
 }
+
+type HeaderOverrides = Record<string, Record<number, string>>
+
+type ColumnSortMode = 'asc' | 'desc' | 'reset' | null
 
 type ColumnOrderState = {
   enabled: boolean
   orders: Record<string, number[]>
+  sortModeBySheet: Record<string, ColumnSortMode>
 }
 
 type FindReplaceMatchMode = 'equals' | 'contains' | 'regex'
 
 type FindReplaceRule = {
   id: string
-  scope: 'sheet' | 'columns'
+  scope: 'sheet' | 'columns' | 'workbook'
   columns: number[]
   matchMode: FindReplaceMatchMode
   caseSensitive: boolean
@@ -58,9 +66,14 @@ type FindReplaceState = {
   rulesBySheet: Record<string, FindReplaceRule[]>
 }
 
+type DateGuardReason = 'id-like' | 'low-confidence'
+
 type DateColumnConfig = {
   enabled: boolean
   format: string
+  confidence: number
+  sampleCount: number
+  guardReason: DateGuardReason | null
 }
 
 type DateMode = 'global' | 'per-column'
@@ -89,7 +102,7 @@ type CalculatedState = {
 }
 
 type TextCaseMode = 'lower' | 'upper' | 'proper' | 'preserve'
-type TextNormalizeMode = 'global' | 'per-column'
+type TextNormalizeMode = 'global' | 'per-column' | 'global-with-overrides'
 
 type TextNormalizeColumnConfig = {
   enabled: boolean
@@ -109,6 +122,20 @@ type TextNormalizeState = {
 
 type NumericPrecision = 'auto' | 0 | 1 | 2 | 3 | 4
 type NumericFormatMode = 'plain' | 'currency' | 'percent'
+
+type NumericKind = 'currency' | 'percent' | 'integer' | 'float' | 'mixed' | 'unknown'
+
+const NUMERIC_KIND_VALUES: NumericKind[] = ['currency', 'percent', 'integer', 'float', 'mixed', 'unknown']
+
+function isNumericKind(value: string): value is NumericKind {
+  return NUMERIC_KIND_VALUES.includes(value as NumericKind)
+}
+
+type NumericDetection = {
+  isNumeric: boolean
+  kind: NumericKind
+  precision: number | null
+}
 
 type NumericColumnConfig = {
   enabled: boolean
@@ -145,11 +172,22 @@ type LookupJoinPair = {
   referenceColumn: number | null
 }
 
+type LookupDuplicateStrategy = 'first' | 'last' | 'abort'
+
+type LookupDiagnostics = {
+  matchedRows: number
+  unmatchedRows: number
+  duplicateKeys: number
+  aborted: boolean
+  strategy: LookupDuplicateStrategy
+}
+
 type LookupConfig = {
   referenceSheet: string | null
   prefix: string
   joins: LookupJoinPair[]
   importColumns: number[]
+  duplicateStrategy: LookupDuplicateStrategy
 }
 
 type LookupState = {
@@ -173,6 +211,10 @@ type SheetPreview = {
   totalRows: number
   highlightMask?: boolean[][]
   highlightNotice?: string | null
+  numericWarnings: {
+    percentOverflow: Record<number, number>
+  }
+  lookupDiagnostics?: LookupDiagnostics
 }
 
 type FileInfo = {
@@ -238,27 +280,77 @@ const HEADER_WHITESPACE_LABELS: Record<HeaderWhitespace, string> = {
 
 const DATE_FORMAT_OPTIONS = [
   'MM-dd-yyyy',
-  'dd-MM-yyyy',
   'MM/dd/yyyy',
+  'dd-MM-yyyy',
   'dd/MM/yyyy',
   'yyyy-MM-dd',
   'yyyy/MM/dd',
+  'yyyyMMdd',
+  'MMM dd, yyyy',
+  'MMMM dd, yyyy',
+  'dd MMM yyyy',
+  'dd MMMM yyyy',
+  'MM-dd-yy',
+  'MM/dd/yy',
+  'dd-MM-yy',
+  'dd/MM/yy',
   'yyyy-MM-dd HH:mm',
+  'yyyy-MM-dd HH:mm:ss',
+  'MM/dd/yyyy HH:mm',
+  'MM/dd/yyyy HH:mm:ss',
+  'dd/MM/yyyy HH:mm',
+  'dd/MM/yyyy HH:mm:ss',
+  'MM-dd-yyyy HH:mm',
+  'MM-dd-yyyy HH:mm:ss',
+  'yyyy/MM/dd HH:mm',
+  'yyyy/MM/dd HH:mm:ss',
+  'yyyyMMddHHmmss',
+  'yyyy-MM-ddTHH:mm',
+  'yyyy-MM-ddTHH:mm:ss',
+  'MM/dd/yyyy hh:mm a',
+  'MM/dd/yyyy hh:mm:ss a',
+  'MMM dd, yyyy hh:mm a',
+  'MMMM dd, yyyy hh:mm a',
+  'yyyy-MM-dd hh:mm a',
 ]
 
 const KNOWN_DATE_FORMATS = [
   'MM/dd/yyyy',
-  'M/d/yyyy',
   'dd/MM/yyyy',
-  'd/M/yyyy',
   'MM-dd-yyyy',
-  'M-d-yyyy',
   'dd-MM-yyyy',
-  'd-M-yyyy',
   'yyyy-MM-dd',
   'yyyy/MM/dd',
   'yyyyMMdd',
+  'MMM dd, yyyy',
+  'MMMM dd, yyyy',
+  'dd MMM yyyy',
+  'dd MMMM yyyy',
+  'MM/dd/yy',
+  'dd/MM/yy',
+  'MM-dd-yy',
+  'dd-MM-yy',
+  'yyyy-MM-dd HH:mm',
+  'yyyy-MM-dd HH:mm:ss',
+  'MM/dd/yyyy HH:mm',
+  'MM/dd/yyyy HH:mm:ss',
+  'dd/MM/yyyy HH:mm',
+  'dd/MM/yyyy HH:mm:ss',
+  'MM-dd-yyyy HH:mm',
+  'MM-dd-yyyy HH:mm:ss',
+  'yyyy/MM/dd HH:mm',
+  'yyyy/MM/dd HH:mm:ss',
+  'yyyyMMddHHmmss',
+  'yyyy-MM-ddTHH:mm',
+  'yyyy-MM-ddTHH:mm:ss',
+  'MM/dd/yyyy hh:mm a',
+  'MM/dd/yyyy hh:mm:ss a',
+  'MMM dd, yyyy hh:mm a',
+  'MMMM dd, yyyy hh:mm a',
+  'yyyy-MM-dd hh:mm a',
 ]
+
+const DATE_CONFIDENCE_THRESHOLD = 0.7
 
 const CALCULATED_OPERATIONS: { value: CalculatedOperation; label: string }[] = [
   { value: 'add', label: 'Add values' },
@@ -378,6 +470,9 @@ function createDefaultHeaderState(): HeaderState {
     letterCase: 'none',
     whitespace: 'trim-edges',
     replacement: '_',
+    collapseWhitespace: false,
+    scope: 'all',
+    sheets: [],
   }
 }
 
@@ -495,11 +590,18 @@ function applyHeaderFormatting(value: CellValue, headerState: HeaderState) {
       text = text.replace(/\s+/g, '')
       break
     case 'replace':
-      text = text.trim().replace(/\s+/g, headerState.replacement || '_')
+      text = text.trim()
+      if (headerState.collapseWhitespace) {
+        text = text.replace(/\s+/g, ' ')
+      }
+      text = text.replace(/\s+/g, headerState.replacement || '_')
       break
     case 'trim-edges':
     default:
       text = text.trim()
+      if (headerState.collapseWhitespace) {
+        text = text.replace(/\s+/g, ' ')
+      }
       break
   }
 
@@ -539,7 +641,7 @@ function applyFindReplaceRules(
 
   rules.forEach(rule => {
     if (!rule.enabled) return
-    if (!rule.find.length) return
+    if (!rule.find.length || !rule.replace.length) return
     if (rule.regexError) return
 
     if (rule.scope === 'columns' && !rule.columns.includes(columnIndex)) return
@@ -588,36 +690,105 @@ function applyFindReplaceRules(
   return { next: text, changes }
 }
 
+function getFindReplaceRulesForSheet(
+  sheetName: string,
+  rulesBySheet: Record<string, FindReplaceRule[]>,
+) {
+  const seen = new Set<string>()
+  const combined: FindReplaceRule[] = []
+  const addRule = (rule: FindReplaceRule) => {
+    if (seen.has(rule.id)) return
+    seen.add(rule.id)
+    combined.push(rule)
+  }
+  ;(rulesBySheet[sheetName] ?? []).forEach(addRule)
+  Object.values(rulesBySheet).forEach(rules => {
+    rules.forEach(rule => {
+      if (rule.scope === 'workbook') addRule(rule)
+    })
+  })
+  return combined
+}
+
 function formatDateValue(date: Date, format: string) {
   const pad = (value: number, length = 2) => value.toString().padStart(length, '0')
+  const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const longMonthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ]
+  const hours24 = date.getHours()
+  const hours12 = hours24 % 12 || 12
   const replacements: Record<string, string> = {
     yyyy: pad(date.getFullYear(), 4),
+    MMMM: longMonthNames[date.getMonth()],
+    MMM: shortMonthNames[date.getMonth()],
     MM: pad(date.getMonth() + 1),
     dd: pad(date.getDate()),
     HH: pad(date.getHours()),
+    hh: pad(hours12),
     mm: pad(date.getMinutes()),
+    ss: pad(date.getSeconds()),
+    a: hours24 >= 12 ? 'PM' : 'AM',
   }
-  return format.replace(/yyyy|MM|dd|HH|mm/g, token => replacements[token] ?? token)
+  return format.replace(/yyyy|MMMM|MMM|MM|dd|HH|hh|mm|ss|a/g, token => replacements[token] ?? token)
 }
 
 function parseDateWithFormat(value: string, format: string) {
-  const pattern = format
-    .replace(/yyyy/, '(?<year>\\d{4})')
-    .replace(/MM/, '(?<month>\\d{1,2})')
-    .replace(/dd/, '(?<day>\\d{1,2})')
-    .replace(/HH/, '(?<hour>\\d{1,2})')
-    .replace(/mm/, '(?<minute>\\d{1,2})')
+  const tokens = ['yyyy', 'MMMM', 'MMM', 'MM', 'dd', 'HH', 'hh', 'mm', 'ss', 'a']
+  const tokenPatterns: Record<string, string> = {
+    yyyy: '(?<year>\\d{4})',
+    MMMM: '(?<monthName>[A-Za-z]{3,9})',
+    MMM: '(?<monthName>[A-Za-z]{3})',
+    MM: '(?<month>\\d{1,2})',
+    dd: '(?<day>\\d{1,2})',
+    HH: '(?<hour>\\d{1,2})',
+    hh: '(?<hour12>\\d{1,2})',
+    mm: '(?<minute>\\d{1,2})',
+    ss: '(?<second>\\d{1,2})',
+    a: '(?<ampm>AM|PM|am|pm)',
+  }
+  let pattern = format
+  tokens.forEach(token => {
+    pattern = pattern.split(token).join(`__${token}__`)
+  })
+  pattern = escapeRegExp(pattern)
+  tokens.forEach(token => {
+    pattern = pattern.split(`__${token}__`).join(tokenPatterns[token])
+  })
   const regex = new RegExp(`^${pattern}$`)
   const match = value.match(regex)
   if (!match || !match.groups) return null
 
   const year = Number(match.groups.year ?? '0')
-  const month = Number(match.groups.month ?? '1') - 1
   const day = Number(match.groups.day ?? '1')
-  const hour = Number(match.groups.hour ?? '0')
   const minute = Number(match.groups.minute ?? '0')
+  const second = Number(match.groups.second ?? '0')
+  let hour = Number(match.groups.hour ?? match.groups.hour12 ?? '0')
+  const ampm = match.groups.ampm?.toLowerCase()
+  if (ampm === 'pm' && hour < 12) hour += 12
+  if (ampm === 'am' && hour === 12) hour = 0
 
-  const parsed = new Date(year, month, day, hour, minute)
+  const monthName = match.groups.monthName
+  let month = Number(match.groups.month ?? '1') - 1
+  if (monthName) {
+    const lookup = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    const key = monthName.slice(0, 3).toLowerCase()
+    const index = lookup.indexOf(key)
+    if (index >= 0) month = index
+  }
+
+  const parsed = new Date(year, month, day, hour, minute, second)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
@@ -646,37 +817,66 @@ function parseDateValue(value: CellValue) {
   return null
 }
 
-function detectDateColumns(rows: CellValue[][]) {
-  const detection: Record<number, boolean> = {}
-  if (!rows.length) return detection
+function analyzeDateColumns(rows: CellValue[][]) {
+  const analysis: Record<
+    number,
+    { confidence: number; sampleCount: number; guardReason: DateGuardReason | null; enabled: boolean }
+  > = {}
+  if (!rows.length) return analysis
   const body = rows.slice(1)
-  const maxSamples = 25
+  const maxSamples = 50
 
   rows[0].forEach((_, columnIndex) => {
     let samples = 0
-    let hits = 0
+    let parseHits = 0
     for (let i = 0; i < body.length; i += 1) {
       const candidate = body[i]?.[columnIndex]
       if (candidate === null || candidate === undefined || candidate === '') continue
       samples += 1
-      if (parseDateValue(candidate)) hits += 1
+      if (parseDateValue(candidate)) parseHits += 1
       if (samples >= maxSamples) break
     }
-    detection[columnIndex] = samples > 0 && hits / samples >= 0.6
+    const confidence = samples > 0 ? parseHits / samples : 0
+    const guardReason: DateGuardReason | null = null
+    const enabled = confidence >= DATE_CONFIDENCE_THRESHOLD
+
+    analysis[columnIndex] = {
+      confidence,
+      sampleCount: samples,
+      guardReason,
+      enabled,
+    }
   })
 
-  return detection
+  return analysis
 }
 
 function getDefaultOrder(length: number) {
   return Array.from({ length }, (_, idx) => idx)
 }
 
+function normalizeColumnOrder(order: number[] | undefined, width: number) {
+  const base = getDefaultOrder(width)
+  if (!order || !order.length) return base
+  const seen = new Set<number>()
+  const normalized: number[] = []
+  order.forEach(index => {
+    if (index < 0 || index >= width || seen.has(index)) return
+    seen.add(index)
+    normalized.push(index)
+  })
+  base.forEach(index => {
+    if (!seen.has(index)) normalized.push(index)
+  })
+  return normalized
+}
+
 function applyColumnOrder(rows: CellValue[][], state: ColumnOrderState, sheet: string) {
   const width = rows[0]?.length ?? 0
-  const order = state.enabled ? state.orders[sheet] ?? getDefaultOrder(width) : getDefaultOrder(width)
-  if (order.length !== width) {
-    return { rows: rows.map(row => [...row]), order: getDefaultOrder(width) }
+  const sourceOrder = state.enabled ? state.orders[sheet] : undefined
+  const order = normalizeColumnOrder(sourceOrder, width)
+  if (!state.enabled) {
+    return { rows: rows.map(row => [...row]), order }
   }
   const orderedRows = rows.map(row => order.map(idx => row[idx] ?? ''))
   return { rows: orderedRows, order }
@@ -684,8 +884,13 @@ function applyColumnOrder(rows: CellValue[][], state: ColumnOrderState, sheet: s
 
 function computeCalculatedValue(type: CalculatedOperation, values: string[], delimiter: string) {
   const toNumber = (value: string) => {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : NaN
+    const parsed = parseNumericToken(value)
+    if (!parsed) return NaN
+    let num = parsed.value
+    if (parsed.hasPercent) {
+      num = num / 100
+    }
+    return Number.isFinite(num) ? num : NaN
   }
   if (type === 'concat') {
     const sanitizedValues = values.map(value => value.trim())
@@ -706,6 +911,36 @@ function computeCalculatedValue(type: CalculatedOperation, values: string[], del
     default:
       return ''
   }
+}
+
+function getCalculatedRuleErrors(
+  rule: CalculatedRule,
+  columnCount: number,
+  numericDetection: Record<number, NumericDetection>,
+  revealIncompleteErrors: boolean,
+): { inline: string | null; blocking: string | null } {
+  if (!rule.enabled) {
+    return { inline: null, blocking: null }
+  }
+  const uniqueSources = Array.from(
+    new Set(rule.sources.filter(index => index != null && index >= 0 && index < columnCount)),
+  )
+  if (uniqueSources.length < 2) {
+    const message = 'Select at least two valid source columns.'
+    return {
+      blocking: message,
+      inline: revealIncompleteErrors ? message : null,
+    }
+  }
+  if (rule.type === 'concat') {
+    return { inline: null, blocking: null }
+  }
+  const hasNumericMismatch = uniqueSources.some(index => !numericDetection[index]?.isNumeric)
+  if (hasNumericMismatch) {
+    const message = 'Math operations require numeric-only sources.'
+    return { blocking: message, inline: message }
+  }
+  return { inline: null, blocking: null }
 }
 
 function toProperCase(value: string) {
@@ -743,49 +978,179 @@ function normalizeTextCell(
   return { next, changed: next !== value }
 }
 
+function parseNumericToken(
+  value: CellValue,
+): { value: number; kind: NumericKind; precision: number; hasPercent: boolean; hasCurrency: boolean } | null {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    const text = value.toString()
+    const precision = text.includes('.') ? text.split('.')[1]?.length ?? 0 : 0
+    return {
+      value,
+      kind: Number.isInteger(value) ? 'integer' : 'float',
+      precision,
+      hasPercent: false,
+      hasCurrency: false,
+    }
+  }
+  if (typeof value !== 'string') return null
+  let text = value.trim()
+  if (!text.length) return null
+
+  const hasCurrency = /[$€£¥]/.test(text)
+  const hasPercent = text.includes('%')
+  const isNegativeParens = /^\(.*\)$/.test(text)
+  if (isNegativeParens) {
+    text = text.slice(1, -1)
+  }
+
+  text = text.replace(/[$€£¥]/g, '')
+  text = text.replace(/,/g, '')
+  text = text.replace(/%/g, '')
+  text = text.replace(/\s+/g, '')
+  if (!text.length) return null
+  if (!/^[-+]?\d*\.?\d+$/.test(text)) return null
+
+  let parsed = Number(text)
+  if (!Number.isFinite(parsed)) return null
+  if (isNegativeParens) parsed *= -1
+
+  const precision = text.includes('.') ? text.split('.')[1]?.length ?? 0 : 0
+  let kind: NumericKind = precision > 0 ? 'float' : 'integer'
+  if (hasPercent) kind = 'percent'
+  if (hasCurrency) kind = 'currency'
+
+  return {
+    value: parsed,
+    kind,
+    precision,
+    hasPercent,
+    hasCurrency,
+  }
+}
+
 function isNumericLike(value: CellValue) {
-  if (typeof value === 'number') return true
-  if (typeof value !== 'string') return false
-  const stripped = value.replace(/[$%,\s]/g, '').replace(/,/g, '')
-  if (!stripped.length) return false
-  return Number.isFinite(Number(stripped))
+  return Boolean(parseNumericToken(value))
 }
 
 function detectNumericColumns(rows: CellValue[][]) {
-  const detection: Record<number, boolean> = {}
+  const detection: Record<number, NumericDetection> = {}
   if (!rows.length) return detection
   const body = rows.slice(1)
   const maxSamples = 25
   rows[0].forEach((_, columnIndex) => {
     let samples = 0
     let hits = 0
+    const kindCounts: Record<string, number> = {
+      currency: 0,
+      percent: 0,
+      integer: 0,
+      float: 0,
+      mixed: 0,
+      unknown: 0,
+    }
+    const precisionCounts: Record<number, number> = {}
     for (let i = 0; i < body.length; i += 1) {
       const candidate = body[i]?.[columnIndex]
       if (candidate === null || candidate === undefined || candidate === '') continue
       samples += 1
-      if (isNumericLike(candidate)) hits += 1
+      const parsed = parseNumericToken(candidate)
+      if (parsed) {
+        hits += 1
+        const kind = isNumericKind(parsed.kind) ? parsed.kind : 'unknown'
+        kindCounts[kind] = (kindCounts[kind] ?? 0) + 1
+        if (parsed.precision != null) {
+          precisionCounts[parsed.precision] = (precisionCounts[parsed.precision] ?? 0) + 1
+        }
+      }
       if (samples >= maxSamples) break
     }
-    detection[columnIndex] = samples > 0 && hits / samples >= 0.7
+    const isNumeric = samples > 0 && hits / samples >= 0.7
+    let kind: NumericKind = 'unknown'
+    if (isNumeric) {
+      const ranked = Object.entries(kindCounts)
+        .filter(([key]) => key !== 'mixed' && key !== 'unknown')
+        .sort((a, b) => b[1] - a[1])
+      const top = ranked[0]
+      if (top && top[1] >= hits * 0.6) {
+        kind = top[0] as NumericKind
+      } else if (ranked.some(([, count]) => count > 0)) {
+        kind = 'mixed'
+      }
+    }
+    let precision: number | null = null
+    if (kind === 'float') {
+      const precisions = Object.entries(precisionCounts).sort((a, b) => b[1] - a[1])
+      precision = precisions.length ? Number(precisions[0][0]) : null
+    } else if (kind === 'integer') {
+      precision = 0
+    }
+    detection[columnIndex] = { isNumeric, kind, precision }
   })
   return detection
 }
 
-function cleanNumericCell(value: CellValue, config: NumericColumnConfig): { next: CellValue; changed: boolean } {
+function buildNumericConfigFromDetection(
+  detection?: NumericDetection,
+  enabled = false,
+): NumericColumnConfig {
+  let format: NumericFormatMode = 'plain'
+  let precision: NumericPrecision = 'auto'
+  if (detection?.kind === 'currency') {
+    format = 'currency'
+  } else if (detection?.kind === 'percent') {
+    format = 'percent'
+  } else if (detection?.kind === 'integer') {
+    precision = 0
+  } else if (detection?.kind === 'float' && detection.precision != null) {
+    const capped = Math.min(4, Math.max(0, detection.precision))
+    precision = capped as NumericPrecision
+  }
+  return {
+    enabled,
+    stripSymbols: true,
+    precision,
+    format,
+    currency: 'USD',
+  }
+}
+
+type NumericWarning = 'percent-overflow'
+
+function interpretPercentValue(parsed: number, originalHasPercent: boolean) {
+  if (!Number.isFinite(parsed)) {
+    return { overflow: false, value: null }
+  }
+  if (originalHasPercent) {
+    return { overflow: Math.abs(parsed) > 100, value: parsed }
+  }
+  if (Math.abs(parsed) > 100) {
+    return { overflow: true, value: null }
+  }
+  if (Math.abs(parsed) <= 1) {
+    return { overflow: false, value: parsed * 100 }
+  }
+  return { overflow: false, value: parsed }
+}
+
+function cleanNumericCell(
+  value: CellValue,
+  config: NumericColumnConfig,
+): { next: CellValue; changed: boolean; warning?: NumericWarning } {
   const raw = value == null ? '' : String(value)
   if (!raw.length) return { next: value ?? '', changed: false }
-  const originalHasPercent = raw.includes('%')
-  let text = raw
-  if (config.stripSymbols) {
-    text = text.replace(/[$\s]/g, '')
+  if (!config.stripSymbols && /[$€£¥\s]/.test(raw)) {
+    return { next: value ?? '', changed: false }
   }
-  text = text.replace(/,/g, '').replace(/%/g, '')
-  if (!text.length) return { next: value ?? '', changed: false }
-  const parsed = Number(text)
-  if (!Number.isFinite(parsed)) return { next: value ?? '', changed: false }
+  const parsedToken = parseNumericToken(raw)
+  if (!parsedToken) return { next: value ?? '', changed: false }
+  const parsed = parsedToken.value
   const formatNumber = (num: number) => (config.precision === 'auto' ? num.toString() : num.toFixed(config.precision))
   if (config.format === 'percent') {
-    const percentValue = originalHasPercent ? parsed : parsed * 100
+    const { overflow, value: percentValue } = interpretPercentValue(parsed, parsedToken.hasPercent)
+    if (overflow || percentValue == null) {
+      return { next: value ?? '', changed: false, warning: 'percent-overflow' }
+    }
     const formatted = `${formatNumber(percentValue)}%`
     return { next: formatted, changed: formatted !== raw }
   }
@@ -829,6 +1194,7 @@ type TransformOptions = {
   allRowsBySheet: Record<string, CellValue[][]>
   allColumnNames: Record<string, string[]>
   headerState: HeaderState
+  headerOverrides: HeaderOverrides
   columnOrderState: ColumnOrderState
   dateState: DateState
   textNormalizeState: TextNormalizeState
@@ -840,6 +1206,7 @@ type TransformOptions = {
   lookupState: LookupState
   limitRows?: number
   highlightStep?: WorkflowStepId
+  calculatedRuleErrors?: Record<string, string | null>
 }
 
 function transformSheet({
@@ -849,6 +1216,7 @@ function transformSheet({
   allRowsBySheet,
   allColumnNames,
   headerState,
+  headerOverrides,
   columnOrderState,
   dateState,
   textNormalizeState,
@@ -860,6 +1228,7 @@ function transformSheet({
   lookupState,
   limitRows,
   highlightStep,
+  calculatedRuleErrors = {},
 }: TransformOptions): SheetPreview {
   if (!rows.length) {
     return {
@@ -876,11 +1245,15 @@ function transformSheet({
       dedupeRemovals: 0,
       lookupAdds: 0,
       totalRows: 0,
+      numericWarnings: { percentOverflow: {} },
     }
   }
 
   const { rows: orderedRows, order } = applyColumnOrder(rows, columnOrderState, sheetName)
   const working = orderedRows.map(row => [...row])
+  const overridesForSheet = headerOverrides[sheetName] ?? {}
+  const headerCleanupEnabled =
+    headerState.enabled && (headerState.scope === 'all' || headerState.sheets.includes(sheetName))
   const canHighlightCells =
     Boolean(highlightStep) && highlightStep !== 'column-order' && highlightStep !== 'dedupe' && highlightStep !== 'run-download'
   const highlightMask: boolean[][] | null = canHighlightCells ? working.map(row => row.map(() => false)) : null
@@ -923,17 +1296,31 @@ function transformSheet({
 
   let headerChanges = 0
   working[0] = working[0].map((cell, columnIndex) => {
+    const originalIndex = originalIndexByPosition[columnIndex] ?? columnIndex
     const current = cell == null ? '' : String(cell)
-    let next = headerState.enabled ? applyHeaderFormatting(cell, headerState) : current
+    const fallbackLabel = columnNames[originalIndex] && columnNames[originalIndex].trim().length
+      ? columnNames[originalIndex]
+      : `Column ${originalIndex + 1}`
+    let next = headerCleanupEnabled ? applyHeaderFormatting(cell, headerState) : current
     let changed = next !== current
-    if (headerState.enabled && !next.trim().length) {
-      const fallback = `Column ${columnIndex + 1}`
-      if (fallback !== next) {
-        next = fallback
+    let manualOverrideApplied = false
+    if (!next.trim().length && fallbackLabel) {
+      const fallbackValue = headerCleanupEnabled ? applyHeaderFormatting(fallbackLabel, headerState) : fallbackLabel
+      if (fallbackValue !== next) {
+        next = fallbackValue
         changed = true
       }
     }
-    if (changed) {
+    const manualOverrideRaw = overridesForSheet[originalIndex]
+    if (typeof manualOverrideRaw === 'string' && manualOverrideRaw.length) {
+      const overrideValue = headerCleanupEnabled ? applyHeaderFormatting(manualOverrideRaw, headerState) : manualOverrideRaw
+      if (overrideValue !== next) {
+        next = overrideValue
+        changed = true
+      }
+      manualOverrideApplied = true
+    }
+    if (changed && (headerCleanupEnabled || manualOverrideApplied)) {
       headerChanges += 1
       markStepHighlight('headers', 0, columnIndex)
     }
@@ -948,18 +1335,24 @@ function transformSheet({
   let numericChanges = 0
   let dedupeRemovals = 0
   let lookupAdds = 0
+  const numericWarnings = { percentOverflow: {} as Record<number, number> }
+  let lookupDiagnostics: LookupDiagnostics | undefined
 
   const dateConfigs = dateState.columns[sheetName] ?? {}
   const isDateColumn = (originalIndex: number) => {
     if (!dateState.enabled) return false
+    if (dateState.mode === 'global') return true
     const config = dateConfigs[originalIndex]
     if (!config) return false
     return config.enabled
   }
 
-  const findRules = findReplaceState.rulesBySheet[sheetName] ?? []
+  const findRules = getFindReplaceRulesForSheet(sheetName, findReplaceState.rulesBySheet)
   const calculatedRules = calculatedState.rulesBySheet[sheetName] ?? []
-  const applicableCalculatedRules = calculatedState.enabled ? calculatedRules.filter(rule => rule.enabled) : []
+  const sheetRuleErrors = calculatedRuleErrors ?? {}
+  const applicableCalculatedRules = calculatedState.enabled
+    ? calculatedRules.filter(rule => rule.enabled && !sheetRuleErrors[rule.id])
+    : []
   const textColumns = textNormalizeState.columns[sheetName] ?? {}
   const numericColumns = numericCleanupState.columns[sheetName] ?? {}
 
@@ -979,6 +1372,10 @@ function transformSheet({
     trimEdges: textNormalizeState.defaultTrimEdges,
     collapseSpaces: textNormalizeState.defaultCollapseSpaces,
   }
+  const applyGlobalTextNormalize = textNormalizeState.enabled && textNormalizeState.mode !== 'per-column'
+  const applyPerColumnTextNormalize =
+    textNormalizeState.enabled &&
+    (textNormalizeState.mode === 'per-column' || textNormalizeState.mode === 'global-with-overrides')
 
   const activeNullPatterns = nullState.patterns.filter(pattern => pattern.enabled)
 
@@ -1013,30 +1410,45 @@ function transformSheet({
       }
 
       if (textNormalizeState.enabled) {
-        if (textNormalizeState.mode === 'global') {
-          const { next, changed } = normalizeTextCell(cellValue, textGlobalOptions)
+        const originalTextValue = cellValue
+        let nextTextValue = cellValue
+        let textChanged = false
+        const columnConfig = textColumns[originalIndex]
+        const skipGlobalForColumn =
+          textNormalizeState.mode === 'global-with-overrides' && columnConfig && !columnConfig.enabled
+        if (applyGlobalTextNormalize && !skipGlobalForColumn) {
+          const { next, changed } = normalizeTextCell(nextTextValue, textGlobalOptions)
           if (changed) {
-            cellValue = next
-            textNormalizeChanges += 1
-            markStepHighlight('text-normalize', rowIndex, columnIndex)
+            nextTextValue = next
           }
-        } else {
-          const config = textColumns[originalIndex]
-          if (config?.enabled) {
-            const { next, changed } = normalizeTextCell(cellValue, config)
+          textChanged = textChanged || changed
+        }
+        if (applyPerColumnTextNormalize) {
+          if (columnConfig?.enabled) {
+            const { next, changed } = normalizeTextCell(nextTextValue, columnConfig)
             if (changed) {
-              cellValue = next
-              textNormalizeChanges += 1
-              markStepHighlight('text-normalize', rowIndex, columnIndex)
+              nextTextValue = next
             }
+            textChanged = textChanged || changed
           }
+        }
+        if (textChanged && nextTextValue !== originalTextValue) {
+          cellValue = nextTextValue
+          textNormalizeChanges += 1
+          markStepHighlight('text-normalize', rowIndex, columnIndex)
+        } else {
+          cellValue = nextTextValue
         }
       }
 
       if (numericCleanupState.enabled) {
         const numericConfig = numericColumns[originalIndex]
         if (numericConfig?.enabled) {
-          const { next, changed } = cleanNumericCell(cellValue, numericConfig)
+          const { next, changed, warning } = cleanNumericCell(cellValue, numericConfig)
+          if (warning === 'percent-overflow') {
+            numericWarnings.percentOverflow[originalIndex] =
+              (numericWarnings.percentOverflow[originalIndex] ?? 0) + 1
+          }
           if (changed) {
             cellValue = next
             numericChanges += 1
@@ -1169,7 +1581,7 @@ function transformSheet({
       const referenceTextColumns = textNormalizeState.columns[referenceSheetName] ?? {}
       const referenceNumericColumns = numericCleanupState.columns[referenceSheetName] ?? {}
       const referenceDateConfigs = dateState.columns[referenceSheetName] ?? {}
-      const referenceFindRules = findReplaceState.rulesBySheet[referenceSheetName] ?? []
+      const referenceFindRules = getFindReplaceRulesForSheet(referenceSheetName, findReplaceState.rulesBySheet)
       const isReferenceDateColumn = (originalIndex: number) => {
         if (!dateState.enabled) return false
         const config = referenceDateConfigs[originalIndex]
@@ -1190,16 +1602,21 @@ function transformSheet({
           }
         }
         if (textNormalizeState.enabled) {
-          if (textNormalizeState.mode === 'global') {
-            const { next } = normalizeTextCell(cellValue, textGlobalOptions)
-            cellValue = next
-          } else {
-            const config = referenceTextColumns[originalIndex]
-            if (config?.enabled) {
-              const { next } = normalizeTextCell(cellValue, config)
-              cellValue = next
+          let nextTextValue = cellValue
+          const columnConfig = referenceTextColumns[originalIndex]
+          const skipGlobalForColumn =
+            textNormalizeState.mode === 'global-with-overrides' && columnConfig && !columnConfig.enabled
+          if (applyGlobalTextNormalize && !skipGlobalForColumn) {
+            const { next } = normalizeTextCell(nextTextValue, textGlobalOptions)
+            nextTextValue = next
+          }
+          if (applyPerColumnTextNormalize) {
+            if (columnConfig?.enabled) {
+              const { next } = normalizeTextCell(nextTextValue, columnConfig)
+              nextTextValue = next
             }
           }
+          cellValue = nextTextValue
         }
         if (numericCleanupState.enabled) {
           const numericConfig = referenceNumericColumns[originalIndex]
@@ -1220,36 +1637,68 @@ function transformSheet({
         }
         return cellValue ?? ''
       }
-      const referenceMap = new Map<string, CellValue[]>()
+      const referenceGroups = new Map<string, CellValue[][]>()
       referenceRows.slice(1).forEach(refRow => {
         const key = buildJoinKey(
           joinPairs.map(pair => transformReferenceCell(refRow[pair.referenceColumn], pair.referenceColumn)),
         )
-        if (!referenceMap.has(key)) {
-          referenceMap.set(key, refRow)
+        const existing = referenceGroups.get(key)
+        if (existing) {
+          existing.push(refRow)
+        } else {
+          referenceGroups.set(key, [refRow])
         }
       })
-      working.slice(1).forEach((row, relativeRowIndex) => {
-        const previewRowIndex = relativeRowIndex + 1
-        const key = buildJoinKey(joinPairs.map(pair => getValueByOriginalIndex(row, pair.sourceColumn)))
-        const refRow = referenceMap.get(key)
-        importColumns.forEach(refIndex => {
-          const value = refRow ? transformReferenceCell(refRow[refIndex], refIndex) : ''
-          row.push(value ?? '')
-          if (highlightMask) {
-            pushHighlightColumn(previewRowIndex, highlightStep === 'lookup')
-          }
-          if (value != null && String(value).trim().length) lookupAdds += 1
+      const duplicateKeys = Array.from(referenceGroups.values()).filter(group => group.length > 1).length
+      const strategy = lookupConfig.duplicateStrategy || 'first'
+      lookupDiagnostics = {
+        matchedRows: 0,
+        unmatchedRows: 0,
+        duplicateKeys,
+        aborted: duplicateKeys > 0 && strategy === 'abort',
+        strategy,
+      }
+      if (lookupDiagnostics.aborted) {
+        highlightNotice =
+          'Lookup aborted: duplicate reference keys detected. Choose how to resolve them or dedupe the reference sheet.'
+      } else {
+        const referenceMap = new Map<string, CellValue[]>()
+        referenceGroups.forEach((group, key) => {
+          const resolvedRow = strategy === 'last' ? group[group.length - 1] : group[0]
+          referenceMap.set(key, resolvedRow)
         })
-      })
-      const referenceHeaders = allColumnNames[referenceSheetName] ?? []
-      importColumns.forEach(refIndex => {
-        const label = referenceHeaders[refIndex] ?? `Column ${refIndex + 1}`
-        working[0].push(`${lookupConfig.prefix || 'Lookup'}: ${label}`)
-        if (highlightMask) {
-          pushHighlightColumn(0, highlightStep === 'lookup')
+        working.slice(1).forEach((row, relativeRowIndex) => {
+          const previewRowIndex = relativeRowIndex + 1
+          const key = buildJoinKey(joinPairs.map(pair => getValueByOriginalIndex(row, pair.sourceColumn)))
+          const refRow = referenceMap.get(key)
+          if (refRow) {
+            lookupDiagnostics!.matchedRows += 1
+          } else {
+            lookupDiagnostics!.unmatchedRows += 1
+          }
+          importColumns.forEach(refIndex => {
+            const value = refRow ? transformReferenceCell(refRow[refIndex], refIndex) : ''
+            row.push(value ?? '')
+            if (highlightMask) {
+              pushHighlightColumn(previewRowIndex, highlightStep === 'lookup')
+            }
+            if (value != null && String(value).trim().length) lookupAdds += 1
+          })
+        })
+        const referenceHeaders = allColumnNames[referenceSheetName] ?? []
+        importColumns.forEach(refIndex => {
+          const label = referenceHeaders[refIndex] ?? `Column ${refIndex + 1}`
+          working[0].push(`${lookupConfig.prefix || 'Lookup'}: ${label}`)
+          if (highlightMask) {
+            pushHighlightColumn(0, highlightStep === 'lookup')
+          }
+        })
+        if (lookupDiagnostics.duplicateKeys > 0) {
+          highlightNotice = `Lookup resolved ${lookupDiagnostics.duplicateKeys} duplicate key${
+            lookupDiagnostics.duplicateKeys === 1 ? '' : 's'
+          } by keeping the ${strategy === 'first' ? 'first' : 'last'} match.`
         }
-      })
+      }
     }
     }
   }
@@ -1281,6 +1730,8 @@ function transformSheet({
     dedupeRemovals,
     lookupAdds,
     totalRows: working.length - 1,
+    numericWarnings,
+    lookupDiagnostics,
     highlightMask: finalMask,
     highlightNotice,
   }
@@ -1296,11 +1747,19 @@ export default function DillonsDataCleanerClient() {
   const [rowsBySheet, setRowsBySheet] = useState<Record<string, CellValue[][]>>({})
   const [originalRowsBySheet, setOriginalRowsBySheet] = useState<Record<string, CellValue[][]>>({})
   const [columnNamesBySheet, setColumnNamesBySheet] = useState<Record<string, string[]>>({})
+  const [rawColumnNamesBySheet, setRawColumnNamesBySheet] = useState<Record<string, string[]>>({})
+  const [headerOverrides, setHeaderOverrides] = useState<HeaderOverrides>({})
+  const [headerRenameDrafts, setHeaderRenameDrafts] = useState<Record<string, Record<number, string>>>({})
+  const [headerRenameErrors, setHeaderRenameErrors] = useState<Record<string, Record<number, string | null>>>({})
   const [selectedSheets, setSelectedSheets] = useState<string[]>([])
   const [activeSheet, setActiveSheet] = useState<string | null>(null)
   const [nullState, setNullState] = useState<NullState>(() => createDefaultNullState())
   const [headerState, setHeaderState] = useState<HeaderState>(() => createDefaultHeaderState())
-  const [columnOrderState, setColumnOrderState] = useState<ColumnOrderState>({ enabled: false, orders: {} })
+  const [columnOrderState, setColumnOrderState] = useState<ColumnOrderState>({
+    enabled: false,
+    orders: {},
+    sortModeBySheet: {},
+  })
   const [findReplaceState, setFindReplaceState] = useState<FindReplaceState>({ enabled: false, rulesBySheet: {} })
   const [dateState, setDateState] = useState<DateState>({ enabled: false, mode: 'global', defaultFormat: DEFAULT_DATE_FORMAT, columns: {} })
   const [calculatedState, setCalculatedState] = useState<CalculatedState>({ enabled: false, rulesBySheet: {} })
@@ -1320,19 +1779,45 @@ export default function DillonsDataCleanerClient() {
   const [activeFindReplaceRuleId, setActiveFindReplaceRuleId] = useState<string | null>(null)
   const [dateSheet, setDateSheet] = useState<string | null>(null)
   const [calculatedSheet, setCalculatedSheet] = useState<string | null>(null)
+  const [showCalculatedErrors, setShowCalculatedErrors] = useState(false)
   const [textNormalizeSheet, setTextNormalizeSheet] = useState<string | null>(null)
   const [numericSheet, setNumericSheet] = useState<string | null>(null)
   const [dedupSheet, setDedupSheet] = useState<string | null>(null)
   const [lookupSheet, setLookupSheet] = useState<string | null>(null)
   const [dragColumn, setDragColumn] = useState<{ sheet: string; index: number } | null>(null)
+  const [isHeaderModalOpen, setHeaderModalOpen] = useState(false)
+  const [headerRenameSheet, setHeaderRenameSheet] = useState<string | null>(null)
+  const [headerRenameScope, setHeaderRenameScope] = useState<'sheet' | 'all'>('sheet')
 
   const numericDetectionBySheet = useMemo(() => {
-    const map: Record<string, Record<number, boolean>> = {}
+    const map: Record<string, Record<number, NumericDetection>> = {}
     Object.entries(rowsBySheet).forEach(([name, rows]) => {
       map[name] = detectNumericColumns(rows ?? [])
     })
     return map
   }, [rowsBySheet])
+
+  const { calculatedInlineErrorsBySheet, calculatedBlockingErrorsBySheet } = useMemo(() => {
+    const inlineMap: Record<string, Record<string, string | null>> = {}
+    const blockingMap: Record<string, Record<string, string | null>> = {}
+    Object.entries(calculatedState.rulesBySheet).forEach(([sheetName, rules]) => {
+      inlineMap[sheetName] = {}
+      blockingMap[sheetName] = {}
+      const columnCount = columnNamesBySheet[sheetName]?.length ?? 0
+      const detection = numericDetectionBySheet[sheetName] ?? {}
+      rules.forEach(rule => {
+        const { inline, blocking } = getCalculatedRuleErrors(rule, columnCount, detection, showCalculatedErrors)
+        inlineMap[sheetName][rule.id] = inline
+        blockingMap[sheetName][rule.id] = blocking
+      })
+    })
+    return { calculatedInlineErrorsBySheet: inlineMap, calculatedBlockingErrorsBySheet: blockingMap }
+  }, [calculatedState.rulesBySheet, columnNamesBySheet, numericDetectionBySheet, showCalculatedErrors])
+
+  const hasBlockingCalculatedErrors = useMemo(() => {
+    if (!calculatedState.enabled) return false
+    return Object.values(calculatedBlockingErrorsBySheet).some(ruleMap => Object.values(ruleMap).some(Boolean))
+  }, [calculatedBlockingErrorsBySheet, calculatedState.enabled])
 
   const resetTransforms = useCallback(() => {
     setHasRunTransformations(false)
@@ -1361,6 +1846,7 @@ export default function DillonsDataCleanerClient() {
         const originalMap: Record<string, CellValue[][]> = {}
         const names: Record<string, string[]> = {}
         const orders: Record<string, number[]> = {}
+        const sortModes: Record<string, ColumnSortMode> = {}
         const dateMap: Record<string, Record<number, DateColumnConfig>> = {}
         const textColumnMap: Record<string, Record<number, TextNormalizeColumnConfig>> = {}
         const numericColumnMap: Record<string, Record<number, NumericColumnConfig>> = {}
@@ -1385,13 +1871,17 @@ export default function DillonsDataCleanerClient() {
             return label.length ? label : `Column ${idx + 1}`
           })
           orders[name] = getDefaultOrder(headers.length)
+          sortModes[name] = null
 
-          const detection = detectDateColumns(normalized)
+          const dateDetection = analyzeDateColumns(normalized)
           const columnConfigs: Record<number, DateColumnConfig> = {}
           headers.forEach((_, idx) => {
             columnConfigs[idx] = {
-              enabled: detection[idx] ?? false,
+              enabled: dateDetection[idx]?.enabled ?? false,
               format: DEFAULT_DATE_FORMAT,
+              confidence: dateDetection[idx]?.confidence ?? 0,
+              sampleCount: dateDetection[idx]?.sampleCount ?? 0,
+              guardReason: dateDetection[idx]?.guardReason ?? null,
             }
           })
           dateMap[name] = columnConfigs
@@ -1410,13 +1900,9 @@ export default function DillonsDataCleanerClient() {
           const numericDetection = detectNumericColumns(normalized)
           const numericColumns: Record<number, NumericColumnConfig> = {}
           headers.forEach((_, idx) => {
-            numericColumns[idx] = {
-              enabled: numericDetection[idx] ?? false,
-              stripSymbols: true,
-              precision: 'auto',
-              format: 'plain',
-              currency: 'USD',
-            }
+            const detection = numericDetection[idx]
+            const isNumeric = Boolean(detection?.isNumeric)
+            numericColumns[idx] = buildNumericConfigFromDetection(detection, isNumeric)
           })
           numericColumnMap[name] = numericColumns
 
@@ -1432,16 +1918,22 @@ export default function DillonsDataCleanerClient() {
             prefix: 'Lookup',
             joins: [],
             importColumns: [],
+            duplicateStrategy: 'first',
           }
         })
 
+        const clonedNames = Object.entries(names).reduce<Record<string, string[]>>((acc, [sheet, labels]) => {
+          acc[sheet] = [...labels]
+          return acc
+        }, {})
         setRowsBySheet(mapped)
         setOriginalRowsBySheet(originalMap)
-        setColumnNamesBySheet(names)
+        setRawColumnNamesBySheet(names)
+        setColumnNamesBySheet(clonedNames)
         setSheetOrder(workbook.SheetNames)
         setSelectedSheets(workbook.SheetNames)
         setActiveSheet(workbook.SheetNames[0])
-        setColumnOrderState({ enabled: false, orders })
+        setColumnOrderState({ enabled: false, orders, sortModeBySheet: sortModes })
         setFindReplaceState({ enabled: false, rulesBySheet: {} })
         setCalculatedState({ enabled: false, rulesBySheet: {} })
         setDateState({ enabled: false, mode: 'global', defaultFormat: DEFAULT_DATE_FORMAT, columns: dateMap })
@@ -1458,15 +1950,22 @@ export default function DillonsDataCleanerClient() {
         setLookupState({ enabled: false, configsBySheet: lookupConfigMap })
         setNullState(createDefaultNullState())
         setHeaderState(createDefaultHeaderState())
+        setHeaderOverrides({})
+        setHeaderRenameDrafts({})
+        setHeaderRenameErrors({})
         setCustomPatternInput('')
         setColumnOrderSheet(null)
         setFindReplaceSheet(null)
         setDateSheet(null)
         setCalculatedSheet(null)
+        setShowCalculatedErrors(false)
         setTextNormalizeSheet(null)
         setNumericSheet(null)
         setDedupSheet(null)
         setLookupSheet(null)
+        setHeaderRenameSheet(null)
+        setHeaderModalOpen(false)
+        setHeaderRenameScope('sheet')
         setActiveStep(FIRST_STEP)
         setAdvancedExpanded(false)
         setErrorMessage(null)
@@ -1591,6 +2090,199 @@ export default function DillonsDataCleanerClient() {
     [resetTransforms],
   )
 
+  const setHeaderRenameError = useCallback((sheetName: string, columnIndex: number, message: string | null) => {
+    setHeaderRenameErrors(current => {
+      const next = { ...current }
+      const sheetErrors = { ...(next[sheetName] ?? {}) }
+      if (message) {
+        sheetErrors[columnIndex] = message
+        next[sheetName] = sheetErrors
+      } else {
+        delete sheetErrors[columnIndex]
+        if (Object.keys(sheetErrors).length) {
+          next[sheetName] = sheetErrors
+        } else {
+          delete next[sheetName]
+        }
+      }
+      return next
+    })
+  }, [])
+
+  const focusPreviewSheet = useCallback(
+    (sheetName: string) => {
+      if (!sheetName || !sheetOrder.includes(sheetName)) return
+      let added = false
+      setSelectedSheets(prev => {
+        if (prev.includes(sheetName)) return prev
+        added = true
+        const combined = [...prev, sheetName].sort((a, b) => sheetOrder.indexOf(a) - sheetOrder.indexOf(b))
+        return combined
+      })
+      setActiveSheet(sheetName)
+      if (added) {
+        resetTransforms()
+      }
+    },
+    [sheetOrder, resetTransforms],
+  )
+
+  const getDefaultHeaderLabel = useCallback(
+    (sheetName: string, columnIndex: number) => {
+      const raw = rawColumnNamesBySheet[sheetName]?.[columnIndex]
+      if (raw && raw.trim().length) return raw
+      return `Column ${columnIndex + 1}`
+    },
+    [rawColumnNamesBySheet],
+  )
+
+  const formatHeaderForComparison = useCallback(
+    (sheetName: string, value: string) => {
+      const shouldFormat =
+        headerState.enabled && (headerState.scope === 'all' || headerState.sheets.includes(sheetName))
+      const base = shouldFormat ? applyHeaderFormatting(value, headerState) : value
+      return base.trim().toLowerCase()
+    },
+    [headerState],
+  )
+
+  const validateHeaderOverride = useCallback(
+    (sheetName: string, columnIndex: number, finalLabel: string) => {
+      const rowWidth = rowsBySheet[sheetName]?.[0]?.length ?? 0
+      const labelWidth = columnNamesBySheet[sheetName]?.length ?? 0
+      const totalColumns = Math.max(rowWidth, labelWidth, columnIndex + 1)
+      const normalizedTarget = formatHeaderForComparison(sheetName, finalLabel)
+      if (!normalizedTarget.length) return null
+      const resolveLabel = (index: number) => {
+        const override = headerOverrides[sheetName]?.[index]
+        const stored = columnNamesBySheet[sheetName]?.[index]
+        const raw = override ?? stored ?? getDefaultHeaderLabel(sheetName, index)
+        return raw?.trim().length ? raw : getDefaultHeaderLabel(sheetName, index)
+      }
+      const seen = new Map<string, number>()
+      for (let idx = 0; idx < totalColumns; idx += 1) {
+        const label = idx === columnIndex ? finalLabel : resolveLabel(idx)
+        const normalized = formatHeaderForComparison(sheetName, label)
+        if (!normalized.length) continue
+        const prior = seen.get(normalized)
+        if (prior != null && prior !== idx) {
+          return `Column name "${label}" is already in use.`
+        }
+        seen.set(normalized, idx)
+      }
+      return null
+    },
+    [columnNamesBySheet, formatHeaderForComparison, getDefaultHeaderLabel, headerOverrides, rowsBySheet],
+  )
+
+  const handleHeaderOverrideChange = useCallback(
+    (sheetName: string, columnIndex: number, value: string) => {
+      const trimmed = value.trim()
+      if (!trimmed.length) {
+        setHeaderRenameError(sheetName, columnIndex, null)
+        return false
+      }
+
+      const targetSheets = headerRenameScope === 'all' ? sheetOrder : [sheetName]
+      let blockingError: string | null = null
+      targetSheets.forEach(target => {
+        if (blockingError) return
+        const error = validateHeaderOverride(target, columnIndex, value)
+        if (error) {
+          blockingError =
+            headerRenameScope === 'all' ? `${error} (conflict on ${target})` : error
+        }
+      })
+
+      if (blockingError) {
+        setHeaderRenameError(sheetName, columnIndex, blockingError)
+        return false
+      }
+
+      setHeaderRenameError(sheetName, columnIndex, null)
+      setHeaderOverrides(current => {
+        const next = { ...current }
+        targetSheets.forEach(target => {
+          const baseLabel = getDefaultHeaderLabel(target, columnIndex)
+          const shouldStoreOverride = value !== baseLabel
+          const sheetOverrides = { ...(next[target] ?? {}) }
+          if (shouldStoreOverride) {
+            sheetOverrides[columnIndex] = value
+            next[target] = sheetOverrides
+          } else {
+            delete sheetOverrides[columnIndex]
+            if (Object.keys(sheetOverrides).length) {
+              next[target] = sheetOverrides
+            } else {
+              delete next[target]
+            }
+          }
+        })
+        return next
+      })
+      setColumnNamesBySheet(current => {
+        const next = { ...current }
+        targetSheets.forEach(target => {
+          const baseLabel = getDefaultHeaderLabel(target, columnIndex)
+          const finalLabel = value.length ? value : baseLabel
+          const existing = next[target] ? [...next[target]] : []
+          if (existing.length <= columnIndex) {
+            const fillCount = columnIndex - existing.length + 1
+            for (let i = 0; i < fillCount; i += 1) {
+              existing.push(getDefaultHeaderLabel(target, existing.length))
+            }
+          }
+          existing[columnIndex] = finalLabel
+          next[target] = existing
+        })
+        return next
+      })
+      resetTransforms()
+      return true
+    },
+    [
+      getDefaultHeaderLabel,
+      headerRenameScope,
+      resetTransforms,
+      setHeaderRenameError,
+      sheetOrder,
+      validateHeaderOverride,
+    ],
+  )
+
+  const handleHeaderOverrideReset = useCallback(
+    (sheetName: string, columnIndex: number) => {
+      setHeaderRenameDrafts(current => {
+        const next = { ...current }
+        if (!next[sheetName]) return current
+        const sheetDrafts = { ...next[sheetName] }
+        delete sheetDrafts[columnIndex]
+        if (Object.keys(sheetDrafts).length) {
+          next[sheetName] = sheetDrafts
+        } else {
+          delete next[sheetName]
+        }
+        return next
+      })
+      handleHeaderOverrideChange(sheetName, columnIndex, getDefaultHeaderLabel(sheetName, columnIndex))
+    },
+    [getDefaultHeaderLabel, handleHeaderOverrideChange],
+  )
+
+  const handleOpenHeaderModal = useCallback(() => {
+    if (!sheetOrder.length) return
+    setHeaderModalOpen(true)
+    setHeaderRenameSheet(current => current ?? sheetOrder[0])
+  }, [sheetOrder])
+
+  const handleCloseHeaderModal = useCallback(() => {
+    setHeaderModalOpen(false)
+    setHeaderRenameSheet(null)
+    setHeaderRenameDrafts({})
+    setHeaderRenameErrors({})
+    setHeaderRenameScope('sheet')
+  }, [])
+
   const previewSheets = useMemo(() => {
     if (!selectedSheets.length) return []
     return selectedSheets
@@ -1603,6 +2295,7 @@ export default function DillonsDataCleanerClient() {
           allRowsBySheet: rowsBySheet,
           allColumnNames: columnNamesBySheet,
           headerState,
+          headerOverrides,
           columnOrderState,
           dateState,
           textNormalizeState,
@@ -1614,8 +2307,9 @@ export default function DillonsDataCleanerClient() {
           lookupState,
           limitRows: PREVIEW_ROW_LIMIT,
           highlightStep: activeStep,
+          calculatedRuleErrors: calculatedBlockingErrorsBySheet[name],
         }),
-      )
+       )
   }, [
     selectedSheets,
     rowsBySheet,
@@ -1631,7 +2325,27 @@ export default function DillonsDataCleanerClient() {
     dedupState,
     lookupState,
     activeStep,
+    headerOverrides,
+    calculatedBlockingErrorsBySheet,
   ])
+
+  const numericWarningsBySheet = useMemo(() => {
+    const map: Record<string, SheetPreview['numericWarnings']> = {}
+    previewSheets.forEach(sheet => {
+      map[sheet.name] = sheet.numericWarnings
+    })
+    return map
+  }, [previewSheets])
+
+  const lookupDiagnosticsBySheet = useMemo(() => {
+    const map: Record<string, LookupDiagnostics | undefined> = {}
+    previewSheets.forEach(sheet => {
+      if (sheet.lookupDiagnostics) {
+        map[sheet.name] = sheet.lookupDiagnostics
+      }
+    })
+    return map
+  }, [previewSheets])
 
   const aggregatedStats = useMemo(() => {
     return previewSheets.reduce(
@@ -1702,6 +2416,9 @@ export default function DillonsDataCleanerClient() {
     switch (stepId) {
       case 'headers':
         if (!headerState.enabled) return 'Header cleanup is currently disabled.'
+        if (headerState.scope === 'some' && !headerState.sheets.includes(preview.name)) {
+          return 'Header cleanup is disabled for this sheet.'
+        }
         return preview.headerChanges
           ? `${formatChangeCount(preview.headerChanges, 'header tweak')} in ${preview.name} (${windowLabel}).`
           : `No header changes detected in ${windowLabel}.`
@@ -1765,10 +2482,21 @@ export default function DillonsDataCleanerClient() {
       setErrorMessage('Select at least one sheet to transform.')
       return
     }
+    if (hasBlockingCalculatedErrors) {
+      setShowCalculatedErrors(true)
+      setErrorMessage('Fix calculated field errors before running transformations.')
+      return
+    }
     setHasRunTransformations(true)
     setStatusMessage('Transformations applied. Download is now ready.')
     setErrorMessage(null)
-  }, [fileInfo, selectedSheets.length])
+  }, [fileInfo, selectedSheets.length, hasBlockingCalculatedErrors])
+
+  const isHeaderCleanupActiveForSheet = useCallback(
+    (sheetName: string) =>
+      headerState.enabled && (headerState.scope === 'all' || headerState.sheets.includes(sheetName)),
+    [headerState.enabled, headerState.scope, headerState.sheets],
+  )
 
   const handleDownload = useCallback(async () => {
     if (!fileInfo) {
@@ -1783,15 +2511,21 @@ export default function DillonsDataCleanerClient() {
       setErrorMessage('Select at least one sheet to transform.')
       return
     }
+    if (hasBlockingCalculatedErrors) {
+      setShowCalculatedErrors(true)
+      setErrorMessage('Fix calculated field errors before downloading.')
+      return
+    }
 
     try {
       const prefixed = `dillons_data_cleaner_${fileInfo.name}`
       const sheetHasTransforms = (sheetName: string) => {
-        if (headerState.enabled) return true
+        if (isHeaderCleanupActiveForSheet(sheetName)) return true
+        if (Object.keys(headerOverrides[sheetName] ?? {}).length) return true
         if (columnOrderState.enabled) return true
         if (nullState.enabled) return true
         if (textNormalizeState.enabled) {
-          if (textNormalizeState.mode === 'global') return true
+          if (textNormalizeState.mode !== 'per-column') return true
           const textColumns = textNormalizeState.columns[sheetName] ?? {}
           if (Object.values(textColumns).some(config => config.enabled)) return true
         }
@@ -1840,6 +2574,7 @@ export default function DillonsDataCleanerClient() {
           allRowsBySheet: rowsBySheet,
           allColumnNames: columnNamesBySheet,
           headerState,
+          headerOverrides,
           columnOrderState,
           dateState,
           textNormalizeState,
@@ -1849,6 +2584,7 @@ export default function DillonsDataCleanerClient() {
           findReplaceState,
           dedupState,
           lookupState,
+          calculatedRuleErrors: calculatedBlockingErrorsBySheet[sheetName],
         }).rows
       }
 
@@ -1921,6 +2657,10 @@ export default function DillonsDataCleanerClient() {
     dedupState,
     lookupState,
     originalRowsBySheet,
+    calculatedBlockingErrorsBySheet,
+    hasBlockingCalculatedErrors,
+    headerOverrides,
+    isHeaderCleanupActiveForSheet,
   ])
 
   const lookupDisabledMessage = !fileInfo
@@ -1938,11 +2678,68 @@ export default function DillonsDataCleanerClient() {
     }
   }, [lookupDisabled, lookupState.enabled])
 
+  useEffect(() => {
+    if (headerState.scope !== 'some') return
+    if (!sheetOrder.length) return
+    setHeaderState(current => {
+      const available = current.sheets.filter(sheet => sheetOrder.includes(sheet))
+      const normalized = available.length ? available : [sheetOrder[0]]
+      if (
+        normalized.length === current.sheets.length &&
+        normalized.every((sheet, index) => sheet === current.sheets[index])
+      ) {
+        return current
+      }
+      return { ...current, sheets: normalized }
+    })
+  }, [headerState.scope, headerState.sheets, sheetOrder])
+
+  useEffect(() => {
+    if (!calculatedState.enabled && showCalculatedErrors) {
+      setShowCalculatedErrors(false)
+    }
+  }, [calculatedState.enabled, showCalculatedErrors])
+
   const sheetSummary = fileInfo ? `${selectedSheets.length} of ${sheetOrder.length} sheets selected` : 'No file loaded'
   const canRunTransformations = Boolean(fileInfo && selectedSheets.length)
   const canDownload = Boolean(fileInfo && hasRunTransformations)
 
-  const columnNamesForSheet = (sheetName: string) => columnNamesBySheet[sheetName] ?? []
+  const columnCountForSheet = (sheetName: string) => {
+    const rowWidth = rowsBySheet[sheetName]?.[0]?.length ?? 0
+    const nameWidth = columnNamesBySheet[sheetName]?.length ?? 0
+    return Math.max(rowWidth, nameWidth)
+  }
+  const getRawHeaderLabel = useCallback(
+    (sheetName: string, columnIndex: number) => {
+      const stored = columnNamesBySheet[sheetName]?.[columnIndex]
+      const raw = stored ?? getDefaultHeaderLabel(sheetName, columnIndex)
+      return raw?.trim().length ? raw : getDefaultHeaderLabel(sheetName, columnIndex)
+    },
+    [columnNamesBySheet, getDefaultHeaderLabel],
+  )
+  const getFormattedHeaderLabel = useCallback(
+    (sheetName: string, columnIndex: number) => {
+      const raw = getRawHeaderLabel(sheetName, columnIndex)
+      const shouldFormat =
+        headerState.enabled && (headerState.scope === 'all' || headerState.sheets.includes(sheetName))
+      return shouldFormat ? applyHeaderFormatting(raw, headerState) : raw
+    },
+    [getRawHeaderLabel, headerState],
+  )
+  const getFormattedHeaderNamesForSheet = useCallback(
+    (sheetName: string) => {
+      const width = columnCountForSheet(sheetName)
+      return getDefaultOrder(width).map(index => getFormattedHeaderLabel(sheetName, index))
+    },
+    [columnCountForSheet, getFormattedHeaderLabel],
+  )
+  const getNumericDefaultConfig = useCallback(
+    (sheetName: string, columnIndex: number): NumericColumnConfig => {
+      const detection = numericDetectionBySheet[sheetName]?.[columnIndex]
+      return buildNumericConfigFromDetection(detection, false)
+    },
+    [numericDetectionBySheet],
+  )
 
   const isStepEnabled = (stepId: WorkflowStepId) => {
     switch (stepId) {
@@ -2072,6 +2869,7 @@ export default function DillonsDataCleanerClient() {
     setColumnOrderState(current => ({ ...current, enabled: checked }))
     if (checked && !columnOrderSheet && sheetOrder.length) {
       setColumnOrderSheet(sheetOrder[0])
+      focusPreviewSheet(sheetOrder[0])
     }
     resetTransforms()
   }
@@ -2096,6 +2894,9 @@ export default function DillonsDataCleanerClient() {
     setCalculatedState(current => ({ ...current, enabled: checked }))
     if (checked && !calculatedSheet && sheetOrder.length) {
       setCalculatedSheet(sheetOrder[0])
+    }
+    if (!checked) {
+      setShowCalculatedErrors(false)
     }
     resetTransforms()
   }
@@ -2144,13 +2945,7 @@ export default function DillonsDataCleanerClient() {
 
   const updateNumericColumn = (sheetName: string, columnIndex: number, partial: Partial<NumericColumnConfig>) => {
     setNumericCleanupState(current => {
-      const existing = current.columns[sheetName]?.[columnIndex] ?? {
-        enabled: false,
-        stripSymbols: true,
-        precision: 'auto',
-        format: 'plain',
-        currency: 'USD',
-      }
+      const existing = current.columns[sheetName]?.[columnIndex] ?? getNumericDefaultConfig(sheetName, columnIndex)
       return {
         ...current,
         columns: {
@@ -2212,6 +3007,7 @@ export default function DillonsDataCleanerClient() {
           prefix: current.configsBySheet[sheetName]?.prefix ?? 'Lookup',
           joins: current.configsBySheet[sheetName]?.joins ?? [],
           importColumns: current.configsBySheet[sheetName]?.importColumns ?? [],
+          duplicateStrategy: current.configsBySheet[sheetName]?.duplicateStrategy ?? 'first',
           ...partial,
         },
       },
@@ -2232,6 +3028,7 @@ export default function DillonsDataCleanerClient() {
             { id: `join-${Date.now()}`, sourceColumn: null, referenceColumn: null },
           ],
           importColumns: current.configsBySheet[sheetName]?.importColumns ?? [],
+          duplicateStrategy: current.configsBySheet[sheetName]?.duplicateStrategy ?? 'first',
         },
       },
     }))
@@ -2251,6 +3048,7 @@ export default function DillonsDataCleanerClient() {
           referenceSheet: current.configsBySheet[sheetName]?.referenceSheet ?? null,
           prefix: current.configsBySheet[sheetName]?.prefix ?? 'Lookup',
           importColumns: current.configsBySheet[sheetName]?.importColumns ?? [],
+          duplicateStrategy: current.configsBySheet[sheetName]?.duplicateStrategy ?? 'first',
           joins: (current.configsBySheet[sheetName]?.joins ?? []).map(join =>
             join.id === joinId ? { ...join, ...partial } : join,
           ),
@@ -2269,6 +3067,7 @@ export default function DillonsDataCleanerClient() {
           referenceSheet: current.configsBySheet[sheetName]?.referenceSheet ?? null,
           prefix: current.configsBySheet[sheetName]?.prefix ?? 'Lookup',
           importColumns: current.configsBySheet[sheetName]?.importColumns ?? [],
+          duplicateStrategy: current.configsBySheet[sheetName]?.duplicateStrategy ?? 'first',
           joins: (current.configsBySheet[sheetName]?.joins ?? []).filter(join => join.id !== joinId),
         },
       },
@@ -2276,42 +3075,115 @@ export default function DillonsDataCleanerClient() {
     resetTransforms()
   }
 
-  const updateColumnOrder = (sheetName: string, nextOrder: number[]) => {
+  const updateColumnOrder = (sheetName: string, nextOrder: number[], sortMode: ColumnSortMode = null) => {
+    const width = columnCountForSheet(sheetName)
+    const normalized = normalizeColumnOrder(nextOrder, width)
     setColumnOrderState(current => ({
       ...current,
       orders: {
         ...current.orders,
-        [sheetName]: nextOrder,
+        [sheetName]: normalized,
+      },
+      sortModeBySheet: {
+        ...current.sortModeBySheet,
+        [sheetName]: sortMode,
       },
     }))
     resetTransforms()
   }
 
   const applyAlphabeticalOrder = (sheetName: string, direction: 'asc' | 'desc') => {
-    const names = columnNamesForSheet(sheetName)
-    const baseOrder = getDefaultOrder(names.length)
+    const width = columnCountForSheet(sheetName)
+    const baseOrder = getDefaultOrder(width)
+    const formattedNames = baseOrder.map(index => getFormattedHeaderLabel(sheetName, index).toLowerCase())
     const sorted = [...baseOrder].sort((a, b) => {
-      const left = (names[a] ?? '').toLowerCase()
-      const right = (names[b] ?? '').toLowerCase()
+      const left = formattedNames[a] ?? ''
+      const right = formattedNames[b] ?? ''
       if (left === right) return 0
       return direction === 'asc' ? (left < right ? -1 : 1) : left < right ? 1 : -1
     })
-    updateColumnOrder(sheetName, sorted)
+    updateColumnOrder(sheetName, sorted, direction)
   }
 
   const applyOrderToAllSheets = (sourceSheet: string) => {
-    const sourceOrder = columnOrderState.orders[sourceSheet]
-    if (!sourceOrder) return
-    const updatedOrders: Record<string, number[]> = {}
-    sheetOrder.forEach(sheet => {
-      const width = columnNamesForSheet(sheet).length
-      if (width === sourceOrder.length) {
-        updatedOrders[sheet] = [...sourceOrder]
-      } else {
-        updatedOrders[sheet] = getDefaultOrder(width)
+    const sourceWidth = columnCountForSheet(sourceSheet)
+    const sourceNames = getDefaultOrder(sourceWidth).map(index => getFormattedHeaderLabel(sourceSheet, index))
+    const sourceOrder = normalizeColumnOrder(columnOrderState.orders[sourceSheet], sourceWidth)
+    const sourceSortMode = columnOrderState.sortModeBySheet[sourceSheet]
+    if (!sourceOrder.length) return
+
+    const normalizeName = (value: string) => value.trim().toLowerCase()
+    const buildNameMap = (names: string[]) => {
+      const map = new Map<string, number>()
+      for (let index = 0; index < names.length; index += 1) {
+        const normalized = normalizeName(names[index] ?? '')
+        if (!normalized.length || map.has(normalized)) return null
+        map.set(normalized, index)
       }
-    })
-    setColumnOrderState(current => ({ ...current, orders: updatedOrders }))
+      return map
+    }
+
+    const updatedOrders: Record<string, number[]> = {}
+    const updatedSortModes: Record<string, ColumnSortMode> = { ...columnOrderState.sortModeBySheet }
+
+    if (sourceSortMode === 'asc' || sourceSortMode === 'desc') {
+      sheetOrder.forEach(sheet => {
+        const width = columnCountForSheet(sheet)
+        const names = getDefaultOrder(width).map(index => getFormattedHeaderLabel(sheet, index))
+        const baseOrder = getDefaultOrder(width)
+        const sorted = [...baseOrder].sort((a, b) => {
+          const left = (names[a] ?? '').toLowerCase()
+          const right = (names[b] ?? '').toLowerCase()
+          if (left === right) return 0
+          return sourceSortMode === 'asc' ? (left < right ? -1 : 1) : left < right ? 1 : -1
+        })
+        updatedOrders[sheet] = sorted
+        updatedSortModes[sheet] = sourceSortMode
+      })
+    } else if (sourceSortMode === 'reset') {
+      sheetOrder.forEach(sheet => {
+        const width = columnCountForSheet(sheet)
+        updatedOrders[sheet] = getDefaultOrder(width)
+        updatedSortModes[sheet] = 'reset'
+      })
+    } else {
+      const sourceMap = buildNameMap(sourceNames)
+      sheetOrder.forEach(sheet => {
+        const width = columnCountForSheet(sheet)
+        const names = getFormattedHeaderNamesForSheet(sheet)
+        const existing = normalizeColumnOrder(columnOrderState.orders[sheet], width)
+        if (!sourceMap || width !== sourceWidth) {
+          updatedOrders[sheet] = existing
+          return
+        }
+        const targetMap = buildNameMap(names)
+        if (!targetMap) {
+          updatedOrders[sheet] = existing
+          return
+        }
+        const matchedOrder: number[] = []
+        let canMatch = true
+        sourceOrder.forEach(sourceIndex => {
+          const sourceLabel = normalizeName(sourceNames[sourceIndex] ?? '')
+          const targetIndex = targetMap.get(sourceLabel)
+          if (targetIndex == null) {
+            canMatch = false
+          } else {
+            matchedOrder.push(targetIndex)
+          }
+        })
+        updatedOrders[sheet] = canMatch ? normalizeColumnOrder(matchedOrder, width) : existing
+        if (canMatch) {
+          updatedSortModes[sheet] = null
+        }
+      })
+    }
+
+    setColumnOrderState(current => ({
+      ...current,
+      orders: updatedOrders,
+      sortModeBySheet: updatedSortModes,
+    }))
     resetTransforms()
   }
 
@@ -2378,6 +3250,9 @@ export default function DillonsDataCleanerClient() {
           [columnIndex]: {
             enabled: current.columns[sheetName]?.[columnIndex]?.enabled ?? false,
             format: current.columns[sheetName]?.[columnIndex]?.format ?? current.defaultFormat,
+            confidence: current.columns[sheetName]?.[columnIndex]?.confidence ?? 0,
+            sampleCount: current.columns[sheetName]?.[columnIndex]?.sampleCount ?? 0,
+            guardReason: current.columns[sheetName]?.[columnIndex]?.guardReason ?? null,
             ...partial,
           },
         },
@@ -2440,11 +3315,11 @@ export default function DillonsDataCleanerClient() {
 
   const handleColumnDrop = (sheetName: string, targetIndex: number) => {
     if (!dragColumn || dragColumn.sheet !== sheetName) return
-    const names = columnNamesForSheet(sheetName)
-    const order = [...(columnOrderState.orders[sheetName] ?? getDefaultOrder(names.length))]
+    const width = columnCountForSheet(sheetName)
+    const order = [...normalizeColumnOrder(columnOrderState.orders[sheetName], width)]
     const [removed] = order.splice(dragColumn.index, 1)
     order.splice(targetIndex, 0, removed)
-    updateColumnOrder(sheetName, order)
+    updateColumnOrder(sheetName, order, null)
     setDragColumn(null)
   }
 
@@ -2458,8 +3333,7 @@ export default function DillonsDataCleanerClient() {
   const lookupTabs = sheetOrder.length ? sheetOrder : lookupSheet ? [lookupSheet] : []
 
   const renderColumnList = (sheetName: string) => {
-    const names = columnNamesForSheet(sheetName)
-    const order = columnOrderState.orders[sheetName] ?? getDefaultOrder(names.length)
+    const order = normalizeColumnOrder(columnOrderState.orders[sheetName], columnCountForSheet(sheetName))
     return (
       <ul className="mt-4 max-h-96 space-y-2 overflow-auto text-xs text-white/80">
         {order.map((columnIndex, position) => (
@@ -2474,7 +3348,7 @@ export default function DillonsDataCleanerClient() {
             >
               <span className="flex items-center gap-2">
                 <span className="text-white/60">≡</span>
-                {names[columnIndex] ?? `Column ${columnIndex + 1}`}
+                {getFormattedHeaderLabel(sheetName, columnIndex)}
               </span>
               <span className="text-white/40">{columnIndex + 1}</span>
             </button>
@@ -2486,7 +3360,8 @@ export default function DillonsDataCleanerClient() {
 
   const renderFindReplaceRules = (sheetName: string) => {
     const rules = findReplaceState.rulesBySheet[sheetName] ?? []
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
+    const allowWorkbookScope = selectedSheets.length > 1
     const hasInvalidRegex = rules.some(rule => Boolean(rule.regexError))
     return (
       <div className="space-y-4">
@@ -2532,11 +3407,16 @@ export default function DillonsDataCleanerClient() {
                 Scope
                 <select
                   value={rule.scope}
-                  onChange={event => updateFindReplaceRule(sheetName, rule.id, { scope: event.target.value as 'sheet' | 'columns' })}
+                  onChange={event =>
+                    updateFindReplaceRule(sheetName, rule.id, { scope: event.target.value as FindReplaceRule['scope'] })
+                  }
                   className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
                 >
                   <option value="sheet">Entire sheet</option>
                   <option value="columns">Specific columns</option>
+                  {allowWorkbookScope || rule.scope === 'workbook' ? (
+                    <option value="workbook">All selected sheets</option>
+                  ) : null}
                 </select>
               </label>
               <label className="flex flex-col gap-1">
@@ -2611,35 +3491,50 @@ export default function DillonsDataCleanerClient() {
   }
 
   const renderDateColumnList = (sheetName: string) => {
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
     const configs = dateState.columns[sheetName] ?? {}
     return (
       <div className="mt-4 space-y-3">
         {names.length === 0 ? <p className="text-xs text-white/60">No headers detected.</p> : null}
         {names.map((name, index) => {
-          const config = configs[index] ?? { enabled: false, format: dateState.defaultFormat }
+          const config =
+            configs[index] ?? { enabled: false, format: dateState.defaultFormat, confidence: 0, sampleCount: 0, guardReason: null }
           const displayMode = dateState.mode
           const checkboxDisabled = displayMode === 'global'
           const enabled = config.enabled
+          const statusLabel = enabled ? 'Converted' : 'Off'
+          const statusClasses = enabled
+            ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-100'
+            : 'border-white/20 text-white/60'
+          const confidencePercent = Math.round((config.confidence ?? 0) * 100)
+          const toggleDisabled = checkboxDisabled
           return (
             <div key={`${sheetName}-date-${index}`} className="rounded-2xl border border-white/15 bg-white/5 p-4 text-xs text-white/80">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-white">{name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-white">{name}</p>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusClasses}`}>
+                      {statusLabel}
+                    </span>
+                  </div>
                   <p className="text-white/50">Samples: {getDateSamples(rowsBySheet[sheetName] ?? [], index).join(', ') || '—'}</p>
+                  <p className="text-white/40 text-[11px]">
+                    Confidence: {Number.isFinite(confidencePercent) ? confidencePercent : 0}% · {config.sampleCount} samples
+                  </p>
                 </div>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-white/30 bg-transparent text-blue-400 focus:ring-blue-400"
                     checked={enabled}
-                    disabled={checkboxDisabled}
+                    disabled={toggleDisabled}
                     onChange={event => updateDateColumn(sheetName, index, { enabled: event.target.checked })}
                   />
                   Treat as date
                 </label>
               </div>
-              {(dateState.mode === 'per-column' && config.enabled) || dateState.mode === 'global' ? (
+              {((dateState.mode === 'per-column' && config.enabled) || dateState.mode === 'global') ? (
                 <label className="mt-3 flex flex-col gap-1 text-white/70">
                   Format
                   <select
@@ -2665,7 +3560,7 @@ export default function DillonsDataCleanerClient() {
   }
 
   const renderTextNormalizeColumnList = (sheetName: string) => {
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
     const configs = textNormalizeState.columns[sheetName] ?? {}
     return (
       <div className="mt-4 space-y-3">
@@ -2739,7 +3634,7 @@ export default function DillonsDataCleanerClient() {
   }
 
   const renderTextNormalizeModeControls = () => (
-    <div className="mt-4 grid gap-3 text-xs text-white/80 sm:grid-cols-2">
+    <div className="mt-4 grid gap-3 text-xs text-white/80 sm:grid-cols-3">
       <label className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2">
         <input
           type="radio"
@@ -2753,6 +3648,23 @@ export default function DillonsDataCleanerClient() {
           className="h-4 w-4 text-blue-400 focus:ring-blue-400"
         />
         Global — apply defaults to every cell
+      </label>
+      <label className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2">
+        <input
+          type="radio"
+          name="text-normalize-mode"
+          value="global-with-overrides"
+          checked={textNormalizeState.mode === 'global-with-overrides'}
+          onChange={() => {
+            setTextNormalizeState(current => ({ ...current, mode: 'global-with-overrides' }))
+            if (!textNormalizeSheet && sheetOrder.length) {
+              setTextNormalizeSheet(sheetOrder[0])
+            }
+            resetTransforms()
+          }}
+          className="h-4 w-4 text-blue-400 focus:ring-blue-400"
+        />
+        Global + overrides — defaults everywhere, customize select columns
       </label>
       <label className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2">
         <input
@@ -2827,10 +3739,14 @@ export default function DillonsDataCleanerClient() {
   )
 
   const renderNumericColumnList = (sheetName: string) => {
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
     const configs = numericCleanupState.columns[sheetName] ?? {}
     const detection = numericDetectionBySheet[sheetName] ?? {}
-    const numericColumns = names.map((name, index) => ({ name, index, detected: Boolean(detection[index]) }))
+    const sheetPercentWarnings = numericWarningsBySheet[sheetName]?.percentOverflow ?? {}
+    const numericColumns = names.map((name, index) => {
+      const info = detection[index]
+      return { name, index, detected: Boolean(info?.isNumeric), kind: info?.kind ?? 'unknown', precision: info?.precision }
+    })
     const hasDetectedColumns = numericColumns.some(column => column.detected)
 
     return (
@@ -2846,14 +3762,9 @@ export default function DillonsDataCleanerClient() {
             No columns were auto-detected; you can still enable cleanup manually.
           </div>
         )}
-        {numericColumns.map(({ name, index, detected }) => {
-          const config = configs[index] ?? {
-            enabled: false,
-            stripSymbols: true,
-            precision: 'auto',
-            format: 'plain',
-            currency: 'USD',
-          }
+        {numericColumns.map(({ name, index, detected, kind, precision }) => {
+          const config = configs[index] ?? getNumericDefaultConfig(sheetName, index)
+          const overflowCount = sheetPercentWarnings[index] ?? 0
           return (
             <div key={`${sheetName}-numeric-${index}`} className="rounded-2xl border border-white/15 bg-white/5 p-4 text-xs text-white/80">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2862,10 +3773,13 @@ export default function DillonsDataCleanerClient() {
                     <p className="font-semibold text-white">{name}</p>
                     {detected ? (
                       <span className="rounded-full border border-emerald-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200/80">
-                        Auto
+                        Auto · {kind === 'mixed' ? 'Mixed' : kind === 'unknown' ? 'Numeric' : kind}
                       </span>
                     ) : null}
                   </div>
+                  {detected && kind === 'float' && precision != null ? (
+                    <p className="text-white/50">Detected precision: {precision}</p>
+                  ) : null}
                   <p className="text-white/50">
                     Samples: {collectSampleValues(rowsBySheet[sheetName] ?? [], index).join(', ') || '—'}
                   </p>
@@ -2944,9 +3858,30 @@ export default function DillonsDataCleanerClient() {
                     Strip $, commas, spaces before parsing
                   </label>
                   {config.format === 'percent' ? (
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-white/40">
-                      Percent mode multiplies decimals by 100 unless the input already includes a % symbol.
-                    </p>
+                    <div className="space-y-2">
+                      <div className="rounded-2xl border border-blue-400/30 bg-blue-500/5 px-3 py-2 text-[11px] text-white/70">
+                        <p className="font-semibold text-white">Percent interpretation</p>
+                        <ul className="mt-1 space-y-1 text-white/60">
+                          <li>
+                            <code className="text-white">12%</code> → 12 percent
+                          </li>
+                          <li>
+                            <code className="text-white">0.125</code> → 12.5 percent
+                          </li>
+                          <li>
+                            <code className="text-white">12</code> → 12 percent
+                          </li>
+                          <li>
+                            <code className="text-white">&gt;100</code> → left unchanged + flagged
+                          </li>
+                        </ul>
+                      </div>
+                      {overflowCount > 0 ? (
+                        <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+                          {overflowCount.toLocaleString()} value{overflowCount === 1 ? '' : 's'} above 100% stayed untouched in the preview.
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ) : null}
@@ -2963,7 +3898,7 @@ export default function DillonsDataCleanerClient() {
       numericStrategy: 'keep',
       textStrategy: 'keep',
     }
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
     return (
       <div className="space-y-4 text-xs text-white/80">
         <ColumnCheckboxMultiSelect
@@ -3019,9 +3954,11 @@ export default function DillonsDataCleanerClient() {
       prefix: 'Lookup',
       joins: [],
       importColumns: [],
+      duplicateStrategy: 'first',
     }
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
     const referenceNames = config.referenceSheet ? columnNamesBySheet[config.referenceSheet] ?? [] : []
+    const diagnostics = lookupDiagnosticsBySheet[sheetName]
     return (
       <div className="space-y-4 text-xs text-white/80">
         <label className="flex flex-col gap-1">
@@ -3047,6 +3984,20 @@ export default function DillonsDataCleanerClient() {
             onChange={event => updateLookupConfig(sheetName, { prefix: event.target.value })}
             className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
           />
+        </label>
+        <label className="flex flex-col gap-1">
+          Duplicate reference keys
+          <select
+            value={config.duplicateStrategy}
+            onChange={event =>
+              updateLookupConfig(sheetName, { duplicateStrategy: event.target.value as LookupDuplicateStrategy })
+            }
+            className="rounded-xl border border-white/15 bg-black/30 px-3 py-2"
+          >
+            <option value="first">Keep first match</option>
+            <option value="last">Keep last match</option>
+            <option value="abort">Abort lookup</option>
+          </select>
         </label>
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -3129,18 +4080,56 @@ export default function DillonsDataCleanerClient() {
             Selected {config.importColumns.length} column{config.importColumns.length === 1 ? '' : 's'}
           </p>
         </div>
+        {diagnostics ? (
+          <div
+            className={`rounded-2xl border px-4 py-3 text-[11px] ${
+              diagnostics.aborted ? 'border-red-500/50 bg-red-500/10 text-red-200' : 'border-white/15 bg-white/5 text-white/70'
+            }`}
+          >
+            <p>Rows matched: {diagnostics.matchedRows.toLocaleString()}</p>
+            <p>Rows unmatched: {diagnostics.unmatchedRows.toLocaleString()}</p>
+            <p>
+              Duplicate reference keys: {diagnostics.duplicateKeys.toLocaleString()} · Strategy:{' '}
+              {diagnostics.strategy === 'first' ? 'Keep first' : diagnostics.strategy === 'last' ? 'Keep last' : 'Abort lookup'}
+            </p>
+            {diagnostics.aborted ? (
+              <p className="mt-2 font-semibold">
+                Lookup skipped because duplicates exist and the current strategy is Abort.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     )
   }
 
   const renderCalculatedRules = (sheetName: string) => {
     const rules = calculatedState.rulesBySheet[sheetName] ?? []
-    const names = columnNamesForSheet(sheetName)
+    const names = getFormattedHeaderNamesForSheet(sheetName)
+    const ruleErrors = calculatedInlineErrorsBySheet[sheetName] ?? {}
+    const hasErrors = calculatedState.enabled && Object.values(ruleErrors).some(Boolean)
+    const columnCount = names.length
     return (
       <div className="space-y-4">
         {rules.length === 0 ? <p className="text-xs text-white/60">No calculated fields yet. Add one to get started.</p> : null}
-        {rules.map(rule => (
-          <div key={rule.id} className="rounded-2xl border border-white/15 bg-white/5 p-4 text-xs text-white/80">
+        {hasErrors ? (
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200">
+            Fix invalid calculated fields before running or exporting.
+          </div>
+        ) : null}
+        {rules.map(rule => {
+          const inlineError = ruleErrors[rule.id] ?? null
+          const validSourceCount = new Set(
+            rule.sources.filter(index => index != null && index >= 0 && index < columnCount),
+          ).size
+          const needsMoreSources = rule.enabled && validSourceCount < 2
+          return (
+            <div
+              key={rule.id}
+              className={`rounded-2xl border p-4 text-xs text-white/80 ${
+                inlineError ? 'border-red-500/60 bg-red-500/5' : 'border-white/15 bg-white/5'
+              }`}
+            >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="flex items-center gap-2">
                 <input
@@ -3206,8 +4195,16 @@ export default function DillonsDataCleanerClient() {
                 emptyMessage="Add columns to this sheet to build new fields."
               />
             </div>
+            {needsMoreSources && !inlineError ? (
+              <p className="mt-2 text-[11px] text-white/50">Select at least two columns to activate this field.</p>
+            ) : null}
+            {inlineError ? (
+              <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                {inlineError}
+              </div>
+            ) : null}
           </div>
-        ))}
+        )})}
         <button
           type="button"
           onClick={() => addCalculatedRule(sheetName)}
@@ -3414,14 +4411,97 @@ export default function DillonsDataCleanerClient() {
               />
               Enable header cleanup
             </label>
+            {sheetOrder.length ? (
+              <div className="text-xs text-white/70">
+                <button
+                  type="button"
+                  onClick={handleOpenHeaderModal}
+                  className="rounded-full border border-white/20 px-3 py-1 font-semibold text-white hover:border-white/40"
+                >
+                  Rename headers
+                </button>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.3em] text-white/40">
+                  Set explicit header labels even when cleanup is off.
+                </p>
+              </div>
+            ) : null}
             {headerState.enabled ? (
               <div className="space-y-5 text-xs text-white/80">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/50">Whitespace handling</p>
-                  <div className="mt-3 space-y-3">
-                    {(['trim-edges', 'remove-all', 'replace'] as HeaderWhitespace[]).map(mode => (
-                      <label
-                        key={mode}
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/50">Apply to</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHeaderState(current => ({ ...current, scope: 'all' }))}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        headerState.scope === 'all'
+                          ? 'border-blue-400/70 bg-blue-500/10 text-white'
+                          : 'border-white/20 text-white/70 hover:border-white/40'
+                      }`}
+                    >
+                      All sheets
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        let nextSheet: string | null = null
+                        setHeaderState(current => {
+                          if (current.scope === 'some') return current
+                          const fallback = current.sheets.length ? current.sheets : sheetOrder.slice(0, 1)
+                          nextSheet = fallback[0] ?? null
+                          return { ...current, scope: 'some', sheets: fallback }
+                        })
+                        if (nextSheet) focusPreviewSheet(nextSheet)
+                      }}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        headerState.scope === 'some'
+                          ? 'border-blue-400/70 bg-blue-500/10 text-white'
+                          : 'border-white/20 text-white/70 hover:border-white/40'
+                      }`}
+                    >
+                      Some sheets
+                    </button>
+                  </div>
+                  {headerState.scope === 'some' && sheetOrder.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {sheetOrder.map(sheet => (
+                        <button
+                          key={`header-scope-${sheet}`}
+                          type="button"
+                          onClick={() => {
+                            let shouldFocus = false
+                            setHeaderState(current => {
+                              const alreadySelected = current.sheets.includes(sheet)
+                              if (alreadySelected) {
+                                if (current.sheets.length === 1) return current
+                                return { ...current, sheets: current.sheets.filter(name => name !== sheet) }
+                              }
+                              shouldFocus = true
+                              const nextSheets = [...current.sheets, sheet].sort(
+                                (a, b) => sheetOrder.indexOf(a) - sheetOrder.indexOf(b),
+                              )
+                              return { ...current, sheets: nextSheets }
+                            })
+                            if (shouldFocus) focusPreviewSheet(sheet)
+                          }}
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                            headerState.sheets.includes(sheet)
+                              ? 'border-blue-400/70 bg-blue-500/10 text-white'
+                              : 'border-white/20 text-white/70 hover:border-white/40'
+                          }`}
+                        >
+                          {sheet}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/50">Whitespace handling</p>
+                <div className="mt-3 space-y-3">
+                  {(['trim-edges', 'remove-all', 'replace'] as HeaderWhitespace[]).map(mode => (
+                    <label
+                      key={mode}
                         className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm ${
                           headerState.whitespace === mode
                             ? 'border-blue-400/50 bg-blue-500/10 text-white'
@@ -3457,6 +4537,19 @@ export default function DillonsDataCleanerClient() {
                       />
                     </label>
                   ) : null}
+                  <label className="mt-3 flex items-center gap-2 text-xs text-white/70">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-white/30 bg-transparent text-blue-400 focus:ring-blue-400"
+                      checked={headerState.collapseWhitespace}
+                      onChange={event => {
+                        const collapse = event.target.checked
+                        setHeaderState(current => ({ ...current, collapseWhitespace: collapse }))
+                        resetTransforms()
+                      }}
+                    />
+                    Collapse duplicate internal spaces before formatting
+                  </label>
                 </div>
 
                 <div>
@@ -3521,18 +4614,6 @@ export default function DillonsDataCleanerClient() {
                     <>
                       <button
                         type="button"
-                        onClick={() =>
-                          updateColumnOrder(
-                            columnOrderSheet,
-                            getDefaultOrder(columnNamesForSheet(columnOrderSheet).length),
-                          )
-                        }
-                        className="rounded-full border border-white/20 px-3 py-1 font-semibold text-white hover:border-white/40"
-                      >
-                        Original order
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => applyAlphabeticalOrder(columnOrderSheet, 'asc')}
                         className="rounded-full border border-white/20 px-3 py-1 font-semibold text-white hover:border-white/40"
                       >
@@ -3545,20 +4626,39 @@ export default function DillonsDataCleanerClient() {
                       >
                         Z → A
                       </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateColumnOrder(
+                            columnOrderSheet,
+                            getDefaultOrder(columnCountForSheet(columnOrderSheet)),
+                            'reset',
+                          )
+                        }
+                        className="rounded-full border border-red-400/40 bg-red-500/10 px-3 py-1 font-semibold text-red-100 hover:border-red-300/70"
+                      >
+                        Reset order
+                      </button>
                     </>
                   ) : null}
                 </div>
                 <div>
-                  <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-amber-100/80">
+                      Sheet
+                    </span>
                     {columnOrderTabs.map(sheet => (
                       <button
                         key={`order-tab-${sheet}`}
                         type="button"
-                        onClick={() => setColumnOrderSheet(sheet)}
+                        onClick={() => {
+                          setColumnOrderSheet(sheet)
+                          focusPreviewSheet(sheet)
+                        }}
                         className={`rounded-full border px-3 py-1 font-semibold ${
                           columnOrderSheet === sheet
-                            ? 'border-blue-400/70 bg-blue-500/10 text-white'
-                            : 'border-white/20 text-white/70 hover:border-white/40'
+                            ? 'border-amber-300/70 bg-amber-500/20 text-amber-50'
+                            : 'border-amber-400/20 text-amber-100/70 hover:border-amber-300/60'
                         }`}
                       >
                         {sheet}
@@ -3592,6 +4692,9 @@ export default function DillonsDataCleanerClient() {
             {dateState.enabled ? (
               <div className="space-y-5 text-xs text-white/80">
                 {renderDateModeControls()}
+                <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-2 text-[11px] text-white/60">
+                  Date parsing only formats valid dates; non-date cells are left unchanged.
+                </div>
                 {dateState.mode === 'global' ? renderDateDefaultSelect() : null}
                 {dateState.mode === 'per-column' ? (
                   <>
@@ -3635,9 +4738,16 @@ export default function DillonsDataCleanerClient() {
             {textNormalizeState.enabled ? (
               <div className="space-y-5 text-xs text-white/80">
                 {renderTextNormalizeModeControls()}
-                {textNormalizeState.mode === 'global' ? renderTextNormalizeGlobalControls() : null}
-                {textNormalizeState.mode === 'per-column' ? (
+                {(['global', 'global-with-overrides'] as TextNormalizeMode[]).includes(textNormalizeState.mode)
+                  ? renderTextNormalizeGlobalControls()
+                  : null}
+                {(['per-column', 'global-with-overrides'] as TextNormalizeMode[]).includes(textNormalizeState.mode) ? (
                   <>
+                    {textNormalizeState.mode === 'global-with-overrides' ? (
+                      <p className="rounded-2xl border border-white/10 bg-black/30 px-4 py-2 text-[11px] text-white/60">
+                        Overrides run after the global defaults, so you can fine-tune specific columns without losing the base rules.
+                      </p>
+                    ) : null}
                     <div className="flex flex-wrap gap-2">
                       {textNormalizeTabs.map(sheet => (
                         <button
@@ -4040,7 +5150,7 @@ export default function DillonsDataCleanerClient() {
       ) : null}
 
       {!fileInfo ? (
-        <section className="rounded-3xl border border-white/10 bg-black/40 p-8 text-center">
+        <section className="p-8 text-center">
           <div className="mx-auto max-w-2xl space-y-6">
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-white/50">Start cleaning</p>
@@ -4301,6 +5411,168 @@ export default function DillonsDataCleanerClient() {
         </section>
       </>
     )}
-  </div>
+      {isHeaderModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-zinc-950 p-6 text-sm text-white shadow-2xl">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-white/40">Headers</p>
+                <h3 className="text-2xl font-semibold text-white">Rename columns</h3>
+                <p className="text-xs text-white/60">
+                  Override column labels when the automatic cleanup options are not enough.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseHeaderModal}
+                className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold text-white/80 hover:border-white/40"
+              >
+                Close
+              </button>
+            </div>
+            {sheetOrder.length ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+                    <span className="text-[11px] uppercase tracking-[0.3em] text-white/40">Apply</span>
+                    <button
+                      type="button"
+                      onClick={() => setHeaderRenameScope('sheet')}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        headerRenameScope === 'sheet'
+                          ? 'border-blue-400/70 bg-blue-500/10 text-white'
+                          : 'border-white/20 text-white/70 hover:border-white/40'
+                      }`}
+                    >
+                      This sheet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeaderRenameScope('all')}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        headerRenameScope === 'all'
+                          ? 'border-blue-400/70 bg-blue-500/10 text-white'
+                          : 'border-white/20 text-white/70 hover:border-white/40'
+                      }`}
+                    >
+                      All sheets
+                    </button>
+                  </div>
+                  {sheetOrder.map(sheet => (
+                    <button
+                      key={`rename-sheet-${sheet}`}
+                      type="button"
+                      onClick={() => setHeaderRenameSheet(sheet)}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        headerRenameSheet === sheet
+                          ? 'border-blue-400/70 bg-blue-500/10 text-white'
+                          : 'border-white/20 text-white/70 hover:border-white/40'
+                      }`}
+                    >
+                      {sheet}
+                    </button>
+                  ))}
+                </div>
+                {headerRenameSheet ? (
+                  <div className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+                    {(() => {
+                      const sheetName = headerRenameSheet
+                      const columnLabels = columnNamesBySheet[sheetName] ?? []
+                      const totalColumns = columnLabels.length || rowsBySheet[sheetName]?.[0]?.length || 0
+                      return Array.from({ length: totalColumns }, (_, index) => {
+                        const overridesForSheet = headerOverrides[sheetName] ?? {}
+                        const draftValue = headerRenameDrafts[sheetName]?.[index]
+                        const displayValue =
+                          draftValue !== undefined
+                            ? draftValue
+                            : overridesForSheet[index] ??
+                              columnLabels[index] ??
+                              getDefaultHeaderLabel(sheetName, index)
+                        const renameError = headerRenameErrors[sheetName]?.[index] ?? null
+                        return (
+                          <div
+                            key={`${sheetName}-rename-${index}`}
+                            className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/80"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-semibold text-white">Column {index + 1}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleHeaderOverrideReset(sheetName, index)}
+                                className="text-white/60 hover:text-white"
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <label className="mt-2 flex flex-col gap-1">
+                              New label
+                              <input
+                                type="text"
+                                value={displayValue}
+                                onChange={event => {
+                                  const nextValue = event.target.value
+                                  setHeaderRenameDrafts(current => ({
+                                    ...current,
+                                    [sheetName]: {
+                                      ...(current[sheetName] ?? {}),
+                                      [index]: nextValue,
+                                    },
+                                  }))
+                                  if (nextValue.trim().length) {
+                                    const applied = handleHeaderOverrideChange(sheetName, index, nextValue)
+                                    if (applied) {
+                                      setHeaderRenameDrafts(current => {
+                                        const nextDrafts = { ...current }
+                                        const sheetDrafts = { ...(nextDrafts[sheetName] ?? {}) }
+                                        delete sheetDrafts[index]
+                                        if (Object.keys(sheetDrafts).length) {
+                                          nextDrafts[sheetName] = sheetDrafts
+                                        } else {
+                                          delete nextDrafts[sheetName]
+                                        }
+                                        return nextDrafts
+                                      })
+                                    }
+                                  } else {
+                                    setHeaderRenameDrafts(current => {
+                                      const nextDrafts = { ...current }
+                                      const sheetDrafts = { ...(nextDrafts[sheetName] ?? {}) }
+                                      sheetDrafts[index] = ''
+                                      nextDrafts[sheetName] = sheetDrafts
+                                      return nextDrafts
+                                    })
+                                  }
+                                }}
+                                className={`rounded-xl border bg-black/30 px-3 py-2 text-white ${
+                                  renameError ? 'border-red-500/60 focus:border-red-400' : 'border-white/15'
+                                }`}
+                              />
+                            </label>
+                            {renameError ? (
+                              <p className="mt-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-100">
+                                {renameError}
+                              </p>
+                            ) : null}
+                            <p className="mt-2 text-[11px] uppercase tracking-[0.2em] text-white/40">
+                              Original: {getDefaultHeaderLabel(sheetName, index)}
+                            </p>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-4 text-xs text-white/60">Upload a file to rename headers.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
   )
 }

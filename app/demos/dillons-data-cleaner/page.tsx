@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function DillonsDataCleanerPage() {
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="border-b border-white/5 bg-[#04070f]">
+      <div className="border-b border-black bg-black">
         <div className="max-w-4xl mx-auto px-6 py-14 text-center lg:py-16">
           <p className="text-xs uppercase tracking-[0.3em] text-white/50">Demo — Data ergonomics</p>
           <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
@@ -33,7 +33,7 @@ export default function DillonsDataCleanerPage() {
 
       <div className="bg-black pb-12 pt-4">
         <div className="mx-auto max-w-7xl px-4 sm:px-8 lg:px-12">
-          <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6 shadow-2xl sm:p-8">
+          <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6 sm:p-8">
             <DillonsDataCleanerClient />
           </div>
         </div>

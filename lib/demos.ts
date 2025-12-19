@@ -99,9 +99,9 @@ const demos: Demo[] = [
     image: '/images/demos/dillons-data-cleaner-preview.jpg',
     techStack: ['Next.js', 'TypeScript', 'Tailwind CSS', 'xlsx'],
     category: 'frontend',
-    complexity: 'beginner',
-    buildTime: '1 day',
-    status: 'live',
+    complexity: 'advanced',
+    buildTime: '4 days',
+    status: 'in-progress',
     featured: false,
     githubUrl:
       'https://github.com/dillon-shearer/dillon-shearer-website/tree/main/app/demos/dillons-data-cleaner',
