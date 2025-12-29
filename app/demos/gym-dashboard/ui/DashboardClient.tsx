@@ -3,6 +3,7 @@
 
 import { useMemo, useState, useRef, useEffect } from 'react'
 import type { GymLift } from '../form/actions'
+import ChatClient from '../chat/ChatClient'
 import VolumeChart from './VolumeChart'
 import Heatmap from './Heatmap'
 import DailyView from './DailyView'
@@ -232,6 +233,7 @@ function Pager({
 export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const [mode, setMode] = useState<RangeMode>('day')
   const [prevMode, setPrevMode] = useState<RangeMode | null>(null)
+  const [isChatOpen, setIsChatOpen] = useState(false)
 
   const allYears = useMemo(
     () => unique(lifts.map(l => new Date(l.date).getUTCFullYear())).sort((a, b) => b - a),
@@ -786,6 +788,23 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
           </>
         )}
       </div>
+
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+        {isChatOpen ? (
+          <div className="h-[75vh] max-h-[640px] w-[min(460px,94vw)] overflow-hidden rounded-3xl border border-gray-800 bg-gray-950/95 shadow-2xl backdrop-blur">
+            <ChatClient embedded onClose={() => setIsChatOpen(false)} />
+          </div>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setIsChatOpen(current => !current)}
+          aria-label={isChatOpen ? 'Close gym chat' : 'Open gym chat'}
+          className="flex h-14 w-14 items-center justify-center rounded-full border border-blue-500/60 bg-blue-600/30 text-lg font-semibold text-white shadow-xl hover:border-blue-400/80"
+        >
+          {isChatOpen ? '×' : '✦'}
+        </button>
+      </div>
+
       {/* Download modal */}
       {showDownload && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">

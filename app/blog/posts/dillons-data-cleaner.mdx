@@ -16,7 +16,7 @@ Along the way you can:
 - run quick lookups from a secondary sheet
 - download an XLSX or a bundle of CSVs when the preview looks right
 
-Under the hood I leaned on the same stack that powers the rest of this site: Next.js, React, and Tailwind, plus SheetJS for workbook parsing and JSZip for bundling multi file exports. Every transform is a pure function, so the preview never drifts from what you download, and the diff view makes it obvious what changed.
+Under the hood I leaned on the same stack that powers the rest of this site: Next.js, React, and Tailwind, plus ExcelJS for workbook parsing and JSZip for bundling multi file exports. Every transform is a pure function, so the preview never drifts from what you download, and the diff view makes it obvious what changed.
 
 To test it I built a sample workbook with the real-life annoyances I see in client data: mis cased headers, serial number dates, duplicate orders, and lookup keys with trailing spaces. Running that file through the cleaner confirmed the transforms stack predictably, stats update in real time, and exports open without a single warning. It also added a short list of next steps like sharing the dummy data file and adding a lightweight end to end test that walks the same path as a new user.
 

@@ -47,6 +47,10 @@ DATABASE_URL=...           # optional alias used by sql script
 RESEND_API_KEY=...
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 LIFT_PASSWORD=super-secret  # used by the gym dashboard demo
+OPENAI_API_KEY=...          # required for gym chat
+GYM_CHAT_DATABASE_URL_READONLY=... # read-only gym chat connection string
+GYM_CHAT_MODEL=gpt-4o-mini  # optional model override
+OPENAI_API_BASE_URL=https://api.openai.com/v1 # optional override
 ```
 
 ## Getting Started
@@ -55,6 +59,40 @@ LIFT_PASSWORD=super-secret  # used by the gym dashboard demo
 npm install
 npm run dev            # http://localhost:3000
 ```
+
+## Gym Chat Setup (SQL-to-LLM)
+
+This demo runs an LLM-powered chat over the gym dataset with strict SQL safety checks.
+
+1) Install dependencies:
+```bash
+npm install
+```
+
+2) Create `.env.local` with the required environment variables:
+```
+POSTGRES_URL=...
+POSTGRES_URL_NON_POOLING=...
+OPENAI_API_KEY=...
+GYM_CHAT_DATABASE_URL_READONLY=...
+GYM_CHAT_MODEL=gpt-4o-mini
+OPENAI_API_BASE_URL=https://api.openai.com/v1
+```
+
+Notes:
+- `GYM_CHAT_DATABASE_URL_READONLY` should point to a read-only connection string. In development only, the API falls back to `POSTGRES_URL_NON_POOLING` or `POSTGRES_URL` if the read-only var is missing (and logs a warning).
+- `GYM_CHAT_MODEL` and `OPENAI_API_BASE_URL` are optional overrides.
+
+3) Optional policy sanity check:
+```bash
+npm run gym-chat:policy
+```
+
+4) Run the app and visit the chat page:
+```bash
+npm run dev
+```
+Open `http://localhost:3000/demos/gym-dashboard/chat`.
 
 Other handy scripts:
 

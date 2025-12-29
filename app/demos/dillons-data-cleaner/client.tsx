@@ -2,11 +2,12 @@
 
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 // ---------- Types ----------
 
 type CellValue = string | number | boolean | Date | null | undefined
+type ExcelCellValue = ExcelJS.CellValue
 
 type HeaderCase = 'none' | 'upper' | 'lower'
 type HeaderWhitespace = 'trim-edges' | 'remove-all' | 'replace'
@@ -250,10 +251,8 @@ const FILE_INPUT_ID = 'dillons-data-cleaner-file'
 const DEFAULT_DATE_FORMAT = 'MM-dd-yyyy'
 const ACCEPTED_TYPES = [
   '.csv',
-  '.xls',
   '.xlsx',
   'text/csv',
-  'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]
 
@@ -516,6 +515,85 @@ function normalizeRows(rows: CellValue[][]): CellValue[][] {
 
 function cloneRows(rows: CellValue[][]): CellValue[][] {
   return rows.map(row => [...row])
+}
+
+function normalizeExcelCellValue(value: ExcelCellValue): CellValue {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return value
+  if (typeof value === 'object') {
+    if ('text' in value && typeof value.text === 'string') return value.text
+    if ('richText' in value && Array.isArray(value.richText)) {
+      return value.richText.map(part => part.text ?? '').join('')
+    }
+    if ('result' in value) {
+      return normalizeExcelCellValue(value.result as ExcelCellValue)
+    }
+    if ('hyperlink' in value) {
+      return (value as { text?: string }).text ?? value.hyperlink
+    }
+    return String(value)
+  }
+  return value
+}
+
+function parseCsvText(text: string): CellValue[][] {
+  const rows: CellValue[][] = []
+  let row: string[] = []
+  let current = ''
+  let inQuotes = false
+  let i = 0
+
+  while (i < text.length) {
+    const char = text[i]
+    if (char === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        current += '"'
+        i += 2
+        continue
+      }
+      inQuotes = !inQuotes
+      i += 1
+      continue
+    }
+    if (!inQuotes && (char === ',' || char === '\n' || char === '\r')) {
+      row.push(current)
+      current = ''
+      if (char === '\r' && text[i + 1] === '\n') {
+        i += 1
+      }
+      if (char !== ',') {
+        rows.push(row)
+        row = []
+      }
+      i += 1
+      continue
+    }
+    current += char
+    i += 1
+  }
+
+  if (row.length || current.length || !rows.length) {
+    row.push(current)
+    rows.push(row)
+  }
+
+  return rows
+}
+
+function rowsToCsv(rows: CellValue[][]): string {
+  return rows
+    .map(row =>
+      row
+        .map(cell => {
+          const raw = cell == null ? '' : cell instanceof Date ? cell.toISOString() : String(cell)
+          if (/[",\n\r]/.test(raw)) {
+            return `"${raw.replace(/"/g, '""')}"`
+          }
+          return raw
+        })
+        .join(','),
+    )
+    .join('\n')
 }
 
 function formatSheetName(name: string, index: number) {
@@ -1833,14 +1911,13 @@ export default function DillonsDataCleanerClient() {
       })
 
       if (!allowed) {
-        setErrorMessage('Please upload a CSV, XLS, or XLSX file.')
+        setErrorMessage('Please upload a CSV or XLSX file.')
         return
       }
 
       try {
         const buffer = await file.arrayBuffer()
-        const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
-        if (!workbook.SheetNames.length) throw new Error('No sheets found')
+        const isCsv = extension === 'csv' || file.type === 'text/csv'
 
         const mapped: Record<string, CellValue[][]> = {}
         const originalMap: Record<string, CellValue[][]> = {}
@@ -1852,28 +1929,59 @@ export default function DillonsDataCleanerClient() {
         const numericColumnMap: Record<string, Record<number, NumericColumnConfig>> = {}
         const dedupConfigMap: Record<string, DedupConfig> = {}
         const lookupConfigMap: Record<string, LookupConfig> = {}
+        let sheetNames: string[] = []
 
-        workbook.SheetNames.forEach(name => {
-          const worksheet = workbook.Sheets[name]
-          const raw = (XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-            defval: '',
-            // Preserve intentional blank spacer rows so no-op workflows export exactly what was ingested.
-            blankrows: true,
-            raw: false,
-          }) as CellValue[][]) ?? [[]]
+        if (isCsv) {
+          const text = new TextDecoder().decode(buffer)
+          const raw = parseCsvText(text)
           const normalized = normalizeRows(raw)
-          mapped[name] = normalized
-          originalMap[name] = cloneRows(normalized)
+          const baseName = file.name.replace(/\.[^.]+$/i, '') || 'Sheet1'
+          const sheetName = formatSheetName(baseName, 0)
+          sheetNames = [sheetName]
+          mapped[sheetName] = normalized
+          originalMap[sheetName] = cloneRows(normalized)
           const headers = normalized[0] ?? []
-          names[name] = headers.map((cell, idx) => {
+          names[sheetName] = headers.map((cell, idx) => {
             const label = renderCell(cell)
             return label.length ? label : `Column ${idx + 1}`
           })
-          orders[name] = getDefaultOrder(headers.length)
-          sortModes[name] = null
+          orders[sheetName] = getDefaultOrder(headers.length)
+          sortModes[sheetName] = null
+        } else {
+          const workbook = new ExcelJS.Workbook()
+          await workbook.xlsx.load(buffer)
+          sheetNames = workbook.worksheets.map((worksheet, index) => formatSheetName(worksheet.name, index))
+          if (!sheetNames.length) throw new Error('No sheets found')
 
-          const dateDetection = analyzeDateColumns(normalized)
+          workbook.worksheets.forEach((worksheet, index) => {
+            const sheetName = sheetNames[index]
+            const rawRows: CellValue[][] = []
+            worksheet.eachRow({ includeEmpty: true }, row => {
+              const values = row.values as ExcelCellValue[]
+              const rowData: CellValue[] = []
+              for (let idx = 1; idx < values.length; idx += 1) {
+                rowData.push(normalizeExcelCellValue(values[idx]))
+              }
+              rawRows.push(rowData)
+            })
+            if (!rawRows.length) rawRows.push([])
+            const normalized = normalizeRows(rawRows)
+            mapped[sheetName] = normalized
+            originalMap[sheetName] = cloneRows(normalized)
+            const headers = normalized[0] ?? []
+            names[sheetName] = headers.map((cell, idx) => {
+              const label = renderCell(cell)
+              return label.length ? label : `Column ${idx + 1}`
+            })
+            orders[sheetName] = getDefaultOrder(headers.length)
+            sortModes[sheetName] = null
+          })
+        }
+
+        sheetNames.forEach(name => {
+          const normalized = mapped[name]
+          const headers = normalized?.[0] ?? []
+          const dateDetection = analyzeDateColumns(normalized ?? [])
           const columnConfigs: Record<number, DateColumnConfig> = {}
           headers.forEach((_, idx) => {
             columnConfigs[idx] = {
@@ -1897,7 +2005,7 @@ export default function DillonsDataCleanerClient() {
           })
           textColumnMap[name] = textColumns
 
-          const numericDetection = detectNumericColumns(normalized)
+          const numericDetection = detectNumericColumns(normalized ?? [])
           const numericColumns: Record<number, NumericColumnConfig> = {}
           headers.forEach((_, idx) => {
             const detection = numericDetection[idx]
@@ -1912,7 +2020,7 @@ export default function DillonsDataCleanerClient() {
             numericStrategy: 'keep',
             textStrategy: 'keep',
           }
-          const fallbackReference = workbook.SheetNames.find(sheet => sheet !== name) ?? null
+          const fallbackReference = sheetNames.find(sheet => sheet !== name) ?? null
           lookupConfigMap[name] = {
             referenceSheet: fallbackReference,
             prefix: 'Lookup',
@@ -1930,9 +2038,9 @@ export default function DillonsDataCleanerClient() {
         setOriginalRowsBySheet(originalMap)
         setRawColumnNamesBySheet(names)
         setColumnNamesBySheet(clonedNames)
-        setSheetOrder(workbook.SheetNames)
-        setSelectedSheets(workbook.SheetNames)
-        setActiveSheet(workbook.SheetNames[0])
+        setSheetOrder(sheetNames)
+        setSelectedSheets(sheetNames)
+        setActiveSheet(sheetNames[0])
         setColumnOrderState({ enabled: false, orders, sortModeBySheet: sortModes })
         setFindReplaceState({ enabled: false, rulesBySheet: {} })
         setCalculatedState({ enabled: false, rulesBySheet: {} })
@@ -1973,7 +2081,7 @@ export default function DillonsDataCleanerClient() {
           name: file.name,
           size: file.size,
           type: file.type,
-          isXlsx: extension === 'xlsx' || extension === 'xls' || file.type.includes('spreadsheet'),
+          isXlsx: extension === 'xlsx' || file.type.includes('spreadsheet'),
         })
         resetTransforms()
       } catch (error) {
@@ -2589,17 +2697,19 @@ export default function DillonsDataCleanerClient() {
       }
 
       if (fileInfo.isXlsx) {
-        const workbook = XLSX.utils.book_new()
+        const workbook = new ExcelJS.Workbook()
         const orderedSelection = sheetOrder.filter(sheetName => selectedSheets.includes(sheetName))
         const availableTargets = orderedSelection.filter(sheetName => rowsBySheet[sheetName])
         if (!availableTargets.length) throw new Error('Unable to locate sheet data for export.')
         availableTargets.forEach((sheetName, index) => {
           const exportRows = getRowsForExport(sheetName)
           if (!exportRows) return
-          const worksheet = XLSX.utils.aoa_to_sheet(exportRows)
-          XLSX.utils.book_append_sheet(workbook, worksheet, formatSheetName(sheetName, index))
+          const worksheet = workbook.addWorksheet(formatSheetName(sheetName, index))
+          exportRows.forEach(row => {
+            worksheet.addRow(row.map(value => (value === undefined ? null : value)))
+          })
         })
-        const wbArray = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+        const wbArray = await workbook.xlsx.writeBuffer()
         const workbookName = ensureXlsxFilename(prefixed)
         triggerDownload(
           new Blob([wbArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
@@ -2615,19 +2725,17 @@ export default function DillonsDataCleanerClient() {
           availableTargets.forEach((sheetName, index) => {
             const exportRows = getRowsForExport(sheetName)
             if (!exportRows) return
-            const worksheet = XLSX.utils.aoa_to_sheet(exportRows)
-            const csv = XLSX.utils.sheet_to_csv(worksheet)
+            const csv = rowsToCsv(exportRows)
             zip.file(`${formatSheetName(sheetName, index)}.csv`, csv)
           })
           const archive = await zip.generateAsync({ type: 'blob' })
-          const baseName = prefixed.replace(/\.(csv|xlsx|xls)$/i, '') || 'dillons_data_cleaner'
+          const baseName = prefixed.replace(/\.(csv|xlsx)$/i, '') || 'dillons_data_cleaner'
           triggerDownload(archive, `${baseName}.zip`)
         } else {
           const targetSheet = availableTargets[0]
           const exportRows = getRowsForExport(targetSheet)
           if (!exportRows) throw new Error('Unable to locate sheet data for export.')
-          const worksheet = XLSX.utils.aoa_to_sheet(exportRows)
-          const csv = XLSX.utils.sheet_to_csv(worksheet)
+          const csv = rowsToCsv(exportRows)
           const csvName = /\.csv$/i.test(prefixed) ? prefixed : `${prefixed}.csv`
           triggerDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), csvName)
         }
@@ -5160,7 +5268,7 @@ export default function DillonsDataCleanerClient() {
               </p>
             </div>
             <ol className="space-y-2 text-sm text-white/70">
-              <li>1. Choose a CSV, XLS, or XLSX file.</li>
+              <li>1. Choose a CSV or XLSX file.</li>
               <li>2. Toggle the cleanups you need.</li>
               <li>3. Run the transformation and download the cleaned file.</li>
             </ol>

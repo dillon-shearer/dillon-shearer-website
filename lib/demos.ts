@@ -97,10 +97,10 @@ const demos: Demo[] = [
     description:
       'Drop in CSV or XLSX files, normalize null-like cells, standardize column headers, and download the cleaned file without leaving your browser.',
     image: '/images/demos/dillons-data-cleaner-preview.jpg',
-    techStack: ['Next.js', 'TypeScript', 'Tailwind CSS', 'xlsx'],
+    techStack: ['Next.js', 'TypeScript', 'Tailwind CSS', 'exceljs'],
     category: 'frontend',
     complexity: 'advanced',
-    buildTime: '4 days',
+    buildTime: '2 weeks',
     status: 'in-progress',
     featured: false,
     githubUrl:

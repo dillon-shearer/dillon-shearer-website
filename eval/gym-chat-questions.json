@@ -1,0 +1,191 @@
+[
+  {
+    "intentType": "diagnostic",
+    "question": "At what point in a given workout do I lose momentum?",
+    "expectedTemplate": "momentum_dropoff",
+    "mustInclude": ["early vs late", "set order"],
+    "mustNotInclude": ["nutrition", "sleep"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Am I fatiguing mid-session on squats?",
+    "expectedTemplate": "momentum_dropoff",
+    "mustInclude": ["within-session", "squat"],
+    "mustNotInclude": ["injury diagnosis"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Do my last sets drop off on bench days?",
+    "expectedTemplate": "momentum_dropoff",
+    "mustInclude": ["late sets", "bench"],
+    "mustNotInclude": ["supplement"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Where do I fade during workouts lately?",
+    "expectedTemplate": "momentum_dropoff",
+    "mustInclude": ["early", "late"],
+    "mustNotInclude": ["meal plan"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Is my momentum worse at the end of sessions compared to the start?",
+    "expectedTemplate": "momentum_dropoff",
+    "mustInclude": ["start", "end"],
+    "mustNotInclude": ["cardio plan"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Which sessions show the biggest performance fade within the workout?",
+    "expectedTemplate": "momentum_dropoff",
+    "mustInclude": ["sessions", "fade"],
+    "mustNotInclude": ["diet"]
+  },
+  {
+    "intentType": "comparison",
+    "question": "Which exercises are plateauing versus progressing?",
+    "expectedTemplate": "plateau_vs_progress",
+    "mustInclude": ["plateau", "progress"],
+    "mustNotInclude": ["nutrition"]
+  },
+  {
+    "intentType": "comparison",
+    "question": "What lifts have stalled compared to last quarter?",
+    "expectedTemplate": "plateau_vs_progress",
+    "mustInclude": ["stalled", "last quarter"],
+    "mustNotInclude": ["injury"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Are any movements regressing while others improve?",
+    "expectedTemplate": "plateau_vs_progress",
+    "mustInclude": ["regress", "improve"],
+    "mustNotInclude": ["supplements"]
+  },
+  {
+    "intentType": "comparison",
+    "question": "Show me which exercises are flat versus climbing.",
+    "expectedTemplate": "plateau_vs_progress",
+    "mustInclude": ["flat", "climbing"],
+    "mustNotInclude": ["meal plan"]
+  },
+  {
+    "intentType": "diagnostic",
+    "question": "Which movements are stuck compared with my recent bests?",
+    "expectedTemplate": "plateau_vs_progress",
+    "mustInclude": ["recent", "best"],
+    "mustNotInclude": ["sleep"]
+  },
+  {
+    "intentType": "planning",
+    "question": "What should I prioritize if my presses are stalling?",
+    "expectedTemplate": "plateau_vs_progress",
+    "mustInclude": ["press", "stall"],
+    "mustNotInclude": ["calories"]
+  },
+  {
+    "intentType": "trend",
+    "question": "How consistent is my weekly training volume over the last year?",
+    "expectedTemplate": "workload_consistency",
+    "mustInclude": ["weekly", "volume"],
+    "mustNotInclude": ["diet"]
+  },
+  {
+    "intentType": "trend",
+    "question": "Do I have big spikes in workload week to week?",
+    "expectedTemplate": "workload_consistency",
+    "mustInclude": ["spikes", "week"],
+    "mustNotInclude": ["injury"]
+  },
+  {
+    "intentType": "trend",
+    "question": "Am I missing weeks in my routine lately?",
+    "expectedTemplate": "workload_consistency",
+    "mustInclude": ["gaps", "weeks"],
+    "mustNotInclude": ["supplement"]
+  },
+  {
+    "intentType": "planning",
+    "question": "Is my training frequency steady month to month?",
+    "expectedTemplate": "workload_consistency",
+    "mustInclude": ["month", "frequency"],
+    "mustNotInclude": ["nutrition"]
+  },
+  {
+    "intentType": "planning",
+    "question": "What should my focus be next month based on my recent workload?",
+    "expectedTemplate": "workload_consistency",
+    "mustInclude": ["recent", "workload"],
+    "mustNotInclude": ["meal plan"]
+  },
+  {
+    "intentType": "planning",
+    "question": "What weight for my next incline press?",
+    "expectedTemplate": "workload_consistency",
+    "mustInclude": ["incline", "next"],
+    "mustNotInclude": ["cardio"]
+  },
+  {
+    "intentType": "comparison",
+    "question": "Is my volume balanced across body parts?",
+    "expectedTemplate": "body_part_balance",
+    "mustInclude": ["body part", "balance"],
+    "mustNotInclude": ["sleep"]
+  },
+  {
+    "intentType": "comparison",
+    "question": "Which body parts are undertrained relative to others?",
+    "expectedTemplate": "body_part_balance",
+    "mustInclude": ["undertrained", "body parts"],
+    "mustNotInclude": ["diet"]
+  },
+  {
+    "intentType": "comparison",
+    "question": "How does my upper vs lower body volume compare?",
+    "expectedTemplate": "body_part_balance",
+    "mustInclude": ["upper", "lower"],
+    "mustNotInclude": ["supplements"]
+  },
+  {
+    "intentType": "trend",
+    "question": "Do I overemphasize arms compared to legs?",
+    "expectedTemplate": "body_part_balance",
+    "mustInclude": ["arms", "legs"],
+    "mustNotInclude": ["nutrition"]
+  },
+  {
+    "intentType": "planning",
+    "question": "Where should I add volume to balance my split?",
+    "expectedTemplate": "body_part_balance",
+    "mustInclude": ["volume", "balance"],
+    "mustNotInclude": ["injury"]
+  },
+  {
+    "intentType": "planning",
+    "question": "Am I neglecting any muscle groups?",
+    "expectedTemplate": "body_part_balance",
+    "mustInclude": ["muscle", "groups"],
+    "mustNotInclude": ["meal plan"]
+  },
+  {
+    "intentType": "planning",
+    "question": "I want to gain muscle\u2014how should I structure a 4-day split?",
+    "expectedTemplate": "fitness_general",
+    "mustInclude": ["general guidance", "log-backed"],
+    "mustNotInclude": ["Out of scope.", "I can only answer questions about the gym workout data."]
+  },
+  {
+    "intentType": "planning",
+    "question": "Is full body 3x/week enough?",
+    "expectedTemplate": "fitness_general",
+    "mustInclude": ["general guidance", "log-backed"],
+    "mustNotInclude": ["Out of scope.", "I can only answer questions about the gym workout data."]
+  },
+  {
+    "intentType": "planning",
+    "question": "How should I set goals for bench press?",
+    "expectedTemplate": "fitness_general",
+    "mustInclude": ["general guidance", "log-backed"],
+    "mustNotInclude": ["Out of scope.", "I can only answer questions about the gym workout data."]
+  }
+]
