@@ -8,6 +8,7 @@ type CopyContactCardProps = {
   value: string
   displayValue?: string
   analyticsId?: string
+  variant?: 'default' | 'inline'
 }
 
 export function CopyContactCard({
@@ -16,6 +17,7 @@ export function CopyContactCard({
   value,
   displayValue,
   analyticsId,
+  variant = 'default',
 }: CopyContactCardProps) {
   const [copied, setCopied] = useState(false)
 
@@ -29,6 +31,25 @@ export function CopyContactCard({
     }
   }
 
+  // Inline variant - simpler, no phone display
+  if (variant === 'inline') {
+    return (
+      <button
+        type="button"
+        onClick={handleCopy}
+        data-analytics-id={analyticsId}
+        className={`group w-full rounded-xl px-4 py-2.5 text-center text-sm font-medium transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+          copied
+            ? 'border-green-500/30 bg-green-500/10 text-green-300'
+            : 'border-white/20 bg-white/10 hover:bg-white/15 hover:border-white/30'
+        }`}
+      >
+        <span>{copied ? '✓ Copied' : label}</span>
+      </button>
+    )
+  }
+
+  // Default variant - full card with phone number
   return (
     <button
       type="button"
