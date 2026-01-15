@@ -1,28 +1,31 @@
 import type { Metadata } from 'next'
-import Image from 'next/image'
 import Link from 'next/link'
 import { CopyContactCard } from '@/app/components/copy-contact-card'
 
 export const metadata: Metadata = {
-  title: 'Thanks for tapping | DWD',
-  description: 'A private follow-up page for in-person introductions to Dillon Shearer.',
+  title: 'Thanks for chatting | DWD',
+  description: 'Let\'s stay connected. Multiple ways to reach Dillon Shearer after meeting in person.',
   robots: {
     index: false,
     follow: false,
   },
   openGraph: {
-    title: 'Great meeting you | Data With Dillon',
-    description: 'Continue the conversation with Dillon Shearer after tapping his NFC card.',
+    title: 'Thanks for chatting | Data With Dillon',
+    description: 'Let\'s stay connected. Multiple ways to reach Dillon Shearer.',
     type: 'website',
   },
 }
 
-type SecondaryAction = {
-  label: string
-  href: string
-  helper: string
-  isExternal?: boolean
+type ContactOption = {
+  title: string
+  description: string
+  buttonText: string
+  href?: string
+  icon: string
   analyticsId: string
+  isExternal?: boolean
+  isSpecial?: boolean
+  isPrimary?: boolean
 }
 
 type QuickFact = {
@@ -30,167 +33,232 @@ type QuickFact = {
   value: string
 }
 
-const primaryAction = {
-  label: 'Send a quick note',
-  href: 'mailto:dillon@datawithdillon.com?subject=Great%20meeting%20you',
-  helper: 'Goes straight to my inbox. Mention where we met and I’ll reply within a day.',
-  analyticsId: 'nfc-primary-email',
-}
-
-const secondaryActions: SecondaryAction[] = [
+const contactOptions: ContactOption[] = [
   {
-    label: 'LinkedIn DM',
+    title: 'Send an Email',
+    description: 'Usually reply within 24 hours. Mention where we met!',
+    buttonText: 'Send Email',
+    href: 'mailto:dillon@datawithdillon.com?subject=Great%20meeting%20you',
+    icon: '',
+    analyticsId: 'nfc-primary-email',
+    isExternal: true,
+    isPrimary: true,
+  },
+  {
+    title: 'Save My Number',
+    description: 'Text or call anytime',
+    buttonText: 'Copy Number',
+    icon: '',
+    analyticsId: 'nfc-phone',
+    isSpecial: true,
+  },
+  {
+    title: 'Connect on LinkedIn',
+    description: 'Let\'s stay in touch professionally',
+    buttonText: 'View Profile',
     href: 'https://www.linkedin.com/in/dillonshearer/',
-    helper: 'Keep the thread going on LinkedIn.',
-    isExternal: true,
+    icon: '',
     analyticsId: 'nfc-linkedin',
-  },
-  {
-    label: 'See live demos',
-    href: '/demos',
-    helper: 'Preview the builds we talked through.',
-    analyticsId: 'nfc-demos',
-  },
-  {
-    label: 'Download resume',
-    href: '/Dillon_Shearer_Resume.pdf',
-    helper: 'One-page snapshot of recent work.',
     isExternal: true,
-    analyticsId: 'nfc-resume',
+  },
+  {
+    title: 'View My Work',
+    description: 'See live projects and examples',
+    buttonText: 'Browse Demos',
+    href: '/demos',
+    icon: '',
+    analyticsId: 'nfc-demos-alt',
+    isExternal: false,
   },
 ]
 
 const quickFacts: QuickFact[] = [
-  { label: 'Focus', value: 'Analytics, copilots, and automation for health teams' },
-  { label: 'Latest build', value: 'Ops-grade dashboards that ingest daily clinical feeds' },
-  { label: 'Location', value: 'Atlanta-based, collaborating remotely across time zones' },
+  { label: 'Focus', value: 'Custom solutions that save time' },
+  { label: 'Latest build', value: 'Gym member dashboard with real-time analytics' },
+  { label: 'Location', value: 'Atlanta, GA' },
+]
+
+const additionalResources = [
+  {
+    label: 'See what I build',
+    href: '/demos',
+    helper: 'Live demos and interactive examples',
+    analyticsId: 'nfc-demos',
+  },
+  {
+    label: 'Download my resume',
+    href: '/Dillon_Shearer_Resume.pdf',
+    helper: 'One-page overview of recent work',
+    analyticsId: 'nfc-resume',
+    isExternal: true,
+  },
 ]
 
 export default function ThanksForTappingPage() {
   return (
     <div className="bg-black text-white">
       <article
-        className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl flex-col gap-10 px-4 pb-16 pt-12 sm:px-6 sm:pt-16"
+        className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-5 pb-12 pt-8"
+        style={{
+          paddingTop: 'max(2rem, env(safe-area-inset-top))',
+          paddingBottom: 'max(3rem, env(safe-area-inset-bottom))',
+        }}
       >
-        <section className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-transparent p-6 sm:p-8 md:p-10">
-          <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_280px] md:items-center">
-            <div>
-              <h1 className="mt-3 text-3xl font-semibold leading-tight text-balance sm:text-4xl">
-                I&apos;m <span className="font-bold">Dillon Shearer</span> - it was great to meet you!
-              </h1>
-              <p className="mt-4 text-base text-white/85 sm:text-lg">
-                I build analytics portals, enablement workflows, and copilots that health and life science teams depend on daily. This page is reserved for the people I meet in person.
-              </p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                {quickFacts.map(fact => (
-                  <div
-                    key={fact.label}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 sm:text-base"
-                  >
-                    <p className="text-[0.6rem] uppercase tracking-[0.3em] text-white/60">
-                      {fact.label}
-                    </p>
-                    <p className="mt-1 font-medium">{fact.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* Header Section */}
+        <section className="text-center">
+          <h1 className="text-3xl font-bold leading-tight text-balance">
+            Great to meet you!
+          </h1>
+          <p className="mx-auto mt-3 text-base leading-relaxed text-white/85">
+            I build custom software that saves time and simplifies complex work.
+            Let&apos;s continue the conversation.
+          </p>
 
-            <div className="relative flex flex-col items-center justify-center">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-3 shadow-2xl">
-                <Image
-                  src="/ds.jpg"
-                  alt="Dillon Shearer portrait"
-                  width={280}
-                  height={280}
-                  priority
-                  className="h-auto w-full max-w-xs rounded-2xl object-cover"
-                />
+          {/* Quick Facts */}
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            {quickFacts.map((fact, index) => (
+              <div
+                key={fact.label}
+                className={`rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center ${
+                  index === 2 ? 'col-span-2' : ''
+                }`}
+              >
+                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-white/60">
+                  {fact.label}
+                </p>
+                <p className="mt-1.5 text-sm font-medium leading-snug text-white/90">{fact.value}</p>
               </div>
-            </div>
+            ))}
           </div>
         </section>
 
-        <section className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-blue-600/30 via-blue-500/20 to-transparent p-6 sm:p-8">
-            <p className="text-xs uppercase tracking-[0.35em] text-white/70 sm:text-sm">
-              Primary next step
-            </p>
-            <h2 className="mt-4 text-2xl font-semibold text-balance sm:text-[26px]">
-              Drop a line while we&apos;re both still in chatting-mode.
-            </h2>
-            <p className="mt-3 text-base text-white/80">
-              {primaryAction.helper}
-            </p>
-            <a
-              href={primaryAction.href}
-              className="mt-6 inline-flex min-h-[56px] items-center justify-center gap-3 rounded-2xl bg-white text-black px-6 py-4 text-lg font-semibold tracking-wide transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              data-analytics-id={primaryAction.analyticsId}
-            >
-              {primaryAction.label}
-              <span aria-hidden className="text-xl">↗</span>
-            </a>
-            <p className="mt-4 text-sm text-white/60">
-              No signal? Save <span className="font-mono text-white">dillon@datawithdillon.com</span>{' '}
-              and email me once you&apos;re back online.
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6">
-            <p className="text-xs uppercase tracking-[0.35em] text-white/70 sm:text-sm">Secondary paths</p>
-            <ul className="mt-4 space-y-4">
-              {secondaryActions.map(action => {
-                const content = (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-base font-semibold">{action.label}</span>
-                      <span aria-hidden className="text-lg transition-transform duration-200 group-hover:translate-x-1">
-                        →
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-white/70">{action.helper}</p>
-                  </>
-                )
-
+        {/* Contact Options - Equal Weight */}
+        <section>
+          <h2 className="mb-5 text-center text-xs uppercase tracking-[0.35em] text-white/70">
+            Let&apos;s stay connected
+          </h2>
+          <div className="grid gap-4">
+            {contactOptions.map(option => {
+              if (option.isSpecial) {
+                // Phone number with copy functionality
                 return (
-                  <li key={action.label}>
-                    {action.isExternal ? (
-                      <a
-                        href={action.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group block rounded-2xl border border-white/10 bg-transparent px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/40"
-                        data-analytics-id={action.analyticsId}
-                      >
-                        {content}
-                      </a>
-                    ) : (
-                      <Link
-                        href={action.href}
-                        className="group block rounded-2xl border border-white/10 bg-transparent px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/40"
-                        data-analytics-id={action.analyticsId}
-                      >
-                        {content}
-                      </Link>
-                    )}
-                  </li>
+                  <div key={option.title} className="flex flex-col">
+                    <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-center transition-all duration-200 active:scale-[0.98]">
+                      <h3 className="text-lg font-semibold">{option.title}</h3>
+                      <p className="mt-1.5 text-sm leading-snug text-white/70">
+                        {option.description}
+                      </p>
+                      <div className="mt-3">
+                        <CopyContactCard
+                          label={option.buttonText}
+                          helper=""
+                          value="+14704543924"
+                          displayValue="+1 (470) 454-3924"
+                          analyticsId={option.analyticsId}
+                          variant="inline"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 )
-              })}
-              <li>
-                <CopyContactCard
-                  label="Save my number"
-                  helper="Tap to copy my cell for text or call."
-                  value="+14704543924"
-                  displayValue="+1 (470) 454-3924"
-                  analyticsId="nfc-phone"
-                />
-              </li>
-            </ul>
+              }
+
+              // Regular link cards
+              const cardClasses = `group flex flex-col rounded-xl px-5 py-4 text-center transition-all duration-200 active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                option.isPrimary
+                  ? 'border border-blue-500/20 bg-blue-500/5'
+                  : 'border border-white/10 bg-white/5'
+              }`
+
+              const LinkComponent = option.isExternal ? 'a' : Link
+              const linkProps = option.isExternal
+                ? {
+                    href: option.href,
+                    target: '_blank' as const,
+                    rel: 'noopener noreferrer',
+                    'aria-label': `${option.title} (opens in new tab)`,
+                  }
+                : {
+                    href: option.href || '/',
+                    prefetch: true,
+                  }
+
+              return (
+                <LinkComponent
+                  key={option.title}
+                  {...linkProps}
+                  className={cardClasses}
+                  data-analytics-id={option.analyticsId}
+                >
+                  <h3 className="text-lg font-semibold">{option.title}</h3>
+                  <p className="mt-1.5 text-sm leading-snug text-white/70">
+                    {option.description}
+                  </p>
+                  <div className="mt-3 flex items-center justify-center">
+                    <span className="text-sm font-medium text-white/90">
+                      {option.buttonText}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="ml-2 text-lg transition-transform duration-200 group-active:translate-x-1"
+                    >
+                      →
+                    </span>
+                    <span className="sr-only">Opens link</span>
+                  </div>
+                </LinkComponent>
+              )
+            })}
           </div>
         </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 px-4 py-5 text-xs uppercase tracking-[0.35em] text-white/60">
-          Need something else? Reply with what success looks like and I’ll send options within 24h.
+        {/* Additional Resources */}
+        <section className="rounded-xl border border-white/10 bg-white/5 p-5">
+          <h2 className="mb-4 text-center text-xs uppercase tracking-[0.35em] text-white/70">
+            Additional resources
+          </h2>
+          <div className="grid gap-3">
+            {additionalResources.map(resource => {
+              const content = (
+                <>
+                  <div className="flex items-center justify-center">
+                    <span className="text-base font-semibold">{resource.label}</span>
+                    <span
+                      aria-hidden
+                      className="ml-2 text-lg transition-transform duration-200 group-active:translate-x-1"
+                    >
+                      →
+                    </span>
+                  </div>
+                  <p className="mt-1 text-center text-sm leading-relaxed text-white/70">{resource.helper}</p>
+                </>
+              )
+
+              const ResourceLink = resource.isExternal ? 'a' : Link
+              const resourceProps = resource.isExternal
+                ? {
+                    href: resource.href,
+                    target: '_blank' as const,
+                    rel: 'noopener noreferrer',
+                    'aria-label': `${resource.label} (opens in new tab)`,
+                  }
+                : {
+                    href: resource.href,
+                    prefetch: true,
+                  }
+
+              return (
+                <ResourceLink
+                  key={resource.label}
+                  {...resourceProps}
+                  className="group block rounded-xl border border-white/10 bg-transparent px-4 py-3.5 transition-all duration-200 active:scale-[0.98]"
+                  data-analytics-id={resource.analyticsId}
+                >
+                  {content}
+                </ResourceLink>
+              )
+            })}
+          </div>
         </section>
       </article>
     </div>
