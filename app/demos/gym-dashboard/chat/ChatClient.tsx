@@ -147,16 +147,16 @@ const buildMarkdownComponents = (role: GymChatMessage['role'], anchorPrefix: str
 
   return {
     h1: ({ node, ...props }: any) => (
-      <h1 className={`mb-3 text-lg font-semibold ${headingColor}`} {...props} />
+      <h1 className={`mt-4 mb-3 text-lg font-semibold ${headingColor}`} {...props} />
     ),
     h2: ({ node, ...props }: any) => (
-      <h2 className={`mb-3 text-base font-semibold ${headingColor}`} {...props} />
+      <h2 className={`mt-4 mb-3 text-base font-semibold ${headingColor}`} {...props} />
     ),
     h3: ({ node, ...props }: any) => (
-      <h3 className={`mb-2 text-sm font-semibold uppercase tracking-wide ${headingColor}`} {...props} />
+      <h3 className={`mt-3 mb-2 text-sm font-semibold uppercase tracking-wide ${headingColor}`} {...props} />
     ),
     p: ({ node, ...props }: any) => (
-      <p className={`mb-3 text-sm leading-relaxed ${textColor}`} {...props} />
+      <p className={`text-sm leading-snug ${textColor}`} {...props} />
     ),
     ul: ({ node, ...props }: any) => (
       <ul className={`list-disc ${sharedListClass}`} {...props} />
@@ -249,7 +249,7 @@ const renderPreviewTable = (rows: Record<string, unknown>[]) => {
   }
   const headers = Object.keys(rows[0])
   return (
-    <div className="max-w-full overflow-x-auto rounded-xl border border-white/10">
+    <div className="max-w-full overflow-x-auto rounded-xl border border-white/10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
       <table className="min-w-full text-xs text-white/80">
         <thead className="bg-white/5 text-white/70">
           <tr>
@@ -345,11 +345,11 @@ const QueryDetails = ({ queries, anchorPrefix }: { queries?: GymChatQuery[]; anc
   if (!queries?.length) return null
 
   return (
-    <details className="rounded-2xl border border-white/10 bg-black/40 p-4 text-xs text-white/80">
+    <details className="max-w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-4 text-xs text-white/80">
       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-white/70">
         Query details
       </summary>
-      <div className="mt-4 space-y-4">
+      <div className="mt-4 max-w-full space-y-4 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {queries.map(query => (
           <div key={query.id} id={`${anchorPrefix}${query.id}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -374,7 +374,7 @@ const QueryDetails = ({ queries, anchorPrefix }: { queries?: GymChatQuery[]; anc
             ) : null}
             <details className="mt-3 text-[11px]">
               <summary className="cursor-pointer text-white/70">Show SQL</summary>
-              <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/60 p-3 text-[11px] text-white/70">
+              <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-white/10 bg-black/60 p-3 text-[11px] text-white/70 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {query.sql}
               </pre>
             </details>
@@ -391,6 +391,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
+  const [scrollPosition, setScrollPosition] = useState<'top' | 'middle' | 'bottom'>('bottom')
   const [usedFollowUps, setUsedFollowUps] = useState<Set<string>>(() => new Set())
   const [conversationState, setConversationState] = useState<GymChatConversationState>({})
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -471,12 +472,25 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     el.scrollTo({ top: el.scrollHeight, behavior })
   }, [])
 
+  const scrollToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    el.scrollTo({ top: 0, behavior })
+  }, [])
+
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current
     if (!el) return
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const isNearTop = el.scrollTop < 80
     setAutoScrollEnabled(current => (current !== isNearBottom ? isNearBottom : current))
+    setScrollPosition(isNearTop ? 'top' : isNearBottom ? 'bottom' : 'middle')
   }, [])
+
+  // Update scroll position on mount and when messages change
+  useEffect(() => {
+    handleScroll()
+  }, [messages, handleScroll])
 
   useEffect(() => {
     const latestAssistant = [...messages].reverse().find(message => message.role === 'assistant')
@@ -699,24 +713,34 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
       const anchorPrefix = `query-${message.id}-`
       const queryIds =
         message.role === 'assistant' ? new Set(message.queries?.map(query => query.id) ?? []) : new Set<string>()
+      // Status messages are short assistant messages without queries/charts (e.g., "Planning SQL", "Running queries...")
+      const isStatusMessage = message.role === 'assistant' && !message.queries?.length && !message.chartSpecs?.length && message.content.length < 50
       return (
         <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
           <div
-            className={`max-w-[720px] rounded-2xl border px-4 py-3 text-sm leading-relaxed ${
+            className={`max-w-[85%] w-fit rounded-2xl text-sm ${
+              isStatusMessage
+                ? 'px-3 py-1.5'
+                : 'px-3 py-2 leading-relaxed'
+            } ${
               message.role === 'user'
-                ? 'border-blue-400/40 bg-blue-500/10 text-white'
-                : 'border-white/10 bg-black/40 text-white/90'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-700 text-white/90'
             }`}
           >
-            <div className="text-sm leading-relaxed [&>*:last-child]:mb-0">
-              <MarkdownContent
-                content={message.content}
-                role={message.role}
-                anchorPrefix={anchorPrefix}
-                queryIds={queryIds}
-              />
-            </div>
-            {message.role === 'assistant' ? (
+            {isStatusMessage ? (
+              <span>{message.content}</span>
+            ) : (
+              <div className="[&>*:last-child]:mb-0 [&>*:first-child]:mt-0">
+                <MarkdownContent
+                  content={message.content}
+                  role={message.role}
+                  anchorPrefix={anchorPrefix}
+                  queryIds={queryIds}
+                />
+              </div>
+            )}
+            {message.role === 'assistant' && !isStatusMessage ? (
               <div className="mt-4 space-y-4">
                 {renderCharts(message.chartSpecs, message.queries)}
                 <QueryDetails queries={message.queries} anchorPrefix={anchorPrefix} />
@@ -817,81 +841,103 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         </div>
       </div>
 
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        className="mt-4 w-full flex-1 overflow-x-hidden overflow-y-auto pr-1"
-      >
-        {showStart ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-black/50 p-6 text-center shadow-2xl shadow-black/40 backdrop-blur">
-              <p className="text-lg font-semibold text-white">Gym Chat</p>
-              <p className="mt-1 text-sm text-white/60">Ask anything about training.</p>
-              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {SUGGESTED_QUESTIONS.map(question => (
-                  <button
-                    key={question}
-                    type="button"
-                    onClick={() => handleSuggestedQuestion(question)}
-                    className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left text-sm font-semibold text-white/90 transition hover:border-white/40 hover:bg-white/15"
-                  >
-                    {question}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {renderedMessages}
-            {isLoading ? (
-              <div className="flex justify-start">
-                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/70" style={{ animationDelay: '0ms' }} />
-                    <span
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/70"
-                      style={{ animationDelay: '150ms' }}
-                    />
-                    <span
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/70"
-                      style={{ animationDelay: '300ms' }}
-                    />
-                  </div>
+      <div className="relative mt-4 min-h-0 flex-1 overflow-hidden">
+        {/* Scroll to top button - shown when not at top */}
+        {!showStart && scrollPosition !== 'top' && (
+          <button
+            type="button"
+            onClick={() => scrollToTop()}
+            aria-label="Scroll to top"
+            className="absolute left-1/2 top-2 z-10 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full bg-white/5 text-white/70 shadow-lg transition hover:bg-white/10 hover:text-white"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+              <path d="M10 6a1 1 0 0 1 .7.3l4 4a1 1 0 1 1-1.4 1.4L10 8.4l-3.3 3.3a1 1 0 1 1-1.4-1.4l4-4A1 1 0 0 1 10 6z" />
+            </svg>
+          </button>
+        )}
+
+        {/* Scroll to bottom button - shown when not at bottom */}
+        {!showStart && scrollPosition !== 'bottom' && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom()}
+            aria-label="Scroll to bottom"
+            className="absolute bottom-2 left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full bg-white/5 text-white/70 shadow-lg transition hover:bg-white/10 hover:text-white"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+              <path d="M10 14a1 1 0 0 1-.7-.3l-4-4a1 1 0 1 1 1.4-1.4l3.3 3.3 3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-.7.3z" />
+            </svg>
+          </button>
+        )}
+
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-x-hidden overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        >
+          {showStart ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-gray-800 p-6 text-center shadow-2xl shadow-black/40">
+                <p className="text-lg font-semibold text-white">Gym Chat</p>
+                <p className="mt-1 text-sm text-white/60">Ask anything about training.</p>
+                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {SUGGESTED_QUESTIONS.map(question => (
+                    <button
+                      key={question}
+                      type="button"
+                      onClick={() => handleSuggestedQuestion(question)}
+                      className="w-full rounded-2xl border border-white/10 bg-gray-700/50 px-4 py-3 text-left text-sm font-semibold text-white/90 transition hover:border-white/30 hover:bg-gray-700"
+                    >
+                      {question}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ) : null}
-          </div>
-        )}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {renderedMessages}
+              {isLoading ? (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/70" style={{ animationDelay: '0ms' }} />
+                      <span
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/70"
+                        style={{ animationDelay: '150ms' }}
+                      />
+                      <span
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/70"
+                        style={{ animationDelay: '300ms' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="mt-4">
-        <div className="flex items-end gap-2 rounded-full bg-black/40 px-3 py-2">
-          <button
-            type="button"
-            disabled
-            aria-label="Add attachment"
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-white/40"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-              <path d="M10 4a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2h-4v4a1 1 0 1 1-2 0v-4H5a1 1 0 1 1 0-2h4V5a1 1 0 0 1 1-1z" />
-            </svg>
-          </button>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={event => setInput(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Message"
-            rows={1}
-            className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm text-white/90 placeholder:text-white/40 focus:outline-none"
-          />
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-2xl bg-gray-700/50 px-3 py-2">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={event => setInput(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message"
+              rows={1}
+              className="max-h-32 w-full resize-none overflow-hidden border-0 bg-transparent text-sm text-white/90 placeholder:text-white/50 focus:outline-none focus:ring-0"
+            />
+          </div>
           <button
             type="button"
             onClick={() => void handleSubmit()}
             disabled={!input.trim() || isLoading}
             aria-label="Send message"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
               <path d="M4.5 10a1 1 0 0 1 1-1h7.1L10.8 6.2a1 1 0 1 1 1.4-1.4l4.2 4.2a1 1 0 0 1 0 1.4l-4.2 4.2a1 1 0 1 1-1.4-1.4L12.6 11H5.5a1 1 0 0 1-1-1z" />
