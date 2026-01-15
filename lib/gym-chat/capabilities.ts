@@ -6,6 +6,8 @@ const METRIC_GLOSSARY = `Metric glossary:
 - monthly volume: volume aggregated by DATE_TRUNC('month', date::date).
 - estimated 1RM: ROUND(weight * (1 + reps / 30.0)).
 - PR: highest observed weight for an exercise unless the user explicitly asks for estimated 1RM.
+- best set: heaviest set for an exercise (or highest estimated 1RM if requested).
+- per-exercise summary: total sets, total volume, last performed date, and best set per exercise.
 - body_part exposure: use gym_day_meta.body_parts (text[]) via UNNEST(body_parts) AS body_part.
 - split/day_tag: strings like push, pull, leg, upper, lower stored on each set via day_tag.
 `

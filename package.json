@@ -12,7 +12,8 @@
     "gym-chat:clarification-eval": "tsx eval/run-gym-chat-clarification-eval.ts",
     "gym-chat:multiturn-eval": "tsx eval/run-gym-chat-multiturn-eval.ts",
     "gym-chat:top-end-compare-eval": "tsx eval/run-gym-chat-top-end-compare-eval.ts",
-    "gym-chat:workout-plan-eval": "tsx eval/run-gym-chat-workout-plan-eval.ts"
+    "gym-chat:workout-plan-eval": "tsx eval/run-gym-chat-workout-plan-eval.ts",
+    "gym-chat:quick-win-eval": "tsx eval/run-gym-chat-quick-win-eval.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.6",

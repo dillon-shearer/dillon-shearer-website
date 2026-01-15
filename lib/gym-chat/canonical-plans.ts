@@ -9,6 +9,31 @@ export type CanonicalPlan = {
   }>
 }
 
+type SetFilterOptions = {
+  window?: string
+  exercise?: string | null
+  allTime?: boolean
+}
+
+const buildSetsFilter = (lifts: SetsBaseCte, options?: SetFilterOptions) => {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  let paramIndex = 1
+  if (!options?.allTime) {
+    const window = options?.window ?? '90 days'
+    params.push(window)
+    conditions.push(`${lifts.performedAtExpr} >= CURRENT_DATE - ($${paramIndex})::interval`)
+    paramIndex += 1
+  }
+  if (options?.exercise) {
+    params.push(`%${options.exercise}%`)
+    conditions.push(`${lifts.alias}.exercise ILIKE $${paramIndex}`)
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  const policyHint = options?.allTime ? '/*policy:time_window=all_time*/ ' : ''
+  return { whereClause, params, policyHint }
+}
+
 export const buildTopWeightSetsPlan = (
   lifts: SetsBaseCte,
   options?: { limit?: number; window?: string },
@@ -30,6 +55,187 @@ export const buildTopWeightSetsPlan = (
           `ORDER BY ${lifts.alias}.weight DESC NULLS LAST, ${lifts.alias}.reps DESC NULLS LAST ` +
           `LIMIT ${limit}`,
         params: [window],
+      },
+    ],
+  }
+}
+
+export const buildExercisePrsPlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    limit?: number
+    window?: string
+    exercise?: string | null
+    useEstimated1rm?: boolean
+    allTime?: boolean
+  },
+): CanonicalPlan => {
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 10
+  const window = options?.window ?? '90 days'
+  const useEstimated1rm = options?.useEstimated1rm ?? false
+  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const metricLabel = useEstimated1rm ? 'estimated 1RM' : 'weight'
+  const filter = buildSetsFilter(lifts, {
+    window,
+    exercise: options?.exercise ?? null,
+    allTime: options?.allTime,
+  })
+  const metricExpr = useEstimated1rm ? lifts.est1rmExpr : `${lifts.alias}.weight`
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `List ${metricLabel} PRs by exercise over ${windowLabel}.`,
+        sql:
+          `${filter.policyHint}WITH ${lifts.cte}, ranked AS (` +
+          `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+          `${lifts.alias}.weight, ${lifts.alias}.reps, ${lifts.est1rmExpr} AS est_1rm, ` +
+          `${metricExpr} AS metric_value, ` +
+          `ROW_NUMBER() OVER (PARTITION BY ${lifts.alias}.exercise ` +
+          `ORDER BY ${metricExpr} DESC NULLS LAST, ${lifts.performedAtExpr} DESC NULLS LAST) AS rn ` +
+          `FROM ${lifts.alias} ` +
+          `${filter.whereClause}` +
+          ') ' +
+          'SELECT exercise, metric_value AS pr_value, weight, reps, est_1rm, session_date ' +
+          'FROM ranked ' +
+          'WHERE rn = 1 ' +
+          'ORDER BY pr_value DESC NULLS LAST ' +
+          `LIMIT ${limit}`,
+        params: filter.params,
+      },
+    ],
+  }
+}
+
+export const buildBestSetsPlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    limit?: number
+    window?: string
+    exercise?: string | null
+    useEstimated1rm?: boolean
+    allTime?: boolean
+  },
+): CanonicalPlan => {
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 5
+  const window = options?.window ?? '90 days'
+  const useEstimated1rm = options?.useEstimated1rm ?? false
+  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const metricLabel = useEstimated1rm ? 'estimated 1RM' : 'weight'
+  const filter = buildSetsFilter(lifts, {
+    window,
+    exercise: options?.exercise ?? null,
+    allTime: options?.allTime,
+  })
+  const metricExpr = useEstimated1rm ? lifts.est1rmExpr : `${lifts.alias}.weight`
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Retrieve the best ${metricLabel} sets over ${windowLabel}.`,
+        sql:
+          `${filter.policyHint}WITH ${lifts.cte} ` +
+          'SELECT ' +
+          `${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+          `${lifts.alias}.weight, ${lifts.alias}.reps, ${lifts.est1rmExpr} AS est_1rm, ` +
+          `${metricExpr} AS metric_value ` +
+          `FROM ${lifts.alias} ` +
+          `${filter.whereClause} ` +
+          'ORDER BY metric_value DESC NULLS LAST, ' +
+          `${lifts.performedAtExpr} DESC NULLS LAST ` +
+          `LIMIT ${limit}`,
+        params: filter.params,
+      },
+    ],
+  }
+}
+
+export const buildExerciseSummaryPlan = (
+  lifts: SetsBaseCte,
+  options?: { limit?: number; window?: string; exercise?: string | null; allTime?: boolean },
+): CanonicalPlan => {
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 10
+  const window = options?.window ?? '90 days'
+  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const filter = buildSetsFilter(lifts, {
+    window,
+    exercise: options?.exercise ?? null,
+    allTime: options?.allTime,
+  })
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Summarize per-exercise training history over ${windowLabel}.`,
+        sql:
+          `${filter.policyHint}WITH ${lifts.cte}, filtered AS (` +
+          `SELECT ${lifts.alias}.exercise, ${lifts.alias}.weight, ${lifts.alias}.reps, ` +
+          `${lifts.est1rmExpr} AS est_1rm, ${lifts.volumeExpr} AS volume, ` +
+          `${lifts.sessionDateExpr} AS session_date, ${lifts.performedAtExpr} AS performed_at ` +
+          `FROM ${lifts.alias} ` +
+          `${filter.whereClause}` +
+          '), summary AS (' +
+          'SELECT exercise, COUNT(*) AS total_sets, SUM(volume) AS total_volume, ' +
+          'MAX(session_date) AS last_performed_date ' +
+          'FROM filtered GROUP BY exercise' +
+          '), best_set AS (' +
+          'SELECT exercise, weight, reps, session_date, est_1rm, ' +
+          'ROW_NUMBER() OVER (PARTITION BY exercise ' +
+          'ORDER BY weight DESC NULLS LAST, reps DESC NULLS LAST, performed_at DESC NULLS LAST) AS rn ' +
+          'FROM filtered' +
+          ') ' +
+          'SELECT s.exercise, s.total_sets, s.total_volume, s.last_performed_date, ' +
+          'b.weight AS best_weight, b.reps AS best_reps, b.session_date AS best_date, b.est_1rm AS best_est_1rm ' +
+          'FROM summary s ' +
+          'LEFT JOIN best_set b ON b.exercise = s.exercise AND b.rn = 1 ' +
+          'ORDER BY s.total_volume DESC NULLS LAST ' +
+          `LIMIT ${limit}`,
+        params: filter.params,
+      },
+    ],
+  }
+}
+
+export const buildExerciseProgressionPlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    window?: string
+    exercise?: string | null
+    bucket?: 'week' | 'month'
+    allTime?: boolean
+  },
+): CanonicalPlan => {
+  const window = options?.window ?? '12 months'
+  const bucket = options?.bucket === 'month' ? 'month' : 'week'
+  const bucketLabel = bucket === 'month' ? 'monthly' : 'weekly'
+  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const filter = buildSetsFilter(lifts, {
+    window,
+    exercise: options?.exercise ?? null,
+    allTime: options?.allTime,
+  })
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Track ${bucketLabel} estimated 1RM progression by exercise over ${windowLabel}.`,
+        sql:
+          `${filter.policyHint}WITH ${lifts.cte}, session_best AS (` +
+          `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+          `MAX(${lifts.est1rmExpr}) AS est_1rm ` +
+          `FROM ${lifts.alias} ` +
+          `${filter.whereClause} ` +
+          `GROUP BY session_date, ${lifts.alias}.exercise` +
+          '), aggregated AS (' +
+          `SELECT DATE_TRUNC('${bucket}', session_date::timestamp)::date AS period_start, ` +
+          'exercise, AVG(est_1rm) AS avg_est_1rm ' +
+          'FROM session_best ' +
+          'GROUP BY period_start, exercise' +
+          ') ' +
+          'SELECT exercise, period_start, avg_est_1rm ' +
+          'FROM aggregated ' +
+          'ORDER BY exercise, period_start',
+        params: filter.params,
       },
     ],
   }

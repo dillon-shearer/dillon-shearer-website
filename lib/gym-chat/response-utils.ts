@@ -49,6 +49,7 @@ export type WorkoutTemplateExercise = {
 const DEFAULT_TOP_N = 10
 const TOP_N_REGEX = /\btop[-\s]+(\d+)\b/i
 const RANKING_KEYWORDS = ['top', 'most', 'highest', 'lowest', 'least', 'rank', 'ranking', 'best', 'worst']
+const PR_RANKING_REGEX = /\bpr(?:s)?\b|\bpersonal\s+(?:record|best)s?\b/i
 
 const VOLUME_KEYWORDS = ['volume', 'tonnage', 'lb-reps', 'lb reps', 'kg-reps', 'kg reps']
 const VOLUME_MISMATCH_KEYWORDS = ['total volume', 'tonnage', 'lb-reps', 'lb reps', 'kg-reps', 'kg reps']
@@ -138,6 +139,30 @@ export const buildAnalysisFollowUps = (analysisKind?: AnalysisKind) => {
         'Which lifts show the biggest 1RM increase despite lighter weights?',
         'Drill into a specific exercise with lighter-weight progress.',
         'Compare lighter-weight progress over the last 6 months vs the prior 6 months.',
+      ]
+    case 'exercise_prs':
+      return [
+        'Show PRs for a specific lift.',
+        'Show estimated 1RM PRs for my main lifts.',
+        'List my PRs over a different time window.',
+      ]
+    case 'best_sets':
+      return [
+        'Show my best sets for a specific exercise.',
+        'Show my best sets by estimated 1RM.',
+        'Show my top 10 best sets over the last 90 days.',
+      ]
+    case 'exercise_summary':
+      return [
+        'Summarize my history for a specific lift.',
+        'Show per-exercise summaries for the last 6 months.',
+        'Which exercises have the highest total volume in that summary?',
+      ]
+    case 'exercise_progression':
+      return [
+        'Show a specific lift progression by month.',
+        'Compare the last 3 months vs the prior 3 months for a lift.',
+        'Show progression trends for all exercises.',
       ]
     case 'top_weight_sets':
       return [
@@ -390,6 +415,7 @@ export const extractRequestedTopN = (question: string) => {
 export const isRankingQuestion = (question: string) => {
   if (!question) return false
   const normalized = normalizeText(question)
+  if (PR_RANKING_REGEX.test(normalized)) return true
   return RANKING_KEYWORDS.some(keyword => normalized.includes(keyword))
 }
 
@@ -622,6 +648,61 @@ export const buildFallbackExplanation = (input: {
       .join('\n')
   }
 
+  if (input.analysisKind === 'exercise_prs' && primary?.previewRows?.length) {
+    const lines = primary.previewRows.slice(0, 5).map(row => {
+      const name = row.exercise ?? 'Exercise'
+      const metric = row.pr_value ?? row.pr_weight ?? row.pr_est_1rm ?? row.weight ?? row.est_1rm ?? 'n/a'
+      const reps = row.reps ?? 'n/a'
+      const date = row.session_date ?? row.performed_at ?? 'n/a'
+      return `- ${name}: ${metric} x ${reps} (${date})`
+    })
+    return [
+      `PRs by exercise over ${windowLabel}.`,
+      ...lines,
+      input.responseMeta ? formatCoverageLine(input.responseMeta) : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  if (input.analysisKind === 'best_sets' && primary?.previewRows?.length) {
+    const stats = extractNumericStats(primary.previewRows)
+    const lines = primary.previewRows.slice(0, 5).map(row => {
+      const name = row.exercise ?? 'Exercise'
+      const metric = row.metric_value ?? row.weight ?? row.est_1rm ?? 'n/a'
+      const reps = row.reps ?? 'n/a'
+      const date = row.session_date ?? row.performed_at ?? 'n/a'
+      return `- ${name}: ${metric} x ${reps} (${date})`
+    })
+    return [
+      `Best sets over ${windowLabel}.`,
+      ...lines,
+      stats ? `Best-set stats (${stats.key}): min=${stats.min}, median=${stats.median}, max=${stats.max}.` : '',
+      input.responseMeta ? formatCoverageLine(input.responseMeta) : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  if (input.analysisKind === 'exercise_summary' && primary?.previewRows?.length) {
+    const lines = primary.previewRows.slice(0, 5).map(row => {
+      const name = row.exercise ?? 'Exercise'
+      const totalSets = row.total_sets ?? 'n/a'
+      const totalVolume = row.total_volume ?? 'n/a'
+      const lastDate = row.last_performed_date ?? 'n/a'
+      const bestWeight = row.best_weight ?? 'n/a'
+      const bestReps = row.best_reps ?? 'n/a'
+      return `- ${name}: ${totalSets} sets, ${totalVolume} volume, last ${lastDate}, best ${bestWeight} x ${bestReps}`
+    })
+    return [
+      `Per-exercise summary over ${windowLabel}.`,
+      ...lines,
+      input.responseMeta ? formatCoverageLine(input.responseMeta) : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
   if (input.analysisKind === 'set_count' && primary?.previewRows?.length) {
     const stats = extractNumericStats(primary.previewRows)
     const lines = buildRankingSample(primary.previewRows, 'sets', 'total_sets')
@@ -712,6 +793,17 @@ export const buildFallbackExplanation = (input: {
       ...lines,
       `Coverage/Limitations: window=${windowLabel}, rows returned=${primary.rowCount}, rows shown=${primary.previewRows.length}.`,
     ].join('\n')
+  }
+
+  if (input.analysisKind === 'exercise_progression' && primary?.previewRows?.length) {
+    const lines = primary.previewRows.slice(0, 5).map(row => `- ${formatRowSample(row)}`)
+    return [
+      `Estimated 1RM progression over ${windowLabel} (showing sample rows).`,
+      ...lines,
+      input.responseMeta ? formatCoverageLine(input.responseMeta) : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
   }
 
   if (input.analysisKind === 'top_end_efforts_compare_12m_3m' && input.queryResultMetadata?.length) {

@@ -1,17 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Demo } from '@/types/demo'
 
 interface DemoCardProps {
   demo: Demo
-  isExpanded: boolean
-  onToggle: () => void
+  onSeeMore: () => void
+  index: number
 }
 
-export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) {
+export default function DemoCard({ demo, onSeeMore, index }: DemoCardProps) {
   const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [iframeLoaded, setIframeLoaded] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const hasMarkedLoaded = useRef(false)
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)')
@@ -21,42 +24,105 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
     return () => mq.removeEventListener('change', update)
   }, [])
 
-  const isInProgress = demo.status !== 'live'
+  // Centralized function to mark as loaded (prevents double-firing)
+  const markAsLoaded = useCallback(() => {
+    if (hasMarkedLoaded.current) return
+    hasMarkedLoaded.current = true
+    // Small delay for React hydration inside iframe
+    setTimeout(() => setIframeLoaded(true), 300)
+  }, [])
+
+  // Multiple detection strategies for bulletproof loading
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    // Strategy 1: Native load event via addEventListener
+    const handleLoad = () => markAsLoaded()
+    iframe.addEventListener('load', handleLoad)
+
+    // Strategy 2: Check if already loaded (cached/fast load)
+    // The iframe may have loaded before this effect runs
+    if (iframe.contentWindow) {
+      try {
+        // Same-origin check - if we can access it, check readyState
+        const doc = iframe.contentDocument || iframe.contentWindow.document
+        if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+          markAsLoaded()
+        }
+      } catch {
+        // Cross-origin - can't check, rely on load event
+      }
+    }
+
+    // Strategy 3: Polling fallback - check periodically
+    // This catches edge cases where load event doesn't fire
+    const pollInterval = setInterval(() => {
+      if (hasMarkedLoaded.current) {
+        clearInterval(pollInterval)
+        return
+      }
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document
+        if (doc && (doc.readyState === 'complete' || doc.readyState === 'interactive')) {
+          markAsLoaded()
+          clearInterval(pollInterval)
+        }
+      } catch {
+        // Cross-origin - keep polling until load event fires
+      }
+    }, 500)
+
+    // Strategy 4: Maximum wait fallback - show content after 5 seconds no matter what
+    const maxWaitTimeout = setTimeout(() => {
+      if (!hasMarkedLoaded.current) {
+        markAsLoaded()
+      }
+    }, 5000)
+
+    return () => {
+      iframe.removeEventListener('load', handleLoad)
+      clearInterval(pollInterval)
+      clearTimeout(maxWaitTimeout)
+    }
+  }, [markAsLoaded])
+
   const mobileOrderClass = demo.mobileReady ? 'order-first md:order-none' : ''
   const exploreHref = demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`
   const previewBase = demo.demoUrl ?? exploreHref
   const queryJoiner = previewBase.includes('?') ? '&' : '?'
   const previewSrc = `${previewBase}${queryJoiner}embed=1&nosplash=1`
-  const detailsId = `${demo.slug}-details`
   const mobileBlocked = !demo.mobileReady && isMobileViewport
-  const frameScaleClasses = isExpanded
-    ? 'scale-[0.48] sm:scale-[0.54] md:scale-[0.6]'
-    : 'scale-[0.22] sm:scale-[0.26] md:scale-[0.3]'
-  const frameHeightClasses = isExpanded
-    ? 'h-[420px] sm:h-[480px] md:h-[560px]'
-    : 'h-[200px] sm:h-[240px] md:h-[280px]'
 
   return (
     <article
-      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-[#0c1424] text-white shadow-lg transition-all duration-300 dark:border-gray-700 ${mobileOrderClass} ${
-        isExpanded ? 'ring-2 ring-blue-500/40' : 'hover:-translate-y-1 hover:shadow-2xl'
-      }`}
-      data-expanded={isExpanded}
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-[#0c1424] text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl dark:border-gray-700 ${mobileOrderClass}`}
     >
-      <div className={`relative w-full overflow-hidden rounded-t-2xl bg-black transition-[height] duration-500 ${frameHeightClasses}`}>
+      <div className="relative h-[200px] w-full overflow-hidden rounded-t-2xl bg-black sm:h-[240px] md:h-[280px]">
+        {/* Loading skeleton - shows until iframe loads */}
+        {!iframeLoaded && (
+          <div className="absolute inset-0 z-10 flex animate-pulse items-center justify-center bg-gray-800/80">
+            <span className="text-sm text-gray-400">Loading preview...</span>
+          </div>
+        )}
+
+        {/* Live iframe preview - always rendered, lazy loaded */}
         <div className="pointer-events-none absolute inset-0 flex items-start justify-center">
-          <div className={`origin-top transition-transform duration-500 ease-out ${frameScaleClasses}`}>
+          <div className="origin-top scale-[0.22] transition-transform duration-500 ease-out sm:scale-[0.26] md:scale-[0.3]">
             <iframe
+              ref={iframeRef}
               src={previewSrc}
               title={`${demo.title} live preview`}
               tabIndex={-1}
-              loading="lazy"
               aria-hidden="true"
+              loading={index < 2 ? 'eager' : 'lazy'}
               className="h-[900px] w-[1440px] border-0 shadow-2xl"
               style={{ pointerEvents: 'none' }}
+              onLoad={markAsLoaded}
             />
           </div>
         </div>
+
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         <Link
           href={exploreHref}
@@ -109,16 +175,14 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
           </div>
           <button
             type="button"
-            onClick={onToggle}
-            aria-expanded={isExpanded}
-            aria-controls={detailsId}
+            onClick={onSeeMore}
             className={`inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-gray-100 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
               mobileBlocked ? 'opacity-80' : 'hover:border-blue-300 hover:text-blue-200'
             }`}
           >
-            {isExpanded ? 'Close' : 'See more'}
+            See more
             <svg
-              className={`h-3.5 w-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+              className="h-3.5 w-3.5"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
@@ -143,91 +207,6 @@ export default function DemoCard({ demo, isExpanded, onToggle }: DemoCardProps) 
           </div>
         </div>
       </div>
-
-      {isExpanded && (
-        <div
-          id={detailsId}
-          className="px-4 pb-6 text-sm text-gray-200"
-        >
-          <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:gap-8">
-            <div className="space-y-5">
-              <p className="text-sm leading-relaxed text-gray-100 sm:text-base">{demo.description}</p>
-
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Key Features</h4>
-                <ul className="mt-2 space-y-2 text-sm text-gray-100">
-                  {demo.highlights.slice(0, 5).map((highlight, index) => (
-                    <li key={index} className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-400" aria-hidden="true" />
-                      <span>{highlight}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {!isInProgress ? (
-                <Link
-                  href={exploreHref}
-                  className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:from-blue-700 hover:to-blue-800"
-                >
-                  Explore full demo
-                </Link>
-              ) : (
-                <div className="w-full rounded-xl bg-gray-800 px-4 py-2.5 text-center text-sm font-semibold text-gray-300">
-                  Demo coming soon
-                </div>
-              )}
-
-              {!demo.mobileReady && (
-                <p className="text-xs font-medium text-amber-400">
-                  Best experienced on desktop devices
-                </p>
-              )}
-
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Tech Stack</h4>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {demo.techStack.map((tech) => (
-                    <span
-                      key={tech}
-                      className="rounded-lg bg-white/5 px-2.5 py-1 text-xs font-medium text-gray-100"
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                {demo.githubUrl && (
-                  <a
-                    href={demo.githubUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-blue-400 hover:text-blue-200"
-                    title="View source code"
-                  >
-                    Source
-                  </a>
-                )}
-                {demo.liveUrl && (
-                  <a
-                    href={demo.liveUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-green-400 hover:text-green-200"
-                    title="Open live demo"
-                  >
-                    Live site
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </article>
   )
 }

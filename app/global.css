@@ -243,3 +243,64 @@ body[data-embed-preview='true'] [data-embed-hide='true'] {
   transform: translate3d(-120%, 0, 0);
   opacity: 0;
 }
+
+/* Bento Grid Animations */
+
+/* Floating glow orb animation */
+@keyframes float-glow {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(10px, -10px) scale(1.1);
+  }
+}
+
+.bento-glow-orb {
+  animation: float-glow 8s ease-in-out infinite;
+}
+
+/* Subtle shimmer effect for featured card border */
+@keyframes bento-shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.bento-card-featured {
+  position: relative;
+}
+
+.bento-card-featured::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(84, 179, 214, 0.3) 50%,
+    transparent 100%
+  );
+  background-size: 200% auto;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.bento-card-featured:hover::before {
+  opacity: 1;
+  animation: bento-shimmer 2s linear infinite;
+}

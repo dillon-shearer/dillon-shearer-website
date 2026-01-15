@@ -11,10 +11,15 @@ export type AnalysisKind =
   | 'return_for_effort_progression'
   | 'stalled_lifts'
   | 'lighter_weight_progress'
+  | 'exercise_prs'
+  | 'best_sets'
+  | 'exercise_summary'
+  | 'exercise_progression'
   | 'top_weight_sets'
   | 'lowest_volume_day'
   | 'favorite_split_day'
   | 'weekly_volume'
+  | 'period_compare'
   | 'top_end_efforts'
   | 'top_end_efforts_compare_12m_3m'
   | 'progressive_overload'
@@ -34,7 +39,9 @@ export type WorkoutPlanAnalysisMeta = {
   usesHistoricalLifts?: boolean
 }
 
-export type PendingClarification = { kind: 'return_for_effort_metric' | 'timeframe' }
+export type PendingClarification =
+  | { kind: 'return_for_effort_metric' }
+  | { kind: 'timeframe'; question?: string }
 
 export type GymChatConversationState = {
   lastAnalysis?: {

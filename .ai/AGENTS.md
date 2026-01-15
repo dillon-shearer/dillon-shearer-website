@@ -9,8 +9,18 @@ These are top-level principles that apply to all roles. Role files add workflow 
 3. Check your work. If you write code, run a relevant check. If you start a long process, verify it is running as expected.
 4. Be cautious with terminal commands. Prefer commands that exit on their own. For long-running processes, use a safe background method and verify logs. Avoid running services unless explicitly needed.
 
-## Task Logs (Multi-Agent)
-1. Store all task logs under `.ai/requests/` as a single file per agent/task, named for the task and a timestamp (include the agent name to keep it unique, e.g. `sql_logic_improvements_20260114_2030_builder.md`).
-2. The task log file is the single source of truth for that agent's conversation and work.
-3. Include a `## Status Log` section with timestamped entries in `YYYY-MM-DD HH:mm` format for each update.
-4. Do not edit another agent's task log file.
+## Handoff Log (Single File)
+
+1. Use a single shared log at `.ai/HANDOFF.md` for all tasks until the user resets it.
+
+2. Do not create per-task request logs in `.ai/requests/` unless the user explicitly asks.
+
+3. At the start of each task, check whether `.ai/HANDOFF.md` exists. If missing, treat it as a new task, create the handoff log, and restate the path. If it exists, read it and continue the ongoing task.
+
+4. The handoff log is the single source of truth for status, decisions, outputs, and verification.
+
+5. Append-only: do not delete or rewrite prior entries from other agents.
+
+6. Every update must include a `## Status Log` entry with timestamp `YYYY-MM-DD HH:mm`.
+
+7. If the agent produces outputs, store them under `.ai/outputs/*` and list them in the handoff log's Output Manifest.

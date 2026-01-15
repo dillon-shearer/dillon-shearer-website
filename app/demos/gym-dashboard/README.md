@@ -327,3 +327,24 @@
 - **Related Conversation / Prompt**:
   - "Help me plan my sets for Quads... Use my previous lifts to inform these decisions."
   - "Ensure your suggestions are ONLY for quads."
+
+[2026-01-15T02:41:22Z] Gym Chat history/performance analyses (PRs, best sets, summaries, progression)
+- **Agent / Model**: GPT-5 (Codex)
+- **Scope**:
+  - `types/gym-chat.ts`
+  - `lib/gym-chat/canonical-plans.ts`
+  - `app/api/gym-chat/route.ts`
+  - `lib/gym-chat/response-utils.ts`
+  - `lib/gym-chat/capabilities.ts`
+  - `lib/gym-chat/semantics.ts`
+  - `app/demos/gym-dashboard/README.md`
+- **Reason**:
+  - Add canonical PR, best-set, per-exercise summary, and progression trend analyses for training history questions.
+- **Key Changes**:
+  - Added new analysis kinds with deterministic SQL plans using the shared sets CTE (optional exercise filters, 1RM mode, and all-time hinting).
+  - Wired routing/response metadata and follow-ups for PRs, best sets, per-exercise summaries, and progression trends.
+  - Expanded gym-chat capability/semantic hints to cover PRs, best sets, and per-exercise summaries.
+- **Related Conversation / Prompt**:
+  - "What are my PRs?"
+  - "Show my best sets for incline press."
+  - "How has bench progressed over the last year?"

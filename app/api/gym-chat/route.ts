@@ -6,6 +6,10 @@ import { createClient, createPool } from '@vercel/postgres'
 import { getCatalogTables, loadGymCatalog } from '@/lib/gym-chat/catalog'
 import {
   buildFavoriteSplitDayPlan,
+  buildBestSetsPlan,
+  buildExercisePrsPlan,
+  buildExerciseProgressionPlan,
+  buildExerciseSummaryPlan,
   buildLightWeightProgressPlan,
   buildMuscleGroupComparisonPlan,
   buildProgressiveOverloadPlan,
@@ -141,12 +145,122 @@ const hasDigits = (value: string) => /\d/.test(value)
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
 
+const EXERCISE_TARGET_STOPWORDS = new Set([
+  'a',
+  'an',
+  'about',
+  'all',
+  'and',
+  'are',
+  'as',
+  'at',
+  'best',
+  'by',
+  'compare',
+  'during',
+  'each',
+  'ever',
+  'exercise',
+  'exercises',
+  'for',
+  'from',
+  'has',
+  'have',
+  'how',
+  'i',
+  'in',
+  'is',
+  'last',
+  'lift',
+  'lifts',
+  'lifetime',
+  'me',
+  'most',
+  'my',
+  'of',
+  'on',
+  'over',
+  'past',
+  'performance',
+  'per',
+  'personal',
+  'pr',
+  'prs',
+  'progress',
+  'progressed',
+  'progression',
+  'profile',
+  'record',
+  'records',
+  'recent',
+  'recently',
+  'set',
+  'sets',
+  'show',
+  'since',
+  'summary',
+  'summaries',
+  'the',
+  'this',
+  'time',
+  'top',
+  'trend',
+  'trending',
+  'was',
+  'weight',
+  'weights',
+  'week',
+  'weeks',
+  'month',
+  'months',
+  'year',
+  'years',
+  'day',
+  'days',
+  'return',
+  'effort',
+  'session',
+  'sessions',
+  'volume',
+  'overview',
+  'breakdown',
+  'what',
+  'which',
+  'who',
+  'where',
+  'when',
+  'why',
+  'please',
+  'tell',
+  'list',
+  'give',
+])
+
+const EXERCISE_TARGET_SPLIT_REGEX = /\b(vs|versus|and|&)\b/i
+
+const extractExerciseTarget = (text: string) => {
+  if (!text) return null
+  const normalized = normalizeWhitespace(text).toLowerCase()
+  if (EXERCISE_TARGET_SPLIT_REGEX.test(normalized)) return null
+  const cleaned = normalized.replace(/[^a-z0-9\s-]/g, ' ')
+  const tokens = cleaned.split(/\s+/).filter(Boolean)
+  const filtered = tokens.filter(token => !EXERCISE_TARGET_STOPWORDS.has(token))
+  if (!filtered.length) return null
+  const candidate = filtered.slice(0, 4).join(' ').trim()
+  if (!candidate || candidate.length < 3) return null
+  return candidate
+}
+
 const ANALYSIS_KINDS: AnalysisKind[] = [
   'muscle_group_balance',
   'return_for_effort_volume',
   'return_for_effort_progression',
   'stalled_lifts',
   'lighter_weight_progress',
+  'exercise_prs',
+  'best_sets',
+  'exercise_summary',
+  'exercise_progression',
   'top_weight_sets',
   'lowest_volume_day',
   'favorite_split_day',
@@ -174,8 +288,15 @@ const normalizeAnalysisTargets = (value: unknown): string[] | undefined => {
 const normalizePendingClarification = (value: unknown): PendingClarification | undefined => {
   if (!value || typeof value !== 'object') return undefined
   const kind = (value as PendingClarification).kind
-  if (kind === 'return_for_effort_metric' || kind === 'timeframe') {
+  if (kind === 'return_for_effort_metric') {
     return { kind }
+  }
+  if (kind === 'timeframe') {
+    const question =
+      typeof (value as PendingClarification).question === 'string'
+        ? (value as PendingClarification).question
+        : undefined
+    return question ? { kind, question } : { kind }
   }
   return undefined
 }
@@ -351,11 +472,13 @@ const CANONICAL_SQL_UNSAFE_KEYWORDS = [
 const validateCanonicalSqlSafety = (sql: string) => {
   const trimmed = sql.trim()
   if (!trimmed) return 'Only SELECT or WITH statements are allowed.'
-  const lowered = trimmed.toLowerCase()
+  const cleaned = trimmed.replace(/^\s*\/\*policy:[^*]*\*\/\s*/i, '')
+  if (!cleaned) return 'Only SELECT or WITH statements are allowed.'
+  const lowered = cleaned.toLowerCase()
   if (!(lowered.startsWith('select') || lowered.startsWith('with'))) {
     return 'Only SELECT or WITH statements are allowed.'
   }
-  if (trimmed.includes(';')) {
+  if (cleaned.includes(';')) {
     return 'Unsafe keyword detected: ;'
   }
   for (const keyword of CANONICAL_SQL_UNSAFE_KEYWORDS) {
@@ -367,7 +490,9 @@ const validateCanonicalSqlSafety = (sql: string) => {
   return null
 }
 
-const inferCanonicalTimeWindow = (params: unknown[]) => {
+const inferCanonicalTimeWindow = (params: unknown[], sql?: string) => {
+  const loweredSql = sql?.toLowerCase() ?? ''
+  if (loweredSql.includes('policy:time_window=all_time')) return 'all_time'
   const normalized = params.map(value => String(value).toLowerCase())
   if (normalized.some(value => value.includes('all_time') || value.includes('all time'))) return 'all_time'
   const candidates = normalized
@@ -641,10 +766,11 @@ const buildFallbackCitations = (assistantMessage: string, queries: GymChatQuery[
 const RELATIVE_WINDOW_REGEX = /(\d+)[-\s]+(day|week|month|year)s?\b/gi
 const INTERVAL_PLACEHOLDER_REGEX = /\(\$(\d+)\)::interval/gi
 
-type IntervalHints = Map<number, 'day' | 'week' | 'month' | 'year'>
+type IntervalHint = 'day' | 'week' | 'month' | 'year'
+type IntervalHints = IntervalHint[]
 
 const extractIntervalHints = (text: string): IntervalHints => {
-  const hints: IntervalHints = new Map()
+  const hints: IntervalHints = []
   if (!text) return hints
   const normalized = text.toLowerCase()
   let match: RegExpExecArray | null
@@ -653,7 +779,7 @@ const extractIntervalHints = (text: string): IntervalHints => {
     if (!Number.isFinite(value)) continue
     const unit = match[2] as 'day' | 'week' | 'month' | 'year'
     if (!unit) continue
-    hints.set(value, unit)
+    hints.push(unit)
   }
   return hints
 }
@@ -677,10 +803,101 @@ const extractExplicitWindow = (text: string) => {
   return `${value} ${pluralizeUnit(unit, value)}`
 }
 
+const TIME_WINDOW_CUE_REGEX =
+  /\b(\d+\s*(day|week|month|year)s?|today|yesterday|this\s+(week|month|year)|last\s+(week|month|year|session|sessions|workout|workouts)|past\s+(week|month|year|session|sessions|workout|workouts)|most recent|latest|since\b|recent|lately|year to date|ytd|all[-\s]?time|lifetime)\b/i
+const TIMEFRAME_PHRASE_REGEX =
+  /\b(today|yesterday|this week|this month|this year|last week|last month|last year|past week|past month|past year|most recent session|most recent sessions|latest session|latest sessions|last session|last sessions|last workout|last workouts|all[-\s]?time|lifetime|year to date|ytd)\b/i
+const TIMEFRAME_EXPLICIT_REGEX = /\b(\d+)\s*(day|week|month|year)s?\b/i
+const TIMEFRAME_AMBIGUOUS_REGEX = /\b(recent|lately|last|past|previous|current)\b/i
+const LOG_CONTEXT_CUE_REGEX = /\b(my|mine|me|our|last|recent|latest|previous|past)\b/i
+
+const hasExplicitTimeWindow = (text: string) => {
+  if (!text) return false
+  const normalized = normalizeWhitespace(text).toLowerCase()
+  if (TIMEFRAME_EXPLICIT_REGEX.test(normalized)) return true
+  if (TIMEFRAME_PHRASE_REGEX.test(normalized)) return true
+  if (/\bsince\s+\S+/.test(normalized)) return true
+  return false
+}
+
+const parseTimeframeAnswer = (answer: string): { timeframe?: string } => {
+  if (!answer) return {}
+  const normalized = normalizeWhitespace(answer).toLowerCase()
+  if (!normalized) return {}
+  const explicitMatch = normalized.match(TIMEFRAME_EXPLICIT_REGEX)
+  if (explicitMatch?.[1] && explicitMatch[2]) {
+    const value = Number(explicitMatch[1])
+    if (Number.isFinite(value) && value > 0) {
+      const unit = explicitMatch[2] as IntervalHint
+      return { timeframe: `${value} ${pluralizeUnit(unit, value)}` }
+    }
+  }
+  const phraseMatch = normalized.match(TIMEFRAME_PHRASE_REGEX)
+  if (phraseMatch?.[0]) {
+    return { timeframe: phraseMatch[0] }
+  }
+  const sinceMatch = normalized.match(/\bsince\s+(.+)/)
+  if (sinceMatch?.[1]?.trim()) {
+    const timeframe = `since ${sinceMatch[1].trim()}`
+    return { timeframe }
+  }
+  return {}
+}
+
+const buildTimeframedQuestion = (baseQuestion: string, timeframe: string) => {
+  const trimmed = normalizeWhitespace(baseQuestion).replace(/[.?!]+$/, '')
+  const window = normalizeWhitespace(timeframe)
+  if (!trimmed) return window
+  const lower = window.toLowerCase()
+  if (lower === 'today' || lower === 'yesterday') return `${trimmed} ${window}.`
+  if (lower.startsWith('since ')) return `${trimmed} ${window}.`
+  if (/\ball[-\s]?time\b|\blifetime\b|\boverall\b/.test(lower)) return `${trimmed} over ${window}.`
+  if (lower.startsWith('this ')) return `${trimmed} during ${window}.`
+  if (lower.startsWith('last ') || lower.startsWith('past ') || lower.startsWith('previous ')) {
+    return `${trimmed} over the ${window}.`
+  }
+  if (lower.startsWith('most recent') || lower.startsWith('latest') || lower.startsWith('last session')) {
+    return `${trimmed} for the ${window}.`
+  }
+  if (/^\d+\s+\w+/.test(lower)) return `${trimmed} over the last ${window}.`
+  return `${trimmed} over ${window}.`
+}
+
+const buildTimeframeClarificationPrompt = () =>
+  'What timeframe should I use for your logs (e.g., last 4 weeks, last 3 months, all time)?'
+
+const shouldPreferGymDataForLogQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = normalizeWhitespace(text).toLowerCase()
+  return LOG_CONTEXT_CUE_REGEX.test(normalized) && TIME_WINDOW_CUE_REGEX.test(normalized)
+}
+
+const extractPriorUserQuestion = (messages: GymChatMessage[]) => {
+  for (let i = messages.length - 2; i >= 0; i -= 1) {
+    if (messages[i].role === 'user') return messages[i].content
+  }
+  return ''
+}
+
 const coerceIntervalParams = (sql: string, params: unknown[], hints: IntervalHints) => {
   const matches = Array.from(sql.matchAll(INTERVAL_PLACEHOLDER_REGEX))
   if (!matches.length) return params
   const nextParams = [...params]
+  const placeholderOrder: number[] = []
+  matches.forEach(match => {
+    const placeholderIndex = Number(match[1])
+    if (!Number.isFinite(placeholderIndex)) return
+    if (!placeholderOrder.includes(placeholderIndex)) {
+      placeholderOrder.push(placeholderIndex)
+    }
+  })
+  const unitByPlaceholder = new Map<number, IntervalHint>()
+  placeholderOrder.forEach((placeholderIndex, index) => {
+    const unit = hints[index]
+    if (unit) {
+      unitByPlaceholder.set(placeholderIndex, unit)
+    }
+  })
   matches.forEach(match => {
     const placeholderIndex = Number(match[1])
     if (!Number.isFinite(placeholderIndex)) return
@@ -695,7 +912,7 @@ const coerceIntervalParams = (sql: string, params: unknown[], hints: IntervalHin
     }
     const numericValue = Number(currentValue)
     if (!Number.isFinite(numericValue) || numericValue <= 0) return
-    const unit = hints.get(numericValue) ?? 'day'
+    const unit = unitByPlaceholder.get(placeholderIndex) ?? 'day'
     const formatted = `${numericValue} ${pluralizeUnit(unit, numericValue)}`
     nextParams[paramIndex] = formatted
   })
@@ -751,6 +968,12 @@ const TWELVE_MONTH_REGEX = /\b12\s*(months?|mos?|m)\b|\b12-month\b|\b12m\b/i
 const THREE_MONTH_REGEX = /\b3\s*(months?|mos?|m)\b|\b3-month\b|\b3m\b/i
 const TOP_WEIGHT_SETS_REGEX =
   /top\s*\d+\s*(?:highest|heaviest)[-\s]?weight\s*sets?|highest[-\s]?weight\s*sets?|heaviest\s*sets?/i
+const PR_REGEX = /\bpr(?:s)?\b|personal record|personal best/i
+const BEST_SETS_REGEX = /\bbest\s+sets?\b/i
+const EXERCISE_SUMMARY_REGEX =
+  /\b(per[-\s]?exercise|exercise)\s+(summary|summaries|overview|breakdown|profile)\b|\bsummary\s+(?:per|by)\s+exercise\b/i
+const EXERCISE_PROGRESS_REGEX = /\b(progress|progressed|progression|trend|trending|over time)\b/i
+const ESTIMATED_1RM_REGEX = /\b(estimated\s*)?1rm\b|\bone[-\s]?rep\s*max\b|\be1rm\b/i
 const WORST_DAY_REGEX =
   /worst day|lowest\s+total\s+volume|lowest\s+volume\s+(?:session|day)|least\s+volume/i
 const FAVORITE_SPLIT_REGEX =
@@ -763,6 +986,7 @@ const VOLUME_RANKING_REGEX =
 const SESSION_COUNT_REGEX =
   /\b(how\s+many\s+sessions|session\s+count|sessions\s+(?:did|have)\s+i|training\s+days)\b/i
 const SESSION_TREND_REGEX = /\bper\s+week|per\s+month|by\s+week|by\s+month\b/i
+const MONTHLY_TREND_REGEX = /\b(per|by)\s+month\b|\bmonthly\b/i
 const RETURN_EFFORT_REGEX =
   /return for effort|return on effort|bang for (my )?buck|bang[-\s]?for[-\s]?(my )?buck/i
 const RETURN_EFFORT_PROGRESSION_REGEX =
@@ -895,11 +1119,16 @@ const TARGET_KEYWORD_MAP: Array<{ keywords: string[]; target: string }> = [
 const ANALYSIS_TEMPLATE_HINTS: Partial<Record<AnalysisKind, GymChatTemplateName>> = {
   stalled_lifts: 'plateau_vs_progress',
   muscle_group_balance: 'body_part_balance',
+  exercise_progression: 'plateau_vs_progress',
   weekly_volume: 'workload_consistency',
   favorite_split_day: 'workload_consistency',
 }
 
 const ANALYSIS_INTENT_HINTS: Partial<Record<AnalysisKind, IntentType>> = {
+  exercise_prs: 'comparison',
+  best_sets: 'comparison',
+  exercise_summary: 'descriptive',
+  exercise_progression: 'trend',
   muscle_group_balance: 'comparison',
   return_for_effort_volume: 'comparison',
   return_for_effort_progression: 'trend',
@@ -964,6 +1193,22 @@ const isTopEndEffortsComparisonQuestion = (text: string) => {
 
 const isTopWeightSetsQuestion = (text: string) => TOP_WEIGHT_SETS_REGEX.test(text || '')
 
+const isPrQuestion = (text: string) => PR_REGEX.test(text || '')
+
+const isBestSetsQuestion = (text: string) => BEST_SETS_REGEX.test(text || '')
+
+const isExerciseSummaryQuestion = (text: string) => EXERCISE_SUMMARY_REGEX.test(text || '')
+
+const isExerciseProgressionQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = text.toLowerCase()
+  if (PROGRESSIVE_OVERLOAD_REGEX.test(normalized)) return false
+  if (RETURN_EFFORT_REGEX.test(normalized)) return false
+  if (!EXERCISE_PROGRESS_REGEX.test(normalized)) return false
+  if (/\b(per|each)\s+(exercise|lift)\b/.test(normalized)) return true
+  return Boolean(extractExerciseTarget(normalized))
+}
+
 const isWorstDayQuestion = (text: string) => WORST_DAY_REGEX.test(text || '')
 
 const isFavoriteSplitQuestion = (text: string) => FAVORITE_SPLIT_REGEX.test(text || '')
@@ -976,6 +1221,8 @@ const isVolumeRankingQuestion = (text: string) => VOLUME_RANKING_REGEX.test(text
 
 const isSessionCountQuestion = (text: string) =>
   SESSION_COUNT_REGEX.test(text || '') && !SESSION_TREND_REGEX.test(text || '')
+
+const wantsEstimated1rm = (text: string) => ESTIMATED_1RM_REGEX.test(text || '')
 
 const inferIntentType = (text: string): IntentType | undefined => {
   if (!text) return undefined
@@ -1142,24 +1389,68 @@ export async function POST(req: Request) {
       Boolean(conversationState.lastPlanMeta) && turnMode === 'analysis_followup' && PLAN_CORRECTION_REGEX.test(question)
 
     if (turnMode === 'clarification_answer') {
-      const resolvedReturnEffort = resolveReturnEffortChoice(
-        messages,
-        question,
-        conversationState.pendingClarification ?? undefined,
-      )
-      messages = resolvedReturnEffort.messages
-      question = resolvedReturnEffort.question
-      analysisKindOverride = resolvedReturnEffort.analysisKind
-      if (resolvedReturnEffort.clearPending) {
+      const pending = conversationState.pendingClarification ?? undefined
+      if (pending?.kind === 'return_for_effort_metric') {
+        const resolvedReturnEffort = resolveReturnEffortChoice(messages, question, pending)
+        messages = resolvedReturnEffort.messages
+        question = resolvedReturnEffort.question
+        analysisKindOverride = resolvedReturnEffort.analysisKind
+        if (resolvedReturnEffort.clearPending) {
+          conversationState = { ...conversationState, pendingClarification: null }
+        }
+        if (!resolvedReturnEffort.didResolve) {
+          turnMode = 'new_question'
+          messages = [{ role: 'user', content: question }]
+        }
+      } else if (pending?.kind === 'timeframe') {
+        const baseQuestion = (pending.question ?? extractPriorUserQuestion(messages)).trim()
+        if (!pending.question && baseQuestion) {
+          conversationState = { ...conversationState, pendingClarification: { kind: 'timeframe', question: baseQuestion } }
+        }
+        if (!baseQuestion) {
+          const response: GymChatResponse = {
+            assistantMessage: 'Can you restate the question with a timeframe (e.g., last 4 weeks)?',
+            citations: [],
+            queries: [],
+          }
+          return respond(response)
+        }
+        const parsed = parseTimeframeAnswer(question)
+        if (!parsed.timeframe) {
+          const response: GymChatResponse = {
+            assistantMessage: buildTimeframeClarificationPrompt(),
+            citations: [],
+            queries: [],
+          }
+          return respond(response)
+        }
+        const rewritten = buildTimeframedQuestion(baseQuestion || question, parsed.timeframe)
+        const updated = [...messages]
+        for (let i = updated.length - 1; i >= 0; i -= 1) {
+          if (updated[i].role === 'user') {
+            updated[i] = { ...updated[i], content: rewritten }
+            break
+          }
+        }
+        messages = updated
+        question = rewritten
         conversationState = { ...conversationState, pendingClarification: null }
-      }
-      if (!resolvedReturnEffort.didResolve) {
-        turnMode = 'new_question'
-        messages = [{ role: 'user', content: question }]
       }
     }
     if (isTopEndEffortsComparisonQuestion(question)) {
       analysisKindOverride = 'top_end_efforts_compare_12m_3m'
+    }
+    if (!analysisKindOverride && isPrQuestion(question)) {
+      analysisKindOverride = 'exercise_prs'
+    }
+    if (!analysisKindOverride && isBestSetsQuestion(question)) {
+      analysisKindOverride = 'best_sets'
+    }
+    if (!analysisKindOverride && isExerciseSummaryQuestion(question)) {
+      analysisKindOverride = 'exercise_summary'
+    }
+    if (!analysisKindOverride && isExerciseProgressionQuestion(question)) {
+      analysisKindOverride = 'exercise_progression'
     }
     if (!analysisKindOverride && isTopWeightSetsQuestion(question)) {
       analysisKindOverride = 'top_weight_sets'
@@ -1244,6 +1535,12 @@ export async function POST(req: Request) {
       classification.confidence = Math.max(classification.confidence, 0.8)
       classification.clarifyingQuestion = undefined
     }
+    const prefersGymDataForLogs = shouldPreferGymDataForLogQuestion(combinedUserText)
+    if (prefersGymDataForLogs && classification.domain !== 'gym_data') {
+      classification.domain = 'gym_data'
+      classification.confidence = Math.max(classification.confidence, 0.85)
+      classification.clarifyingQuestion = undefined
+    }
     if (hasMuscleConstraint && classification.intentType !== 'planning') {
       classification.intentType = 'planning'
     }
@@ -1287,7 +1584,6 @@ export async function POST(req: Request) {
     if (!classification.intentType) {
       classification.intentType = 'descriptive'
     }
-
     const intentHints = {
       intentType: classification.intentType,
       primaryGrain: classification.primaryGrain,
@@ -1401,7 +1697,8 @@ export async function POST(req: Request) {
 
     const useBodyParts = hasBodyPartsMapping()
     const setsBase = buildSetsBaseCte()
-    const explicitWindow = extractExplicitWindow(question)
+    const wantsAllTimeWindow = containsKeyword(question, ALL_TIME_KEYWORDS)
+    const explicitWindow = wantsAllTimeWindow ? null : extractExplicitWindow(question)
     const requestedTopN = extractRequestedTopN(question)
     const topWeightLimit = requestedTopN ?? 5
     const rankingLimit = requestedTopN ?? 10
@@ -1411,6 +1708,11 @@ export async function POST(req: Request) {
     const weeklyVolumeWindow = explicitWindow ?? '12 months'
     const planningWindow = explicitWindow ?? '12 months'
     const sessionCountWindow = explicitWindow ?? '12 weeks'
+    const exerciseTarget = extractExerciseTarget(question)
+    const useEstimated1rm = wantsEstimated1rm(question)
+    const progressionBucket = MONTHLY_TREND_REGEX.test(question) ? 'month' : 'week'
+    const summaryWindow = explicitWindow ?? '90 days'
+    const progressionWindow = explicitWindow ?? '12 months'
     const normalizedQuestion = normalizeWhitespace(question).toLowerCase()
     const isReturnEffortProgression =
       analysisKindOverride === 'return_for_effort_progression' ||
@@ -1462,6 +1764,44 @@ export async function POST(req: Request) {
         canonicalAnalysisKind = 'stalled_lifts'
         return buildStalledLiftsPlan(setsBase)
       }
+      if (analysisKindOverride === 'exercise_prs') {
+        canonicalAnalysisKind = 'exercise_prs'
+        return buildExercisePrsPlan(setsBase, {
+          limit: rankingLimit,
+          window: summaryWindow,
+          exercise: exerciseTarget,
+          useEstimated1rm,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (analysisKindOverride === 'best_sets') {
+        canonicalAnalysisKind = 'best_sets'
+        return buildBestSetsPlan(setsBase, {
+          limit: topWeightLimit,
+          window: summaryWindow,
+          exercise: exerciseTarget,
+          useEstimated1rm,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (analysisKindOverride === 'exercise_summary') {
+        canonicalAnalysisKind = 'exercise_summary'
+        return buildExerciseSummaryPlan(setsBase, {
+          limit: rankingLimit,
+          window: summaryWindow,
+          exercise: exerciseTarget,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (analysisKindOverride === 'exercise_progression') {
+        canonicalAnalysisKind = 'exercise_progression'
+        return buildExerciseProgressionPlan(setsBase, {
+          window: progressionWindow,
+          exercise: exerciseTarget,
+          bucket: progressionBucket,
+          allTime: wantsAllTimeWindow,
+        })
+      }
       if (analysisKindOverride === 'lighter_weight_progress') {
         canonicalAnalysisKind = 'lighter_weight_progress'
         return buildLightWeightProgressPlan(setsBase)
@@ -1493,6 +1833,44 @@ export async function POST(req: Request) {
       if (analysisKindOverride === 'muscle_group_balance') {
         canonicalAnalysisKind = 'muscle_group_balance'
         return buildMuscleGroupComparisonPlan(useBodyParts, setsBase)
+      }
+      if (isPrQuestion(question)) {
+        canonicalAnalysisKind = 'exercise_prs'
+        return buildExercisePrsPlan(setsBase, {
+          limit: rankingLimit,
+          window: summaryWindow,
+          exercise: exerciseTarget,
+          useEstimated1rm,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (isBestSetsQuestion(question)) {
+        canonicalAnalysisKind = 'best_sets'
+        return buildBestSetsPlan(setsBase, {
+          limit: topWeightLimit,
+          window: summaryWindow,
+          exercise: exerciseTarget,
+          useEstimated1rm,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (isExerciseSummaryQuestion(question)) {
+        canonicalAnalysisKind = 'exercise_summary'
+        return buildExerciseSummaryPlan(setsBase, {
+          limit: rankingLimit,
+          window: summaryWindow,
+          exercise: exerciseTarget,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (isExerciseProgressionQuestion(question)) {
+        canonicalAnalysisKind = 'exercise_progression'
+        return buildExerciseProgressionPlan(setsBase, {
+          window: progressionWindow,
+          exercise: exerciseTarget,
+          bucket: progressionBucket,
+          allTime: wantsAllTimeWindow,
+        })
       }
       if (PROGRESSIVE_OVERLOAD_REGEX.test(combinedUserText)) {
         canonicalAnalysisKind = 'progressive_overload'
@@ -1583,7 +1961,7 @@ export async function POST(req: Request) {
           error: safetyError,
           policy: {
             appliedLimit,
-            appliedTimeWindow: inferCanonicalTimeWindow(normalizedParams),
+            appliedTimeWindow: inferCanonicalTimeWindow(normalizedParams, query.sql),
           },
         })
         continue
@@ -1878,7 +2256,7 @@ export async function POST(req: Request) {
               error: safetyError,
               policy: {
                 appliedLimit,
-                appliedTimeWindow: inferCanonicalTimeWindow(normalizedParams),
+                appliedTimeWindow: inferCanonicalTimeWindow(normalizedParams, query.sql),
               },
             })
             continue
@@ -2353,4 +2731,13 @@ export async function POST(req: Request) {
   } finally {
     log('completed in', `${Date.now() - startedAt}ms`)
   }
+}
+
+export const __testUtils = {
+  extractIntervalHints,
+  coerceIntervalParams,
+  parseTimeframeAnswer,
+  buildTimeframedQuestion,
+  hasExplicitTimeWindow,
+  shouldPreferGymDataForLogQuestion,
 }

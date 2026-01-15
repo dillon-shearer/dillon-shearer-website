@@ -20,6 +20,18 @@ const SEMANTIC_MAPPINGS = [
     sql: 'MAX(weight) unless phrasing explicitly calls for estimated 1RM',
   },
   {
+    phrase: 'best set(s)',
+    sql: 'Use a sets CTE. Order by weight (or estimated 1RM if requested), return exercise, weight, reps, and session_date, then LIMIT N.',
+  },
+  {
+    phrase: 'per-exercise summary',
+    sql: 'Use a sets CTE. Aggregate COUNT(*) AS total_sets, SUM(weight*reps) AS total_volume, MAX(session_date) AS last_performed_date, plus a best-set subquery via ROW_NUMBER() OVER (PARTITION BY exercise ORDER BY weight DESC, reps DESC).',
+  },
+  {
+    phrase: 'exercise progression trend',
+    sql: 'Use a sets CTE. Compute per-session max estimated 1RM per exercise, then aggregate weekly or monthly averages (DATE_TRUNC) and ORDER BY exercise, period_start.',
+  },
+  {
     phrase: 'push day / pull day / leg day',
     sql: "day_tag ILIKE 'push%' / 'pull%' / 'leg%'",
   },

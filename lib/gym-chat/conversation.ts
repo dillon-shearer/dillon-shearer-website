@@ -51,6 +51,13 @@ const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
 
 export const RETURN_EFFORT_CHOICE_REGEX = /^(?:option|choice)?\s*([ab])(?:[\s\).,:-]|$)/i
 
+const looksLikeStandaloneQuestion = (normalized: string) =>
+  STANDALONE_PREFIXES.some(prefix => normalized.startsWith(prefix))
+
+const TIMEFRAME_EXPLICIT_REGEX =
+  /\b(\d+\s*(day|week|month|year)s?|today|yesterday|this\s+(week|month|year)|last\s+(week|month|year|session|sessions|workout|workouts)|past\s+(week|month|year|session|sessions|workout|workouts)|most recent|latest|since\b|all time|lifetime|year to date|ytd)\b/i
+const TIMEFRAME_AMBIGUOUS_REGEX = /\b(recent|lately|last|past|previous|current)\b/i
+
 export const isClarificationAnswer = (pending: PendingClarification | null | undefined, message: string) => {
   if (!pending) return false
   const normalized = normalizeWhitespace(message).toLowerCase()
@@ -64,13 +71,14 @@ export const isClarificationAnswer = (pending: PendingClarification | null | und
     return false
   }
   if (pending.kind === 'timeframe') {
-    return Boolean(normalized)
+    if (!normalized) return false
+    if (normalized === '?' || TIMEFRAME_EXPLICIT_REGEX.test(normalized)) return true
+    if (TIMEFRAME_AMBIGUOUS_REGEX.test(normalized) || /^\d+$/.test(normalized)) return true
+    if (isShort && !looksLikeStandaloneQuestion(normalized)) return true
+    return false
   }
   return false
 }
-
-const looksLikeStandaloneQuestion = (normalized: string) =>
-  STANDALONE_PREFIXES.some(prefix => normalized.startsWith(prefix))
 
 const isShortMessage = (message: string) => {
   const words = normalizeWhitespace(message).split(' ').filter(Boolean)
