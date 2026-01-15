@@ -7,6 +7,7 @@ const METRIC_GLOSSARY = `Metric glossary:
 - estimated 1RM: ROUND(weight * (1 + reps / 30.0)).
 - PR: highest observed weight for an exercise unless the user explicitly asks for estimated 1RM.
 - best set: heaviest set for an exercise (or highest estimated 1RM if requested).
+- set-level fatigue: compare early vs late sets within a session using set_number buckets (thirds).
 - per-exercise summary: total sets, total volume, last performed date, and best set per exercise.
 - body_part exposure: use gym_day_meta.body_parts (text[]) via UNNEST(body_parts) AS body_part.
 - split/day_tag: strings like push, pull, leg, upper, lower stored on each set via day_tag.
@@ -25,8 +26,10 @@ const DATA_SCOPE = `Data scope and limitations:
 
 const ANALYSIS_PATTERNS = `Helpful analysis patterns:
 - Consistency: COUNT(DISTINCT date::date) per week/month or by weekday via EXTRACT(DOW).
+- Period comparisons: compare recent vs prior windows for sessions/sets/volume; compute streaks, gaps, and missed weeks/months from session dates.
 - Balance: compare body_part exposure or day_tag counts between recent windows and lifetime/all-time.
 - Progression: track estimated 1RM or top weights per exercise over time.
+- Within-session drop-off: bucket set_number into early/mid/late and compare average load/reps to quantify fatigue.
 - Volume mix: break volume or set counts by exercise, day_tag, equipment, or rep band buckets (<=5, 6-8, 9-12, 13-15, 16+).
 - Planning intent: identify under-trained areas, stalled lifts, or inconsistent days, then recommend focus areas using historical gaps.
 `

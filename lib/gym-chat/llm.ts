@@ -198,6 +198,24 @@ const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
 const MAX_LLM_ATTEMPTS = 3
 const LLM_TIMEOUT_MS = 15000
 
+type LlmRetryBudget = {
+  remainingMs: () => number
+  minRetryWindowMs?: number
+}
+
+type LlmRequestOptions = {
+  maxAttempts?: number
+  timeoutMs?: number
+  budget?: LlmRetryBudget
+  shouldRetry?: (info: {
+    attempt: number
+    maxAttempts: number
+    status?: number
+    retryable: boolean
+    detail?: string
+  }) => boolean
+}
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 const extractJson = (content: string) => {
@@ -220,6 +238,7 @@ const callOpenAIJson = async <T>(
   schema: z.ZodType<T>,
   messages: OpenAIMessage[],
   temperature: number,
+  options?: LlmRequestOptions,
 ) => {
   const apiKey = resolveApiKey()
   if (!apiKey) {
@@ -232,10 +251,30 @@ const callOpenAIJson = async <T>(
     messages,
   })
 
-  for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt += 1) {
+  const maxAttempts = options?.maxAttempts ?? MAX_LLM_ATTEMPTS
+  const timeoutMs = options?.timeoutMs ?? LLM_TIMEOUT_MS
+  const shouldRetry = (info: {
+    attempt: number
+    maxAttempts: number
+    status?: number
+    retryable: boolean
+    detail?: string
+  }) => {
+    if (!info.retryable || info.attempt >= info.maxAttempts) return false
+    if (options?.budget) {
+      const remainingMs = options.budget.remainingMs()
+      const minRetryWindowMs = options.budget.minRetryWindowMs ?? 2000
+      if (remainingMs <= minRetryWindowMs) {
+        return false
+      }
+    }
+    return options?.shouldRetry ? options.shouldRetry(info) : true
+  }
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let response: Response
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS)
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
       response = await fetch(`${resolveApiBase()}/chat/completions`, {
         method: 'POST',
@@ -254,12 +293,13 @@ const callOpenAIJson = async <T>(
           retryable: false,
         })
       }
-      if (attempt < MAX_LLM_ATTEMPTS) {
+      const detail = error instanceof Error ? error.message : 'Network error'
+      const retryable = true
+      if (shouldRetry({ attempt, maxAttempts, retryable, detail })) {
         await sleep(200 * attempt)
         continue
       }
-      const detail = error instanceof Error ? error.message : 'Network error'
-      throw buildLlmError(`LLM request failed: ${detail}`, { retryable: true, detail })
+      throw buildLlmError(`LLM request failed: ${detail}`, { retryable, detail })
     } finally {
       clearTimeout(timeoutId)
     }
@@ -267,7 +307,7 @@ const callOpenAIJson = async <T>(
     if (!response.ok) {
       const detail = await response.text()
       const retryable = RETRYABLE_STATUS.has(response.status)
-      if (retryable && attempt < MAX_LLM_ATTEMPTS) {
+      if (shouldRetry({ attempt, maxAttempts, retryable, detail, status: response.status })) {
         await sleep(200 * attempt)
         continue
       }
@@ -296,7 +336,7 @@ const callOpenAIJson = async <T>(
   throw buildLlmError('LLM request failed.', { retryable: true })
 }
 
-export const classifyQuestion = async (messages: GymChatMessage[]) => {
+export const classifyQuestion = async (messages: GymChatMessage[], options?: LlmRequestOptions) => {
   await loadGymCatalog().catch(() => undefined)
   const catalogContext = getCatalogContext()
   const recent = messages.slice(-6)
@@ -321,7 +361,7 @@ export const classifyQuestion = async (messages: GymChatMessage[]) => {
     role: 'user',
     content: `Conversation context:\n${transcript}\n\nClassify the latest user question.`,
   }
-  return callOpenAIJson(CLASSIFY_SCHEMA, [system, user], 0)
+  return callOpenAIJson(CLASSIFY_SCHEMA, [system, user], 0, options)
 }
 
 export const planGymSql = async (
@@ -335,6 +375,7 @@ export const planGymSql = async (
     secondaryTemplate?: GymChatTemplateName
     planMeta?: WorkoutPlanAnalysisMeta
   },
+  options?: LlmRequestOptions,
 ) => {
   await loadGymCatalog().catch(() => undefined)
   const catalogContext = getCatalogContext()
@@ -443,7 +484,7 @@ export const planGymSql = async (
     content: message.content,
   }))
 
-  return callOpenAIJson(PLAN_SCHEMA, [system, ...convo], 0)
+  return callOpenAIJson(PLAN_SCHEMA, [system, ...convo], 0, options)
 }
 
 export const repairGymSql = async (
@@ -461,6 +502,7 @@ export const repairGymSql = async (
     secondaryTemplate?: GymChatTemplateName
     planMeta?: WorkoutPlanAnalysisMeta
   },
+  options?: LlmRequestOptions,
 ) => {
   await loadGymCatalog().catch(() => undefined)
   const catalogContext = getCatalogContext()
@@ -553,7 +595,7 @@ export const repairGymSql = async (
     ),
   }
 
-  return callOpenAIJson(PLAN_SCHEMA, [system, ...convo, user], 0)
+  return callOpenAIJson(PLAN_SCHEMA, [system, ...convo, user], 0, options)
 }
 
 type ExplainInput = {
@@ -570,7 +612,7 @@ type ExplainInput = {
   planMeta?: WorkoutPlanAnalysisMeta
 }
 
-export const explainGymResults = async (input: ExplainInput) => {
+export const explainGymResults = async (input: ExplainInput, options?: LlmRequestOptions) => {
   const isDiagnosticMode = input.intentType === 'diagnostic' || input.selectedTemplate === 'momentum_dropoff'
   const planningGuidance =
     input.intentType === 'planning'
@@ -677,7 +719,7 @@ export const explainGymResults = async (input: ExplainInput) => {
     ),
   }
 
-  return callOpenAIJson(EXPLAIN_SCHEMA, [system, user], 0.2) as Promise<{
+  return callOpenAIJson(EXPLAIN_SCHEMA, [system, user], 0.2, options) as Promise<{
     assistantMessage: string
     citations: GymChatCitation[]
     chartSpecs?: GymChatChartSpec[]
@@ -685,7 +727,7 @@ export const explainGymResults = async (input: ExplainInput) => {
   }>
 }
 
-export const explainFitnessGeneral = async (messages: GymChatMessage[]) => {
+export const explainFitnessGeneral = async (messages: GymChatMessage[], options?: LlmRequestOptions) => {
   const recent = messages.slice(-8)
   const transcript = recent.map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n')
   const system: OpenAIMessage = {
@@ -703,7 +745,7 @@ export const explainFitnessGeneral = async (messages: GymChatMessage[]) => {
     content: `Conversation context:\n${transcript}\n\nRespond to the latest user question.`,
   }
 
-  return callOpenAIJson(FITNESS_GENERAL_SCHEMA, [system, user], 0.4) as Promise<{
+  return callOpenAIJson(FITNESS_GENERAL_SCHEMA, [system, user], 0.4, options) as Promise<{
     assistantMessage: string
     followUps?: string[]
   }>

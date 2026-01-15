@@ -221,6 +221,7 @@
 - **Stalled lifts**: Calculates days since the last estimated 1RM increase per exercise (minimum 3 sessions, last 12 months).
 - **Progress with lighter weights**: Flags exercises where average working weight decreased but estimated 1RM increased (recent 6 months vs prior 6 months, within last 12 months).
 - **Top-weight sets**: Lists the heaviest sets over the last 90 days (default top 5, honors explicit top N).
+- **Set-level breakdown**: Summarizes within-session drop-off via set_number buckets and identifies best vs worst sets (default 90 days; adds a 12-month anchor when an exercise is specified).
 - **Worst day of lifting**: Finds the lowest-volume session over the last 30 days (or explicit window).
 - **Favorite split day**: Ranks day_tag frequency over the last 12 months (or explicit window).
 - **Weekly training volume**: Aggregates total weekly volume over the last 12 months (or explicit window).
@@ -230,20 +231,21 @@
 - **Targeted-muscle planning**: Builds a muscle-specific session (e.g., quads) using recent exercise history when available, otherwise falls back to a generic template.
 
 ## First-class Gym Chat Questions
-- **Sessions**: “How many sessions did I log in the last 8 weeks?” (window: explicit or 12 weeks; metric: distinct session days).
-- **Total sets (ranked)**: “Which exercises had the most total sets in the last 90 days?” (window: explicit or 90 days; metric: total sets; limitation: uses exercise names as logged).
-- **Total volume (ranked)**: “Which exercises had the most total volume in the last 90 days?” (window: explicit or 90 days; metric: total volume / tonnage).
-- **Return for effort (volume)**: “Show total volume per exercise over the last 90 days.” (window: explicit or 90 days; metric: total volume).
-- **Return for effort (progression)**: “Show my progression over time for each exercise.” (window: 12 months; metric: estimated 1RM).
-- **Stalled lifts**: “Which lifts have stalled, and for how long?” (window: 12 months; metric: days since last estimated-1RM increase).
-- **Progress with lighter weights**: “Where am I making progress despite using lighter weights?” (window: recent 6 months vs prior 6 months).
-- **Top-end efforts**: “How often am I hitting true top-end efforts?” (window: 12 months; metric: top-3 set counts).
-- **Top weight sets**: “Show my top 5 highest-weight sets from the last 90 days.” (window: explicit or 90 days; metric: weight × reps).
-- **Worst day**: “What was my worst day of lifting in the past 30 days?” (window: explicit or 30 days; metric: session volume).
-- **Favorite split**: “What is my favorite split day?” (window: explicit or 12 months; metric: day_tag frequency).
-- **Weekly volume**: “What was my weekly training volume over the last 12 months?” (window: explicit or 12 months).
-- **Muscle balance**: “Which muscle groups am I undertraining or overtraining?” (window: 24 weeks split into recent vs prior 12 weeks).
-- **Targeted planning**: “Help me plan my sets for quads using my previous lifts.” (window: 12 months; weights anchored to recent working sets).
+- **Sessions**: "How many sessions did I log in the last 8 weeks?" (window: explicit or 12 weeks; metric: distinct session days).
+- **Total sets (ranked)**: "Which exercises had the most total sets in the last 90 days?" (window: explicit or 90 days; metric: total sets; limitation: uses exercise names as logged).
+- **Total volume (ranked)**: "Which exercises had the most total volume in the last 90 days?" (window: explicit or 90 days; metric: total volume / tonnage).
+- **Return for effort (volume)**: "Show total volume per exercise over the last 90 days." (window: explicit or 90 days; metric: total volume).
+- **Return for effort (progression)**: "Show my progression over time for each exercise." (window: 12 months; metric: estimated 1RM).
+- **Stalled lifts**: "Which lifts have stalled, and for how long?" (window: 12 months; metric: days since last estimated-1RM increase).
+- **Progress with lighter weights**: "Where am I making progress despite using lighter weights?" (window: recent 6 months vs prior 6 months).
+- **Top-end efforts**: "How often am I hitting true top-end efforts?" (window: 12 months; metric: top-3 set counts).
+- **Set-level breakdown**: "Break down my last session sets for squats?" (window: 90 days; metric: set_number drop-off + best/worst sets).
+- **Top weight sets**: "Show my top 5 highest-weight sets from the last 90 days." (window: explicit or 90 days; metric: weight x reps).
+- **Worst day**: "What was my worst day of lifting in the past 30 days?" (window: explicit or 30 days; metric: session volume).
+- **Favorite split**: "What is my favorite split day?" (window: explicit or 12 months; metric: day_tag frequency).
+- **Weekly volume**: "What was my weekly training volume over the last 12 months?" (window: explicit or 12 months).
+- **Muscle balance**: "Which muscle groups am I undertraining or overtraining?" (window: 24 weeks split into recent vs prior 12 weeks).
+- **Targeted planning**: "Help me plan my sets for quads using my previous lifts." (window: 12 months; weights anchored to recent working sets).
 
 ## Notes & Limitations
 - These analyses require enough logged sessions to produce stable trends; sparse data can yield empty results.
@@ -348,3 +350,60 @@
   - "What are my PRs?"
   - "Show my best sets for incline press."
   - "How has bench progressed over the last year?"
+
+[2026-01-15T11:36:36Z] Gym Chat period comparisons + adherence coverage
+- **Agent / Model**: GPT-5 (Codex)
+- **Scope**:
+  - `app/api/gym-chat/route.ts`
+  - `lib/gym-chat/canonical-plans.ts`
+  - `lib/gym-chat/templates.ts`
+  - `lib/gym-chat/response-utils.ts`
+  - `lib/gym-chat/capabilities.ts`
+  - `types/gym-chat.ts`
+- **Reason**:
+  - Ensure period comparisons honor explicit windows or defaults, include adherence metrics (streaks/gaps/missed weeks), and report both windows in coverage.
+- **Key Changes**:
+  - Added period-compare template hints, follow-ups, and coverage-line formatting for two-window outputs.
+  - Expanded canonical period compare SQL with weekly streak/gap metrics and recent missed weeks/months queries.
+  - Routed consistency/adherence questions to period comparisons with default windows when omitted.
+- **Related Conversation / Prompt**:
+  - "Compare the last 8 weeks vs the prior 8 weeks."
+  - "How consistent am I?"
+  - "Did I miss weeks in the last 12 weeks?"
+
+[2026-01-14T18:45:30Z] Gym Chat period compare and adherence metrics
+- **Agent / Model**: GitHub Copilot
+- **Scope**:
+  - `types/gym-chat.ts`
+  - `lib/gym-chat/canonical-plans.ts`
+  - `app/api/gym-chat/route.ts`
+  - `app/demos/gym-dashboard/README.md`
+- **Reason**:
+  - Support time-window comparisons and adherence metrics (session frequency, consistency gaps, exercise breakdowns between periods).
+  - Enable questions like "compare last 4 weeks to the prior 4", "how consistent am I", and "did I miss weeks".
+- **Key Changes**:
+  - Added buildPeriodComparePlan with three queries: overall stats (sessions, sets, volume), per-exercise breakdown, and frequency/gap analysis.
+  - Added isPeriodCompareQuestion detection with keywords like "compare", "vs", "versus" plus time windows.
+  - Added period_compare to ANALYSIS_KINDS array and routed in both override and fallback dispatch paths.
+  - Wired PERIOD_COMPARE_REGEX for natural language matching.
+- **Related Conversation / Prompt**:
+  - "Compare my training last 4 weeks vs the prior 4 weeks.":
+  - "How consistent am I over the last month?":
+  - "Did I miss weeks in the last 12 weeks?"
+
+[2026-01-15T17:14:48Z] Gym Chat set-level breakdown diagnostics
+- **Agent / Model**: GPT-5 (Codex)
+- **Scope**:
+  - `types/gym-chat.ts`
+  - `lib/gym-chat/canonical-plans.ts`
+  - `lib/gym-chat/templates.ts`
+  - `lib/gym-chat/response-utils.ts`
+  - `lib/gym-chat/capabilities.ts`
+  - `lib/gym-chat/semantics.ts`
+  - `app/api/gym-chat/route.ts`
+  - `app/demos/gym-dashboard/README.md`
+- **Reason**:
+  - Add deterministic set-level fatigue/drop-off analysis with canonical SQL, anchor windows, and chart fallbacks.
+- **Related Conversation / Prompt**:
+  - "Break down my last session sets for squats."
+  - "Do my last sets drop off on bench days?"

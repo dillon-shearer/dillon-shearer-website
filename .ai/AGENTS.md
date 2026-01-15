@@ -1,26 +1,54 @@
 # AGENTS.md
 
-## Scope and Precedence
-These are top-level principles that apply to all roles. Role files add workflow details and do not override these principles.
+## Scope and Precedence  
+These rules apply to all roles. Role files may add detail but cannot override them.
 
 ## Core Principles
-1. Work doggedly within the stated scope. If you know the user's goal and can make progress without new input, keep going. If blocked or waiting on user input, stop and explain why.
-2. Work smart. When debugging, step back and test assumptions. Add lightweight logging or checks to confirm hypotheses.
-3. Check your work. If you write code, run a relevant check. If you start a long process, verify it is running as expected.
-4. Be cautious with terminal commands. Prefer commands that exit on their own. For long-running processes, use a safe background method and verify logs. Avoid running services unless explicitly needed.
+1. Work within scope and continue if progress is possible.  
+2. Test assumptions when debugging.  
+3. Check your work (tests, outputs, logs).  
+4. Use safe, non-blocking terminal commands.
 
-## Handoff Log (Single File)
+## Handoff Log System (MANDATORY)
 
-1. Use a single shared log at `.ai/HANDOFF.md` for all tasks until the user resets it.
+All tasks use a single shared log:
 
-2. Do not create per-task request logs in `.ai/requests/` unless the user explicitly asks.
+.ai/HANDOFF.md
 
-3. At the start of each task, check whether `.ai/HANDOFF.md` exists. If missing, treat it as a new task, create the handoff log, and restate the path. If it exists, read it and continue the ongoing task.
+This file is the single source of truth for:
+- Context
+- Decisions
+- Rationale
+- Who did what
+- When it happened
+- Verification
+- Outputs
 
-4. The handoff log is the single source of truth for status, decisions, outputs, and verification.
+## Required Workflow (Every Request)
 
-5. Append-only: do not delete or rewrite prior entries from other agents.
+Before doing any work:
+1. Check if .ai/HANDOFF.md exists  
+2. If missing, create it and add an initial Status Log entry  
+3. Read the latest entry for context  
 
-6. Every update must include a `## Status Log` entry with timestamp `YYYY-MM-DD HH:mm`.
+After doing any meaningful work:
+- You MUST append a new Status Log entry  
+- No task is complete until the log is updated  
+- This applies to small, non-code, and advisory requests  
 
-7. If the agent produces outputs, store them under `.ai/outputs/*` and list them in the handoff log's Output Manifest.
+## Append-Only Rules
+- Never delete or rewrite prior entries  
+- Always append new entries  
+- Respect entries from other agents  
+
+## Output Handling
+- All created files go under .ai/outputs/*  
+- All outputs must be listed in the handoff log  
+
+## Failure Handling
+If file writing is not possible:
+- Say so explicitly  
+- Output the exact log entry text that should be appended  
+
+## Enforcement Rule
+If work was done but HANDOFF was not updated, the task is incomplete.

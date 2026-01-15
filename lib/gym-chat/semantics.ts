@@ -24,6 +24,11 @@ const SEMANTIC_MAPPINGS = [
     sql: 'Use a sets CTE. Order by weight (or estimated 1RM if requested), return exercise, weight, reps, and session_date, then LIMIT N.',
   },
   {
+    phrase: 'set breakdown / within-session fatigue',
+    sql:
+      "Use a sets CTE. Compute set_order with COALESCE(set_number, ROW_NUMBER() OVER (PARTITION BY session_date, exercise ORDER BY performed_at)). Bucket with NTILE(3) over set_order to compare early/mid/late averages, and surface best vs worst sets by weight or estimated 1RM.",
+  },
+  {
     phrase: 'per-exercise summary',
     sql: 'Use a sets CTE. Aggregate COUNT(*) AS total_sets, SUM(weight*reps) AS total_volume, MAX(session_date) AS last_performed_date, plus a best-set subquery via ROW_NUMBER() OVER (PARTITION BY exercise ORDER BY weight DESC, reps DESC).',
   },

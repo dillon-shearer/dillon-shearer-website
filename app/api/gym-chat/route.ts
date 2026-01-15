@@ -17,6 +17,7 @@ import {
   buildReturnEffortProgressionPlan,
   buildSessionCountPlan,
   buildSetCountPlan,
+  buildSetBreakdownPlan,
   buildStalledLiftsPlan,
   buildTopWeightSetsPlan,
   buildTopEndEffortsComparisonPlan,
@@ -24,6 +25,7 @@ import {
   buildVolumeRankingPlan,
   buildWeeklyVolumePlan,
   buildWorstDayVolumePlan,
+  buildPeriodComparePlan,
 } from '@/lib/gym-chat/canonical-plans'
 import { buildSetsBaseCte } from '@/lib/gym-chat/sql-builders'
 import {
@@ -44,12 +46,14 @@ import {
   buildQueryResultMetadata,
   buildFallbackExplanation,
   buildAnalysisFollowUps,
+  buildSetBreakdownChartSpecs,
   buildPlanCorrectionAcknowledgement,
   buildResponseMeta,
   buildWorkoutPlanFromHistory,
   buildWorkoutPlanFallbackMessage,
   extractRequestedTopN,
   formatCoverageLine,
+  formatPeriodCompareCoverageLine,
   validateRankingResponse,
 } from '@/lib/gym-chat/response-utils'
 import { buildLlmContext, classifyTurnMode, RETURN_EFFORT_CHOICE_REGEX } from '@/lib/gym-chat/conversation'
@@ -69,6 +73,7 @@ import type {
   GymChatMessage,
   GymChatQuery,
   GymChatResponse,
+  GymChatTimeWindow,
   PendingClarification,
   TargetMuscleConstraint,
   WorkoutPlanAnalysisMeta,
@@ -85,6 +90,11 @@ type GymChatEvalMeta = {
 }
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+const MAX_DURATION_MS = maxDuration * 1000
+const MIN_LLM_RETRY_WINDOW_MS = 16000
 
 const SUGGESTED_QUESTIONS = [
   'What was my weekly training volume over the last 12 months?',
@@ -259,12 +269,14 @@ const ANALYSIS_KINDS: AnalysisKind[] = [
   'lighter_weight_progress',
   'exercise_prs',
   'best_sets',
+  'set_breakdown',
   'exercise_summary',
   'exercise_progression',
   'top_weight_sets',
   'lowest_volume_day',
   'favorite_split_day',
   'weekly_volume',
+  'period_compare',
   'top_end_efforts',
   'top_end_efforts_compare_12m_3m',
   'progressive_overload',
@@ -292,9 +304,10 @@ const normalizePendingClarification = (value: unknown): PendingClarification | u
     return { kind }
   }
   if (kind === 'timeframe') {
+    const timeframeObj = value as { kind: string; question?: string }
     const question =
-      typeof (value as PendingClarification).question === 'string'
-        ? (value as PendingClarification).question
+      typeof timeframeObj.question === 'string'
+        ? timeframeObj.question
         : undefined
     return question ? { kind, question } : { kind }
   }
@@ -490,7 +503,7 @@ const validateCanonicalSqlSafety = (sql: string) => {
   return null
 }
 
-const inferCanonicalTimeWindow = (params: unknown[], sql?: string) => {
+const inferCanonicalTimeWindow = (params: unknown[], sql?: string): GymChatTimeWindow | null => {
   const loweredSql = sql?.toLowerCase() ?? ''
   if (loweredSql.includes('policy:time_window=all_time')) return 'all_time'
   const normalized = params.map(value => String(value).toLowerCase())
@@ -515,7 +528,8 @@ const inferCanonicalTimeWindow = (params: unknown[], sql?: string) => {
     })
     .filter((entry): entry is { label: string; days: number } => Boolean(entry))
   if (!candidates.length) return null
-  return candidates.reduce((best, entry) => (entry.days > best.days ? entry : best)).label
+  const result = candidates.reduce((best, entry) => (entry.days > best.days ? entry : best)).label
+  return result as GymChatTimeWindow
 }
 
 const inferCanonicalLimit = (sql: string) => {
@@ -803,6 +817,35 @@ const extractExplicitWindow = (text: string) => {
   return `${value} ${pluralizeUnit(unit, value)}`
 }
 
+const windowToDays = (window: string | null | undefined) => {
+  if (!window || window === 'all_time') return null
+  const match = window.match(/(\d+)\s*(day|week|month|year)s?\b/i)
+  if (!match?.[1] || !match[2]) return null
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+  const unit = match[2].toLowerCase()
+  if (unit === 'day') return value
+  if (unit === 'week') return value * 7
+  if (unit === 'month') return value * 30
+  if (unit === 'year') return value * 365
+  return null
+}
+
+const extractComparisonWindows = (text: string) => {
+  if (!text) return []
+  const normalized = text.toLowerCase()
+  const windows: string[] = []
+  const regex = /(\d+)\s*(day|week|month|year)s?\b/g
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(normalized))) {
+    const value = Number(match[1])
+    if (!Number.isFinite(value) || value <= 0) continue
+    const unit = match[2] as 'day' | 'week' | 'month' | 'year'
+    windows.push(`${value} ${pluralizeUnit(unit, value)}`)
+  }
+  return windows
+}
+
 const TIME_WINDOW_CUE_REGEX =
   /\b(\d+\s*(day|week|month|year)s?|today|yesterday|this\s+(week|month|year)|last\s+(week|month|year|session|sessions|workout|workouts)|past\s+(week|month|year|session|sessions|workout|workouts)|most recent|latest|since\b|recent|lately|year to date|ytd|all[-\s]?time|lifetime)\b/i
 const TIMEFRAME_PHRASE_REGEX =
@@ -970,6 +1013,8 @@ const TOP_WEIGHT_SETS_REGEX =
   /top\s*\d+\s*(?:highest|heaviest)[-\s]?weight\s*sets?|highest[-\s]?weight\s*sets?|heaviest\s*sets?/i
 const PR_REGEX = /\bpr(?:s)?\b|personal record|personal best/i
 const BEST_SETS_REGEX = /\bbest\s+sets?\b/i
+const SET_BREAKDOWN_REGEX =
+  /\b(set[-\s]?by[-\s]?set|set breakdown|set order|set[-\s]?level|early sets|late sets|last sets|first sets|that set|within[-\s]?session|within[-\s]?workout|drop[-\s]?off.*sets?|sets?.*drop[-\s]?off|fatigue.*sets?|momentum.*sets?)\b/i
 const EXERCISE_SUMMARY_REGEX =
   /\b(per[-\s]?exercise|exercise)\s+(summary|summaries|overview|breakdown|profile)\b|\bsummary\s+(?:per|by)\s+exercise\b/i
 const EXERCISE_PROGRESS_REGEX = /\b(progress|progressed|progression|trend|trending|over time)\b/i
@@ -979,6 +1024,9 @@ const WORST_DAY_REGEX =
 const FAVORITE_SPLIT_REGEX =
   /fav(?:orite)?\s+(?:split|split day|day tag)|which\s+split.*(?:most|often)|split\s+.*(?:most|often)/i
 const WEEKLY_VOLUME_REGEX = /weekly\s+(?:training\s+)?volume|volume\s+per\s+week/i
+const PERIOD_COMPARE_KEYWORD_REGEX = /\b(compare|compared to|vs|versus|prior|previous|before)\b/i
+const ADHERENCE_REGEX =
+  /\b(consisten|consistency|adherence|streak|gap|missed\s+weeks?|missed\s+months?|miss\s+weeks?|miss\s+months?|skipped\s+weeks?|frequency|regular)\b/i
 const SET_COUNT_REGEX =
   /\b(total\s+sets|set\s+count|sets\s+per\s+exercise|most\s+sets|highest\s+sets|set rankings?)\b/i
 const VOLUME_RANKING_REGEX =
@@ -1122,11 +1170,14 @@ const ANALYSIS_TEMPLATE_HINTS: Partial<Record<AnalysisKind, GymChatTemplateName>
   exercise_progression: 'plateau_vs_progress',
   weekly_volume: 'workload_consistency',
   favorite_split_day: 'workload_consistency',
+  period_compare: 'period_compare',
+  set_breakdown: 'set_breakdown',
 }
 
 const ANALYSIS_INTENT_HINTS: Partial<Record<AnalysisKind, IntentType>> = {
   exercise_prs: 'comparison',
   best_sets: 'comparison',
+  set_breakdown: 'diagnostic',
   exercise_summary: 'descriptive',
   exercise_progression: 'trend',
   muscle_group_balance: 'comparison',
@@ -1144,6 +1195,7 @@ const ANALYSIS_INTENT_HINTS: Partial<Record<AnalysisKind, IntentType>> = {
   set_count: 'comparison',
   volume: 'comparison',
   session_count: 'trend',
+  period_compare: 'comparison',
 }
 
 
@@ -1197,6 +1249,15 @@ const isPrQuestion = (text: string) => PR_REGEX.test(text || '')
 
 const isBestSetsQuestion = (text: string) => BEST_SETS_REGEX.test(text || '')
 
+const isSetBreakdownQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = text.toLowerCase()
+  if (BEST_SETS_REGEX.test(normalized)) return false
+  if (TOP_WEIGHT_SETS_REGEX.test(normalized)) return false
+  if (PR_REGEX.test(normalized)) return false
+  return SET_BREAKDOWN_REGEX.test(normalized)
+}
+
 const isExerciseSummaryQuestion = (text: string) => EXERCISE_SUMMARY_REGEX.test(text || '')
 
 const isExerciseProgressionQuestion = (text: string) => {
@@ -1221,6 +1282,18 @@ const isVolumeRankingQuestion = (text: string) => VOLUME_RANKING_REGEX.test(text
 
 const isSessionCountQuestion = (text: string) =>
   SESSION_COUNT_REGEX.test(text || '') && !SESSION_TREND_REGEX.test(text || '')
+
+const isPeriodCompareQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = text.toLowerCase()
+  if (PROGRESSIVE_OVERLOAD_REGEX.test(normalized)) return false
+  if (TOP_END_EFFORT_REGEX.test(normalized) || isTopEndEffortsComparisonQuestion(normalized)) return false
+  if (ADHERENCE_REGEX.test(normalized)) return true
+  const hasCompareKeyword = PERIOD_COMPARE_KEYWORD_REGEX.test(normalized)
+  if (!hasCompareKeyword) return false
+  const hasTimeWindowCue = TIME_WINDOW_CUE_REGEX.test(normalized) || normalized.includes('before')
+  return hasTimeWindowCue
+}
 
 const wantsEstimated1rm = (text: string) => ESTIMATED_1RM_REGEX.test(text || '')
 
@@ -1314,14 +1387,67 @@ const executeQuery = async (client: Queryable, sql: string, params: unknown[]) =
 }
 
 export async function POST(req: Request) {
-  const requestId = randomUUID()
+  const requestIdHeader = req.headers.get('x-request-id')?.trim()
+  const requestId =
+    requestIdHeader && requestIdHeader.length <= 128 ? requestIdHeader : randomUUID()
   const startedAt = Date.now()
   const wantsEvalMeta = req.headers.get('x-gym-chat-eval') === '1'
   const wantsDebugSql = req.headers.get('x-gym-chat-debug') === '1'
+  const wantsStream =
+    req.headers.get('accept')?.includes('text/event-stream') || req.headers.get('x-stream') === '1'
   let conversationState: GymChatConversationState = {}
   const log = (...args: unknown[]) => {
     console.info(`[gym-chat:${requestId}]`, ...args)
   }
+  const encoder = new TextEncoder()
+  const pendingEvents: string[] = []
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
+  let shouldCloseStream = false
+  const enqueueEvent = (payload: string) => {
+    if (streamController) {
+      streamController.enqueue(encoder.encode(payload))
+      return
+    }
+    pendingEvents.push(payload)
+  }
+  const resolveErrorType = (status?: number) => {
+    if (!status) return 'unknown'
+    if (status === 503) return 'upstream'
+    if (status === 504) return 'timeout'
+    if (status >= 500) return 'internal'
+    if (status >= 400) return 'bad_request'
+    return 'unknown'
+  }
+  const sendEvent = (event: string, data: unknown) => {
+    if (!wantsStream) return
+    enqueueEvent(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+  const sendStatus = (stage: string, message: string) => {
+    sendEvent('status', { stage, message, elapsedMs: Date.now() - startedAt })
+  }
+  const sendError = (message: string, type: string, detail?: string) => {
+    sendEvent('error', { type, message, detail, elapsedMs: Date.now() - startedAt })
+    if (streamController) {
+      streamController.close()
+      streamController = null
+    } else {
+      shouldCloseStream = true
+    }
+  }
+  const sendFinal = (payload: unknown) => {
+    sendEvent('final', payload)
+    if (streamController) {
+      streamController.close()
+      streamController = null
+    } else {
+      shouldCloseStream = true
+    }
+  }
+  const llmRetryBudget = {
+    remainingMs: () => Math.max(0, MAX_DURATION_MS - (Date.now() - startedAt)),
+    minRetryWindowMs: MIN_LLM_RETRY_WINDOW_MS,
+  }
+  const llmOptions = { budget: llmRetryBudget }
   const respond = (
     body: GymChatResponse | { error: string },
     init?: { status?: number },
@@ -1331,13 +1457,24 @@ export async function POST(req: Request) {
       'assistantMessage' in body
         ? { ...body, conversationState }
         : body
-    const headers = wantsEvalMeta ? buildEvalHeaders(meta) : undefined
-    if (headers) {
-      return NextResponse.json(payload, { ...(init ?? {}), headers })
+    if (wantsStream) {
+      const status = init?.status
+      if ('assistantMessage' in body) {
+        if (status && status >= 400) {
+          sendError(body.assistantMessage, resolveErrorType(status))
+        } else {
+          sendFinal(payload)
+        }
+      } else {
+        sendError(body.error, resolveErrorType(status))
+      }
+      return null
     }
-    return NextResponse.json(payload, init)
+    const evalHeaders = wantsEvalMeta ? buildEvalHeaders(meta) : undefined
+    const headers = { 'x-request-id': requestId, ...(evalHeaders ?? {}) }
+    return NextResponse.json(payload, { ...(init ?? {}), headers })
   }
-
+  const run = async () => {
   try {
     let payload: {
       messages?: GymChatMessage[]
@@ -1350,9 +1487,12 @@ export async function POST(req: Request) {
       return respond({ error: 'Invalid JSON payload.' }, { status: 400 })
     }
 
+    const catalogStartedAt = Date.now()
+    sendStatus('catalog', 'Loading workout catalog')
     await loadGymCatalog().catch(error => {
       log('catalog load failed', error)
     })
+    log('catalog load completed', { durationMs: Date.now() - catalogStartedAt })
 
     conversationState = normalizeConversationState(payload.conversationState)
 
@@ -1440,6 +1580,9 @@ export async function POST(req: Request) {
     if (isTopEndEffortsComparisonQuestion(question)) {
       analysisKindOverride = 'top_end_efforts_compare_12m_3m'
     }
+    if (!analysisKindOverride && isSetBreakdownQuestion(question)) {
+      analysisKindOverride = 'set_breakdown'
+    }
     if (!analysisKindOverride && isPrQuestion(question)) {
       analysisKindOverride = 'exercise_prs'
     }
@@ -1464,6 +1607,9 @@ export async function POST(req: Request) {
     if (!analysisKindOverride && isWeeklyVolumeQuestion(question)) {
       analysisKindOverride = 'weekly_volume'
     }
+    if (!analysisKindOverride && isPeriodCompareQuestion(question)) {
+      analysisKindOverride = 'period_compare'
+    }
     if (!analysisKindOverride) {
       analysisKindOverride = resolveReturnEffortAnalysisKind(question)
     }
@@ -1482,8 +1628,10 @@ export async function POST(req: Request) {
 
     const llmMessages = buildLlmContext({ question, state: conversationState, mode: turnMode })
     let classification: Awaited<ReturnType<typeof classifyQuestion>>
+    sendStatus('classify', 'Classifying question')
+    const classifyStartedAt = Date.now()
     try {
-      classification = await classifyQuestion(llmMessages)
+      classification = await classifyQuestion(llmMessages, llmOptions)
     } catch (error) {
       if (isLlmRequestError(error)) {
         log('classification failed', { status: error.status, retryable: error.retryable, detail: error.detail })
@@ -1500,6 +1648,7 @@ export async function POST(req: Request) {
       }
       throw error
     }
+    log('classification completed', { durationMs: Date.now() - classifyStartedAt })
     log('classification', classification)
     classification.primaryGrain = normalizePrimaryGrainValue(classification.primaryGrain)
     const intervalHints = extractIntervalHints(question)
@@ -1638,7 +1787,10 @@ export async function POST(req: Request) {
     }
 
     if (classification.domain === 'fitness_general') {
-      const explanation = await explainFitnessGeneral(llmMessages)
+      sendStatus('explain', 'Drafting guidance')
+      const explainStartedAt = Date.now()
+      const explanation = await explainFitnessGeneral(llmMessages, llmOptions)
+      log('fitness general explained', { durationMs: Date.now() - explainStartedAt })
       conversationState = applyPlanMeta(conversationState, planMeta)
       const response: GymChatResponse = {
         assistantMessage: explanation.assistantMessage,
@@ -1676,11 +1828,19 @@ export async function POST(req: Request) {
       return respond(response, undefined, evalMeta)
     }
 
-    const plan = await planGymSql(llmMessages, timezone, {
-      ...intentHints,
-      template: templateSelection.primary,
-      secondaryTemplate: templateSelection.secondary,
-    })
+    sendStatus('plan', 'Planning SQL')
+    const planStartedAt = Date.now()
+    const plan = await planGymSql(
+      llmMessages,
+      timezone,
+      {
+        ...intentHints,
+        template: templateSelection.primary,
+        secondaryTemplate: templateSelection.secondary,
+      },
+      llmOptions,
+    )
+    log('plan completed', { durationMs: Date.now() - planStartedAt })
     const plannedTemplate = normalizeTemplateName(plan.template)
     const plannedSecondaryTemplate = normalizeTemplateName(plan.secondaryTemplate)
     const selectedTemplate = plannedTemplate ?? templateSelection.primary
@@ -1699,6 +1859,12 @@ export async function POST(req: Request) {
     const setsBase = buildSetsBaseCte()
     const wantsAllTimeWindow = containsKeyword(question, ALL_TIME_KEYWORDS)
     const explicitWindow = wantsAllTimeWindow ? null : extractExplicitWindow(question)
+    const comparisonWindows = extractComparisonWindows(question)
+    const defaultCompareWindow = '4 weeks'
+    const compareWindow = comparisonWindows[0] ?? defaultCompareWindow
+    const comparePriorWindow = comparisonWindows[1] ?? compareWindow
+    const compareDefaultsUsed = comparisonWindows.length === 0
+    const comparePriorInferred = comparisonWindows.length === 1
     const requestedTopN = extractRequestedTopN(question)
     const topWeightLimit = requestedTopN ?? 5
     const rankingLimit = requestedTopN ?? 10
@@ -1713,6 +1879,12 @@ export async function POST(req: Request) {
     const progressionBucket = MONTHLY_TREND_REGEX.test(question) ? 'month' : 'week'
     const summaryWindow = explicitWindow ?? '90 days'
     const progressionWindow = explicitWindow ?? '12 months'
+    const setBreakdownWindow = explicitWindow ?? '90 days'
+    const setBreakdownWindowDays = windowToDays(setBreakdownWindow)
+    const setBreakdownAnchorAllTime =
+      wantsAllTimeWindow || (setBreakdownWindowDays !== null && setBreakdownWindowDays >= 365)
+    const setBreakdownAnchorWindow = '12 months'
+    const setBreakdownAllTime = exerciseTarget ? setBreakdownAnchorAllTime : wantsAllTimeWindow
     const normalizedQuestion = normalizeWhitespace(question).toLowerCase()
     const isReturnEffortProgression =
       analysisKindOverride === 'return_for_effort_progression' ||
@@ -1784,6 +1956,16 @@ export async function POST(req: Request) {
           allTime: wantsAllTimeWindow,
         })
       }
+      if (analysisKindOverride === 'set_breakdown') {
+        canonicalAnalysisKind = 'set_breakdown'
+        return buildSetBreakdownPlan(setsBase, {
+          window: setBreakdownWindow,
+          exercise: exerciseTarget,
+          useEstimated1rm,
+          allTime: setBreakdownAllTime,
+          anchorWindow: setBreakdownAnchorWindow,
+        })
+      }
       if (analysisKindOverride === 'exercise_summary') {
         canonicalAnalysisKind = 'exercise_summary'
         return buildExerciseSummaryPlan(setsBase, {
@@ -1822,6 +2004,10 @@ export async function POST(req: Request) {
         canonicalAnalysisKind = 'weekly_volume'
         return buildWeeklyVolumePlan(setsBase, { window: weeklyVolumeWindow })
       }
+      if (analysisKindOverride === 'period_compare') {
+        canonicalAnalysisKind = 'period_compare'
+        return buildPeriodComparePlan(setsBase, { window1: compareWindow, window2: comparePriorWindow })
+      }
       if (analysisKindOverride === 'top_end_efforts') {
         canonicalAnalysisKind = 'top_end_efforts'
         return buildTopEndEffortsPlan(setsBase)
@@ -1852,6 +2038,16 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           useEstimated1rm,
           allTime: wantsAllTimeWindow,
+        })
+      }
+      if (isSetBreakdownQuestion(question)) {
+        canonicalAnalysisKind = 'set_breakdown'
+        return buildSetBreakdownPlan(setsBase, {
+          window: setBreakdownWindow,
+          exercise: exerciseTarget,
+          useEstimated1rm,
+          allTime: setBreakdownAllTime,
+          anchorWindow: setBreakdownAnchorWindow,
         })
       }
       if (isExerciseSummaryQuestion(question)) {
@@ -1903,6 +2099,10 @@ export async function POST(req: Request) {
       if (isWeeklyVolumeQuestion(question)) {
         canonicalAnalysisKind = 'weekly_volume'
         return buildWeeklyVolumePlan(setsBase, { window: weeklyVolumeWindow })
+      }
+      if (isPeriodCompareQuestion(question)) {
+        canonicalAnalysisKind = 'period_compare'
+        return buildPeriodComparePlan(setsBase, { window1: compareWindow, window2: comparePriorWindow })
       }
       if (isTopEndEffortQuestion) {
         canonicalAnalysisKind = 'top_end_efforts'
@@ -2001,6 +2201,8 @@ export async function POST(req: Request) {
       const unsafePolicy = executedQueries.some(query => query.error && isUnsafePolicyError(query.error))
       let nextSqlById: Record<string, string> | undefined
       if (!unsafePolicy) {
+        sendStatus('repair', 'Repairing query plan')
+        const repairStartedAt = Date.now()
         const repairPlan = await repairGymSql(
           llmMessages,
           timezone,
@@ -2022,7 +2224,9 @@ export async function POST(req: Request) {
             template: selectedTemplate,
             secondaryTemplate,
           },
+          llmOptions,
         )
+        log('repair plan completed', { durationMs: Date.now() - repairStartedAt })
         if (repairPlan?.queries?.length) {
           nextSqlById = Object.fromEntries(repairPlan.queries.map(query => [query.id, query.sql]))
           const repairedQueries = repairPlan.queries.map((query, index) => ({
@@ -2101,6 +2305,8 @@ export async function POST(req: Request) {
 
     const usePool = connection.url.includes('-pooler.')
     const runQueries = async (queries: GymChatQuery[]) => {
+      const runStartedAt = Date.now()
+      sendStatus('query', 'Running queries')
       if (usePool) {
         const pool = createPool({ connectionString: connection.url })
         const client = await pool.connect()
@@ -2121,6 +2327,7 @@ export async function POST(req: Request) {
           client.release()
           await pool.end()
         }
+        log('queries completed', { durationMs: Date.now() - runStartedAt, queryCount: queries.length })
         return
       }
 
@@ -2142,6 +2349,7 @@ export async function POST(req: Request) {
       } finally {
         await client.end()
       }
+      log('queries completed', { durationMs: Date.now() - runStartedAt, queryCount: queries.length })
     }
 
     await runQueries(executedQueries)
@@ -2154,6 +2362,8 @@ export async function POST(req: Request) {
     let allErrors = executedQueries.every(query => query.error)
     let nextSqlById: Record<string, string> | undefined
     if (allErrors) {
+      sendStatus('repair', 'Repairing query plan')
+      const repairStartedAt = Date.now()
       const repairPlan = await repairGymSql(
         llmMessages,
         timezone,
@@ -2175,7 +2385,9 @@ export async function POST(req: Request) {
           template: selectedTemplate,
           secondaryTemplate,
         },
+        llmOptions,
       )
+      log('repair plan completed', { durationMs: Date.now() - repairStartedAt })
 
       if (repairPlan?.queries?.length) {
         log('repair plan generated', repairPlan.queries.length)
@@ -2294,6 +2506,8 @@ export async function POST(req: Request) {
         let fallbackHasPolicyErrors = fallbackExecuted.some(query => query.error)
         let fallbackNextSqlById: Record<string, string> | undefined
         if (fallbackHasPolicyErrors && !fallbackIsCanonical) {
+          sendStatus('repair', 'Repairing fallback query plan')
+          const repairStartedAt = Date.now()
           const fallbackRepair = await repairGymSql(
             llmMessages,
             timezone,
@@ -2315,7 +2529,9 @@ export async function POST(req: Request) {
               template: selectedTemplate,
               secondaryTemplate,
             },
+            llmOptions,
           )
+          log('fallback repair completed', { durationMs: Date.now() - repairStartedAt })
           if (fallbackRepair?.queries?.length) {
             fallbackNextSqlById = Object.fromEntries(fallbackRepair.queries.map(query => [query.id, query.sql]))
             const repairedFallback = fallbackRepair.queries.map((query, index) => ({
@@ -2478,8 +2694,19 @@ export async function POST(req: Request) {
     const analysisTimeframe =
       analysisKind === 'top_end_efforts_compare_12m_3m'
         ? '12 months vs 3 months'
+        : analysisKind === 'period_compare'
+          ? `${compareWindow} vs prior ${comparePriorWindow}`
         : responseMeta.timeWindowLabel ?? undefined
     const canonicalPlanId = canonicalAnalysisKind ?? undefined
+    const periodCompareCoverage =
+      analysisKind === 'period_compare'
+        ? {
+            windowRecent: compareWindow,
+            windowPrior: comparePriorWindow,
+            defaultsUsed: compareDefaultsUsed,
+            priorInferred: comparePriorInferred,
+          }
+        : undefined
     const comparisonNotes =
       analysisKind === 'top_end_efforts_compare_12m_3m' ? buildTopEndComparisonNotes(executedQueries) : []
 
@@ -2500,6 +2727,20 @@ export async function POST(req: Request) {
           'Explicitly compare top-end efforts over the last 12 months vs the last 3 months using the provided windowed queries.',
         )
       }
+      if (analysisKind === 'period_compare') {
+        checklist.push(
+          'Explicitly compare recent vs prior windows for sessions, sets, and volume, including deltas.',
+        )
+        checklist.push('Summarize adherence metrics (longest streak, longest gap, missed weeks/months) with citations.')
+        checklist.push(
+          `State the time windows used (${compareWindow} vs prior ${comparePriorWindow}) and note if any defaults were applied.`,
+        )
+      }
+      if (analysisKind === 'set_breakdown') {
+        checklist.push('Explicitly describe the set order proxy (set_number buckets or thirds).')
+        checklist.push('Quantify early vs late set drop-off with citations.')
+        checklist.push('Call out the best and worst sets in the window with citations.')
+      }
       if (analysisKind === 'favorite_split_day') {
         checklist.push(
           'Define "favorite split day" as the most frequent day_tag by session count in the requested window.',
@@ -2519,7 +2760,10 @@ export async function POST(req: Request) {
     })()
 
     try {
-      let explanation = await explainGymResults({
+      sendStatus('explain', 'Generating response')
+      const explainStartedAt = Date.now()
+      let explanation = await explainGymResults(
+        {
         question,
         queries: executedQueries,
         intentType: intentHints.intentType,
@@ -2530,25 +2774,30 @@ export async function POST(req: Request) {
         queryResultMetadata,
         planMeta: intentHints.planMeta,
         validationNotes: comparisonNotes.length ? comparisonNotes : undefined,
-      })
+        },
+        llmOptions,
+      )
       let validationIssues = validateRankingResponse(question, explanation.assistantMessage, responseMeta)
       if (validationIssues.length) {
-        explanation = await explainGymResults({
-          question,
-          queries: executedQueries,
-          intentType: intentHints.intentType,
-          selectedTemplate,
-          secondaryTemplate,
-          explainChecklist,
-          responseMeta,
-          queryResultMetadata,
-          planMeta: intentHints.planMeta,
-          validationNotes: [
-            ...comparisonNotes,
-            ...validationIssues.map(issue => issue.message),
-          ],
-          forceCitations: true,
-        })
+        explanation = await explainGymResults(
+          {
+            question,
+            queries: executedQueries,
+            intentType: intentHints.intentType,
+            selectedTemplate,
+            secondaryTemplate,
+            explainChecklist,
+            responseMeta,
+            queryResultMetadata,
+            planMeta: intentHints.planMeta,
+            validationNotes: [
+              ...comparisonNotes,
+              ...validationIssues.map(issue => issue.message),
+            ],
+            forceCitations: true,
+          },
+          llmOptions,
+        )
         validationIssues = validateRankingResponse(question, explanation.assistantMessage, responseMeta)
         const missingCoverage = validationIssues.some(issue => issue.type === 'coverage_missing')
         if (missingCoverage && responseMeta.isRankingQuestion) {
@@ -2586,18 +2835,21 @@ export async function POST(req: Request) {
       if (needsCitations()) {
         const fallbackResolved = applyFallbackCitationsIfPossible()
         if (!fallbackResolved && needsCitations()) {
-          explanation = await explainGymResults({
-            question,
-            queries: executedQueries,
-            intentType: intentHints.intentType,
-            selectedTemplate,
-            secondaryTemplate,
-            explainChecklist,
-            responseMeta,
-            queryResultMetadata,
-            planMeta: intentHints.planMeta,
-            forceCitations: true,
-          })
+          explanation = await explainGymResults(
+            {
+              question,
+              queries: executedQueries,
+              intentType: intentHints.intentType,
+              selectedTemplate,
+              secondaryTemplate,
+              explainChecklist,
+              responseMeta,
+              queryResultMetadata,
+              planMeta: intentHints.planMeta,
+              forceCitations: true,
+            },
+            llmOptions,
+          )
           citations = explanation.citations.filter(citation => allowedIds.has(citation.queryId))
           explanation.assistantMessage = formatStructuredAssistantMessage(explanation.assistantMessage, citations)
           markerSet = extractMarkers(explanation.assistantMessage)
@@ -2617,6 +2869,14 @@ export async function POST(req: Request) {
           if (needsCitations()) {
             applyFallbackCitationsIfPossible()
           }
+        }
+      }
+      if (periodCompareCoverage) {
+        const hasCompareCoverage = /window_recent=|window_prior=/i.test(explanation.assistantMessage)
+        if (!hasCompareCoverage) {
+          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatPeriodCompareCoverageLine(
+            periodCompareCoverage,
+          )}`
         }
       }
       if (canEnforceCitations && needsCitations()) {
@@ -2644,7 +2904,12 @@ export async function POST(req: Request) {
         })
       }
 
-      const chartSpecs = explanation.chartSpecs?.filter(spec => allowedIds.has(spec.queryId))
+      const initialChartSpecs = explanation.chartSpecs?.filter(spec => allowedIds.has(spec.queryId))
+      const fallbackChartSpecs =
+        analysisKind === 'set_breakdown' && (!initialChartSpecs || initialChartSpecs.length === 0)
+          ? buildSetBreakdownChartSpecs({ queries: executedQueries, preferEstimated1rm: useEstimated1rm })
+          : undefined
+      const chartSpecs = initialChartSpecs && initialChartSpecs.length ? initialChartSpecs : fallbackChartSpecs
       const followUps = sanitizeFollowUps(buildAnalysisFollowUps(analysisKind) ?? explanation.followUps)
       conversationState = applyAnalysisState(conversationState, {
         kind: analysisKind,
@@ -2653,6 +2918,7 @@ export async function POST(req: Request) {
         targets: intentHints.targets,
       })
       conversationState = applyPlanMeta(conversationState, planMeta)
+      log('explain completed', { durationMs: Date.now() - explainStartedAt })
       const response: GymChatResponse = {
         assistantMessage: explanation.assistantMessage,
         citations,
@@ -2680,6 +2946,7 @@ export async function POST(req: Request) {
               analysisKind,
               responseMeta,
               queryResultMetadata,
+              periodCompareCoverage,
             })
           : isRecoveryQuestion
             ? 'I tried to run queries to analyze your recovery between sessions, but they returned no usable data. This often means the time window is small or the filters are too strict. Try starting with a simpler window, like "last 8 weeks of sessions."'
@@ -2731,6 +2998,37 @@ export async function POST(req: Request) {
   } finally {
     log('completed in', `${Date.now() - startedAt}ms`)
   }
+  }
+
+  if (wantsStream) {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller
+        pendingEvents.splice(0).forEach(event => controller.enqueue(encoder.encode(event)))
+        if (shouldCloseStream) {
+          controller.close()
+          streamController = null
+        }
+      },
+      cancel() {
+        streamController = null
+      },
+    })
+    sendStatus('started', 'Starting request')
+    const headers = {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-request-id': requestId,
+    }
+    void run().catch(error => {
+      log('stream error', error)
+      sendError('Internal server error.', 'internal')
+    })
+    return new Response(stream, { headers })
+  }
+
+  return await run()
 }
 
 export const __testUtils = {

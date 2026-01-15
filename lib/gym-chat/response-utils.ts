@@ -1,4 +1,4 @@
-import type { AnalysisKind, GymChatQuery, TargetMuscleConstraint } from '@/types/gym-chat'
+import type { AnalysisKind, GymChatChartSpec, GymChatQuery, TargetMuscleConstraint } from '@/types/gym-chat'
 import { selectExercisesForMuscles } from './workout-planner'
 
 export type MetricInfo = {
@@ -152,6 +152,12 @@ export const buildAnalysisFollowUps = (analysisKind?: AnalysisKind) => {
         'Show my best sets by estimated 1RM.',
         'Show my top 10 best sets over the last 90 days.',
       ]
+    case 'set_breakdown':
+      return [
+        'Break down my last session sets for bench press.',
+        'Do my last sets drop off on squat days?',
+        'Show set-by-set performance for incline press over the last 6 weeks.',
+      ]
     case 'exercise_summary':
       return [
         'Summarize my history for a specific lift.',
@@ -187,6 +193,12 @@ export const buildAnalysisFollowUps = (analysisKind?: AnalysisKind) => {
         'Compare weekly volume over the last 3 months vs the prior 3 months.',
         'Show my highest-volume weeks in the last 12 months.',
         'Break weekly volume down by exercise.',
+      ]
+    case 'period_compare':
+      return [
+        'Compare the last 8 weeks vs the prior 8 weeks for sessions, sets, and volume.',
+        'Show missed weeks in the last 12 weeks.',
+        'Break down the period comparison by exercise.',
       ]
     case 'muscle_group_balance':
       return [
@@ -491,6 +503,20 @@ export const formatCoverageLine = (meta: ResponseMeta) => {
   return `Coverage/Limitations: window=${windowLabel}, rows returned=${rowsReturned}, rows shown=${rowsDisplayed}, limit=${limitApplied} (${topRequested}), tie handling=${tieHandling}.`
 }
 
+export const formatPeriodCompareCoverageLine = (input: {
+  windowRecent: string
+  windowPrior: string
+  defaultsUsed: boolean
+  priorInferred?: boolean
+}) => {
+  const defaultsNote = input.defaultsUsed
+    ? 'true (no window specified; defaulted to recent/prior)'
+    : input.priorInferred
+      ? 'partial (prior window inferred to match recent)'
+      : 'false'
+  return `Coverage/Limitations: window_recent=${input.windowRecent}, window_prior=${input.windowPrior}, defaults_used=${defaultsNote}.`
+}
+
 export const validateRankingResponse = (
   question: string,
   assistantMessage: string,
@@ -589,6 +615,12 @@ export const buildFallbackExplanation = (input: {
   analysisKind?: AnalysisKind
   responseMeta?: ResponseMeta
   queryResultMetadata?: QueryResultMeta[]
+  periodCompareCoverage?: {
+    windowRecent: string
+    windowPrior: string
+    defaultsUsed: boolean
+    priorInferred?: boolean
+  }
 }) => {
   const eligibleQueries = input.queries.filter(query => !query.error)
   const primary = eligibleQueries.length ? selectPrimaryQuery(eligibleQueries) : null
@@ -611,6 +643,52 @@ export const buildFallbackExplanation = (input: {
       `First week: ${formatRowSample(first)}`,
       `Most recent week: ${formatRowSample(last)}`,
       stats ? `Volume stats (${stats.key}): min=${stats.min}, median=${stats.median}, max=${stats.max}.` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  if (input.analysisKind === 'period_compare') {
+    const summaryQuery = input.queries.find(query => query.id === 'q1' && !query.error) ?? primary
+    const adherenceQuery = input.queries.find(query => query.id === 'q3' && !query.error)
+    const gapsQuery = input.queries.find(query => query.id === 'q4' && !query.error)
+    const summaryRow = summaryQuery?.previewRows?.[0] ?? null
+    const adherenceRow = adherenceQuery?.previewRows?.[0] ?? null
+    const gaps = gapsQuery?.previewRows?.slice(0, 3) ?? []
+    const coverageLine = input.periodCompareCoverage
+      ? formatPeriodCompareCoverageLine(input.periodCompareCoverage)
+      : summaryQuery?.params?.[0] && summaryQuery?.params?.[1]
+        ? `Coverage/Limitations: window_recent=${summaryQuery.params[0]}, window_prior=${summaryQuery.params[1]}.`
+        : 'Coverage/Limitations: window_recent=unknown, window_prior=unknown.'
+    const summaryLines = summaryRow
+      ? [
+          `Sessions: ${summaryRow.session_count_recent ?? 'n/a'} vs ${summaryRow.session_count_prior ?? 'n/a'} (delta ${summaryRow.session_delta ?? 'n/a'}).`,
+          `Sets: ${summaryRow.set_count_recent ?? 'n/a'} vs ${summaryRow.set_count_prior ?? 'n/a'} (delta ${summaryRow.set_delta ?? 'n/a'}).`,
+          `Volume: ${summaryRow.total_volume_recent ?? 'n/a'} vs ${summaryRow.total_volume_prior ?? 'n/a'} (delta ${summaryRow.volume_delta ?? 'n/a'}).`,
+        ]
+      : ['No summary rows were available for the period comparison.']
+    const adherenceLines = adherenceRow
+      ? [
+          `Longest streak (recent): ${adherenceRow.longest_streak_recent_weeks ?? 'n/a'} weeks; longest gap (recent): ${adherenceRow.longest_gap_recent_weeks ?? 'n/a'} weeks.`,
+          `Longest streak (prior): ${adherenceRow.longest_streak_prior_weeks ?? 'n/a'} weeks; longest gap (prior): ${adherenceRow.longest_gap_prior_weeks ?? 'n/a'} weeks.`,
+        ]
+      : []
+    const gapLines = gaps.length
+      ? gaps.map(row => {
+          const grain = row.gap_grain ?? 'gap'
+          const start = row.gap_start ?? 'n/a'
+          const end = row.gap_end ?? 'n/a'
+          const missed = row.missed_count ?? 'n/a'
+          return `- Missed ${missed} ${grain}(s) between ${start} and ${end}.`
+        })
+      : []
+    return [
+      'Period comparison summary:',
+      ...summaryLines,
+      ...adherenceLines,
+      gapLines.length ? 'Recent missed windows:' : '',
+      ...gapLines,
+      coverageLine,
     ]
       .filter(Boolean)
       .join('\n')
@@ -818,6 +896,48 @@ export const buildFallbackExplanation = (input: {
     ].join('\n')
   }
 
+  if (input.analysisKind === 'set_breakdown') {
+    const bucketQuery = input.queries.find(query => query.id === 'q2' && !query.error)
+    const bestWorstQuery = input.queries.find(query => query.id === 'q3' && !query.error)
+    const anchorQuery = input.queries.find(query => query.id === 'q4' && !query.error)
+    const bucketRows = bucketQuery?.previewRows ?? []
+    const bestWorstRows = bestWorstQuery?.previewRows ?? []
+    const metricKey = bucketRows.some(row => row.avg_est_1rm != null) ? 'avg_est_1rm' : 'avg_weight'
+    const metricLabel = metricKey === 'avg_est_1rm' ? 'estimated 1RM' : 'weight'
+    const early = bucketRows.find(row => String(row.bucket_label).toLowerCase() === 'early')
+    const late = bucketRows.find(row => String(row.bucket_label).toLowerCase() === 'late')
+    const earlyValue = early?.[metricKey]
+    const lateValue = late?.[metricKey]
+    const earlyNumeric = typeof earlyValue === 'number' ? earlyValue : Number(earlyValue)
+    const lateNumeric = typeof lateValue === 'number' ? lateValue : Number(lateValue)
+    const delta =
+      Number.isFinite(earlyNumeric) && Number.isFinite(lateNumeric) ? earlyNumeric - lateNumeric : null
+    const dropLine =
+      Number.isFinite(earlyNumeric) && Number.isFinite(lateNumeric)
+        ? `Early vs late ${metricLabel}: early=${earlyNumeric}, late=${lateNumeric}, delta=${delta}.`
+        : 'Early vs late bucket averages were available but could not be summarized numerically.'
+    const bestWorstLines = bestWorstRows.slice(0, 4).map(row => {
+      const name = row.exercise ?? 'Exercise'
+      const rank = row.rank_label ?? 'set'
+      const metric = row.metric_value ?? row.weight ?? row.est_1rm ?? 'n/a'
+      const reps = row.reps ?? 'n/a'
+      const date = row.session_date ?? 'n/a'
+      return `- ${name} ${rank}: ${metric} x ${reps} (${date})`
+    })
+    const anchorLine =
+      anchorQuery?.previewRows?.length ? 'Anchor query returned historical best/worst sets for context.' : null
+    return [
+      'Set breakdown summary:',
+      dropLine,
+      bestWorstLines.length ? 'Best vs worst sets:' : '',
+      ...bestWorstLines,
+      anchorLine ?? '',
+      input.responseMeta ? formatCoverageLine(input.responseMeta) : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
   const summaryLines = input.queries.map(query => {
     const summaryWindow = query.policy?.appliedTimeWindow ?? 'unknown window'
     const status = query.error ? `error: ${query.error}` : `${query.rowCount} rows`
@@ -840,4 +960,61 @@ export const buildFallbackExplanation = (input: {
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+const collectUniqueExercises = (rows: Record<string, unknown>[]) => {
+  const values = new Set<string>()
+  rows.forEach(row => {
+    const exercise = row.exercise
+    if (typeof exercise === 'string' && exercise.trim()) {
+      values.add(exercise.trim())
+    }
+  })
+  return values
+}
+
+const resolveSetBreakdownMetricKey = (preferEstimated1rm: boolean, rows: Record<string, unknown>[]) => {
+  if (preferEstimated1rm && rows.some(row => row.est_1rm != null || row.avg_est_1rm != null)) {
+    return rows.some(row => row.avg_est_1rm != null) ? 'avg_est_1rm' : 'est_1rm'
+  }
+  if (rows.some(row => row.avg_weight != null)) return 'avg_weight'
+  return rows.some(row => row.weight != null) ? 'weight' : 'est_1rm'
+}
+
+export const buildSetBreakdownChartSpecs = (input: {
+  queries: GymChatQuery[]
+  preferEstimated1rm?: boolean
+}): GymChatChartSpec[] => {
+  const specs: GymChatChartSpec[] = []
+  const setQuery = input.queries.find(query => query.id === 'q1' && !query.error)
+  const bucketQuery = input.queries.find(query => query.id === 'q2' && !query.error)
+  const setRows = setQuery?.previewRows ?? []
+  const bucketRows = bucketQuery?.previewRows ?? []
+  const uniqueExercises = collectUniqueExercises(setRows.length ? setRows : bucketRows)
+  const singleExercise = uniqueExercises.size <= 1
+  if (setQuery && setRows.length && singleExercise) {
+    const metricKey = resolveSetBreakdownMetricKey(Boolean(input.preferEstimated1rm), setRows)
+    if (setRows.some(row => row.set_number != null) && setRows.some(row => row[metricKey] != null)) {
+      specs.push({
+        type: 'line',
+        queryId: setQuery.id,
+        x: 'set_number',
+        y: metricKey,
+        title: 'Set performance by set number',
+      })
+    }
+  }
+  if (bucketQuery && bucketRows.length && singleExercise) {
+    const metricKey = resolveSetBreakdownMetricKey(Boolean(input.preferEstimated1rm), bucketRows)
+    if (bucketRows.some(row => row.bucket_label != null) && bucketRows.some(row => row[metricKey] != null)) {
+      specs.push({
+        type: 'bar',
+        queryId: bucketQuery.id,
+        x: 'bucket_label',
+        y: metricKey,
+        title: 'Early vs late set averages',
+      })
+    }
+  }
+  return specs
 }

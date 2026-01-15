@@ -36,6 +36,8 @@ type ChatMessage = {
   citations?: GymChatCitation[]
   chartSpecs?: GymChatChartSpec[]
   followUps?: string[]
+  retryPayload?: string
+  retryRequestId?: string
 }
 
 type ChatClientProps = {
@@ -59,6 +61,74 @@ const buildTimezone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 const CITATION_REGEX = /\[([a-zA-Z0-9_-]+)\](?!\()/g
+const STREAM_STATUS_MESSAGES: Record<string, string> = {
+  started: 'Starting request...',
+  catalog: 'Loading workout catalog...',
+  classify: 'Classifying your question...',
+  plan: 'Planning queries...',
+  repair: 'Fixing query plan...',
+  query: 'Running queries...',
+  explain: 'Generating response...',
+}
+
+const getStreamStatusMessage = (payload: { stage?: string; message?: string }) => {
+  if (payload.message) return payload.message
+  if (payload.stage && payload.stage in STREAM_STATUS_MESSAGES) {
+    return STREAM_STATUS_MESSAGES[payload.stage]
+  }
+  return 'Working...'
+}
+
+const readEventStream = async (
+  response: Response,
+  onEvent: (event: { event: string; data: any }) => void,
+) => {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('Streaming response missing body.')
+  }
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let boundaryMatch = buffer.match(/\r?\n\r?\n/)
+    while (boundaryMatch) {
+      const boundaryIndex = boundaryMatch.index ?? 0
+      const boundaryLength = boundaryMatch[0].length
+      const chunk = buffer.slice(0, boundaryIndex)
+      buffer = buffer.slice(boundaryIndex + boundaryLength)
+      if (!chunk.trim()) {
+        boundaryMatch = buffer.match(/\r?\n\r?\n/)
+        continue
+      }
+      const lines = chunk.split(/\r?\n/)
+      let event = 'message'
+      const dataLines: string[] = []
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          event = line.slice(6).trim()
+          continue
+        }
+        if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trim())
+        }
+      }
+      if (dataLines.length) {
+        const dataText = dataLines.join('\n')
+        let data: any
+        try {
+          data = JSON.parse(dataText)
+        } catch {
+          data = dataText
+        }
+        onEvent({ event, data })
+      }
+      boundaryMatch = buffer.match(/\r?\n\r?\n/)
+    }
+  }
+}
 
 const formatContentWithCitations = (content: string, queryIds: Set<string>, anchorPrefix: string) => {
   if (!queryIds.size) return content
@@ -432,7 +502,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   )
 
   const handleSubmit = useCallback(
-    async (overrideInput?: string) => {
+    async (overrideInput?: string, options?: { retryRequestId?: string }) => {
       const rawInput = overrideInput ?? inputRef.current
       const trimmed = rawInput.trim()
       if (!trimmed || isLoading) return
@@ -444,22 +514,53 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         createdAt: new Date().toISOString(),
       }
 
-      const nextMessages = [...messages, userMessage]
+      const assistantMessageId = createMessageId()
+      const assistantPlaceholder: ChatMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: 'Working on it...',
+        createdAt: new Date().toISOString(),
+      }
+      const outgoingMessages = [...messages, userMessage]
+      const nextMessages = [...outgoingMessages, assistantPlaceholder]
       setMessages(nextMessages)
       setInput('')
       setIsLoading(true)
       setAutoScrollEnabled(true)
       scrollToBottomSoon('auto')
 
+      const updateAssistantMessage = (patch: Partial<ChatMessage>) => {
+        setMessages(current =>
+          current.map(message => (message.id === assistantMessageId ? { ...message, ...patch } : message)),
+        )
+      }
+
       let timeoutId: ReturnType<typeof setTimeout> | undefined
+      let stillWorkingTimeout: ReturnType<typeof setTimeout> | undefined
+      let finalReceived = false
+      let statusSeen = false
+      let effectiveRequestId: string | undefined
       try {
+        stillWorkingTimeout = setTimeout(() => {
+          if (!finalReceived && !statusSeen) {
+            updateAssistantMessage({ content: 'Still working...' })
+          }
+        }, 4000)
         const controller = new AbortController()
-        const timeoutMs = 25000
+        const timeoutMs = 60000
+        const headers: Record<string, string> = {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+          'x-stream': '1',
+        }
+        if (options?.retryRequestId) {
+          headers['x-request-id'] = options.retryRequestId
+        }
         const fetchPromise = fetch('/api/gym-chat', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers,
           body: JSON.stringify({
-            messages: nextMessages.map(message => ({ role: message.role, content: message.content })),
+            messages: outgoingMessages.map(message => ({ role: message.role, content: message.content })),
             client: { timezone: buildTimezone() },
             conversationState,
           }),
@@ -472,35 +573,92 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
           }, timeoutMs)
         })
         const res = (await Promise.race([fetchPromise, timeoutPromise])) as Response
+        const requestId = res.headers.get('x-request-id') || undefined
+        effectiveRequestId = requestId ?? options?.retryRequestId
+        if (effectiveRequestId) {
+          console.info(`[gym-chat] request id ${effectiveRequestId}`)
+        }
+
+        const contentType = res.headers.get('content-type') || ''
+        if (contentType.includes('text/event-stream')) {
+          await readEventStream(res, event => {
+            if (event.event === 'status') {
+              statusSeen = true
+              updateAssistantMessage({
+                content: getStreamStatusMessage(event.data ?? {}),
+              })
+              return
+            }
+            if (event.event === 'final') {
+              finalReceived = true
+              const data = event.data as GymChatResponse
+              const assistantMessage =
+                data && typeof data.assistantMessage === 'string'
+                  ? data.assistantMessage
+                  : 'Response completed without content.'
+              updateAssistantMessage({
+                content: assistantMessage,
+                queries: data?.queries,
+                citations: data?.citations,
+                chartSpecs: data?.chartSpecs,
+                followUps: data?.followUps,
+                retryPayload: undefined,
+                retryRequestId: undefined,
+              })
+              if (data?.conversationState) {
+                setConversationState(data.conversationState)
+              }
+              return
+            }
+            if (event.event === 'error') {
+              finalReceived = true
+              const message =
+                event.data && typeof event.data.message === 'string'
+                  ? event.data.message
+                  : 'Request failed.'
+              updateAssistantMessage({
+                content: message,
+                retryPayload: trimmed,
+                retryRequestId: effectiveRequestId,
+              })
+            }
+          })
+          if (!finalReceived) {
+            updateAssistantMessage({
+              content: 'The response stopped early. Please retry your last message.',
+              retryPayload: trimmed,
+              retryRequestId: effectiveRequestId,
+            })
+          }
+          return
+        }
+
         const data = (await res.json()) as GymChatResponse
 
         if (!res.ok) {
           throw new Error(data?.assistantMessage || 'Request failed.')
         }
 
-        const assistantMessage: ChatMessage = {
-          id: createMessageId(),
-          role: 'assistant',
+        finalReceived = true
+        setConversationState(data.conversationState ?? {})
+        updateAssistantMessage({
           content: data.assistantMessage,
-          createdAt: new Date().toISOString(),
           queries: data.queries,
           citations: data.citations,
           chartSpecs: data.chartSpecs,
           followUps: data.followUps,
-        }
-        setConversationState(data.conversationState ?? {})
-        setMessages(current => [...current, assistantMessage])
+          retryPayload: undefined,
+          retryRequestId: undefined,
+        })
       } catch (error) {
-        const assistantMessage: ChatMessage = {
-          id: createMessageId(),
-          role: 'assistant',
+        updateAssistantMessage({
           content: error instanceof Error ? error.message : 'Something went wrong. Please try again.',
-          createdAt: new Date().toISOString(),
-        }
-        setConversationState({})
-        setMessages(current => [...current, assistantMessage])
+          retryPayload: trimmed,
+          retryRequestId: effectiveRequestId ?? options?.retryRequestId,
+        })
       } finally {
         if (timeoutId) clearTimeout(timeoutId)
+        if (stillWorkingTimeout) clearTimeout(stillWorkingTimeout)
         setIsLoading(false)
       }
     },
@@ -562,6 +720,28 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
               <div className="mt-4 space-y-4">
                 {renderCharts(message.chartSpecs, message.queries)}
                 <QueryDetails queries={message.queries} anchorPrefix={anchorPrefix} />
+                {message.retryPayload ? (
+                  <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-100/70">
+                      Response interrupted
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <div className="text-xs text-amber-100/80">
+                        Retry the last message without losing context.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleSubmit(message.retryPayload, { retryRequestId: message.retryRequestId })
+                        }
+                        disabled={isLoading}
+                        className="rounded-full border border-amber-300/50 bg-amber-400/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100 transition hover:border-amber-200/70 hover:bg-amber-300/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {message.followUps?.length ? (
                   <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
                     <div className="text-[10px] font-semibold uppercase tracking-wide text-white/40">
@@ -598,7 +778,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         </div>
       )
     })
-  }, [messages, handleSuggestedQuestion, usedFollowUps])
+  }, [messages, handleSuggestedQuestion, handleSubmit, isLoading, usedFollowUps])
 
   const showStart = messages.length === 0
 

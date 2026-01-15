@@ -2,16 +2,18 @@ type IntentType = 'descriptive' | 'trend' | 'comparison' | 'diagnostic' | 'plann
 
 export type GymChatTemplateName =
   | 'momentum_dropoff'
+  | 'set_breakdown'
   | 'plateau_vs_progress'
   | 'workload_consistency'
   | 'body_part_balance'
+  | 'period_compare'
 
 export type GymChatTemplate = {
   name: GymChatTemplateName
   description: string
   intentTypeHints: IntentType[]
   keywordHints: string[]
-  defaultTimeWindow: '90 days' | '12 months' | 'all_time'
+  defaultTimeWindow: '90 days' | '12 months' | '4 weeks' | 'all_time'
   queryBlueprints: Array<{ role: string; mustMeasure: string }>
   explainChecklist: string[]
 }
@@ -43,6 +45,47 @@ export const TEMPLATES: Record<GymChatTemplateName, GymChatTemplate> = {
       'Describe the proxy used for set order (set_number buckets, early vs late thirds, etc.).',
       'Call out which sessions or exercises show the largest fade.',
       'Connect drop-off to broader workload trends if applicable.',
+    ],
+  },
+  set_breakdown: {
+    name: 'set_breakdown',
+    description: 'Break down set-by-set performance and within-session fatigue/drop-off.',
+    intentTypeHints: ['diagnostic', 'trend'],
+    keywordHints: [
+      'set breakdown',
+      'set-by-set',
+      'set by set',
+      'set order',
+      'early sets',
+      'late sets',
+      'last sets',
+      'first sets',
+      'drop off',
+      'drop-off',
+      'dropoff',
+      'fatigue',
+      'momentum',
+    ],
+    defaultTimeWindow: '90 days',
+    queryBlueprints: [
+      {
+        role: 'set_table',
+        mustMeasure: 'Per-set performance with set_number, weight, reps, volume, and estimated 1RM.',
+      },
+      {
+        role: 'set_bucket_comparison',
+        mustMeasure: 'Compare early vs late set buckets using set_number thirds.',
+      },
+      {
+        role: 'best_worst_sets',
+        mustMeasure: 'Identify best vs worst sets by weight or estimated 1RM within the window.',
+      },
+    ],
+    explainChecklist: [
+      'State whether early vs late set performance drops and quantify the difference with citations.',
+      'Describe the proxy for set order (set_number buckets or thirds).',
+      'Call out the best and worst sets in the window with citations.',
+      'Note the window used for recent sets and any broader anchor if present.',
     ],
   },
   plateau_vs_progress: {
@@ -94,6 +137,51 @@ export const TEMPLATES: Record<GymChatTemplateName, GymChatTemplate> = {
       'Point out gaps or spikes and when they occurred.',
       'State what a stable baseline looks like for the user.',
       'Tie consistency findings to a concrete planning recommendation.',
+    ],
+  },
+  period_compare: {
+    name: 'period_compare',
+    description: 'Compare two time windows and adherence metrics for sessions, sets, and volume.',
+    intentTypeHints: ['comparison', 'trend', 'diagnostic'],
+    keywordHints: [
+      'compare',
+      'vs',
+      'versus',
+      'prior',
+      'previous',
+      'before',
+      'consistency',
+      'consistent',
+      'adherence',
+      'streak',
+      'gap',
+      'missed',
+      'miss weeks',
+      'missed weeks',
+      'miss months',
+      'missed months',
+      'frequency',
+    ],
+    defaultTimeWindow: '4 weeks',
+    queryBlueprints: [
+      {
+        role: 'window_totals',
+        mustMeasure: 'Compare total sessions, sets, and volume between recent and prior windows with deltas.',
+      },
+      {
+        role: 'exercise_breakdown',
+        mustMeasure: 'Per-exercise set and volume deltas between the two windows.',
+      },
+      {
+        role: 'adherence_metrics',
+        mustMeasure: 'Longest streak, longest gap, and recent missed weeks/months based on session dates.',
+      },
+    ],
+    explainChecklist: [
+      'State both time windows and note if any defaults were applied.',
+      'Report session/set/volume deltas between windows with citations.',
+      'Summarize adherence metrics (longest streak, longest gap) with citations.',
+      'List recent missed weeks or months if any are present.',
     ],
   },
   body_part_balance: {
@@ -149,6 +237,24 @@ const scoreTemplate = (
       score += 1
     }
   })
+  if (template.name === 'period_compare') {
+    if (
+      normalizedQuestion.includes('compare') ||
+      normalizedQuestion.includes('vs') ||
+      normalizedQuestion.includes('versus')
+    ) {
+      score += 2
+    }
+    if (
+      normalizedQuestion.includes('consisten') ||
+      normalizedQuestion.includes('adherence') ||
+      normalizedQuestion.includes('streak') ||
+      normalizedQuestion.includes('gap') ||
+      normalizedQuestion.includes('missed')
+    ) {
+      score += 1
+    }
+  }
   if (template.name === 'body_part_balance' && targets?.has('body_part')) {
     score += 2
   }

@@ -8,6 +8,7 @@ export type SetsBaseCte = {
   est1rmExpr: string
   volumeExpr: string
   dayTagExpr: string | null
+  setNumberExpr: string | null
 }
 
 const resolveSetsDateExpressions = () => {
@@ -64,5 +65,6 @@ export const buildSetsBaseCte = (alias = 'sets'): SetsBaseCte => {
     est1rmExpr: `${alias}.est_1rm`,
     volumeExpr: `${alias}.volume`,
     dayTagExpr: dayTagExpr ? `${alias}.day_tag` : null,
+    setNumberExpr: setNumberExpr ? `${alias}.set_number` : null,
   }
 }

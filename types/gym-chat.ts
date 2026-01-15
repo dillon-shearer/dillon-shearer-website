@@ -13,6 +13,7 @@ export type AnalysisKind =
   | 'lighter_weight_progress'
   | 'exercise_prs'
   | 'best_sets'
+  | 'set_breakdown'
   | 'exercise_summary'
   | 'exercise_progression'
   | 'top_weight_sets'

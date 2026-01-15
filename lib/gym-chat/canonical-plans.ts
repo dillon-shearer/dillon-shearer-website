@@ -150,6 +150,142 @@ export const buildBestSetsPlan = (
   }
 }
 
+export const buildSetBreakdownPlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    window?: string
+    exercise?: string | null
+    useEstimated1rm?: boolean
+    allTime?: boolean
+    anchorWindow?: string
+  },
+): CanonicalPlan => {
+  const window = options?.window ?? '90 days'
+  const useEstimated1rm = options?.useEstimated1rm ?? false
+  const hasExercise = Boolean(options?.exercise)
+  const useRecentAllTime = Boolean(options?.allTime) && !hasExercise
+  const filter = buildSetsFilter(lifts, {
+    window,
+    exercise: options?.exercise ?? null,
+    allTime: useRecentAllTime,
+  })
+  const metricExpr = useEstimated1rm ? 'est_1rm' : 'weight'
+  const limit = 250
+  const setNumberExpr = lifts.setNumberExpr ?? 'NULL::int'
+  const setNumberSelect = `${setNumberExpr} AS set_number`
+  const windowLabel = useRecentAllTime ? 'all time' : `the last ${window}`
+  const baseCte =
+    `base AS (` +
+    `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+    `${lifts.alias}.weight, ${lifts.alias}.reps, ${lifts.est1rmExpr} AS est_1rm, ` +
+    `${lifts.volumeExpr} AS volume, ${lifts.performedAtExpr} AS performed_at, ` +
+    `${setNumberSelect}, ` +
+    `COALESCE(${setNumberExpr}, ` +
+    `ROW_NUMBER() OVER (PARTITION BY ${lifts.sessionDateExpr}, ${lifts.alias}.exercise ` +
+    `ORDER BY ${lifts.performedAtExpr} ASC NULLS LAST, ` +
+    `${lifts.alias}.weight DESC NULLS LAST, ${lifts.alias}.reps DESC NULLS LAST)) AS set_order ` +
+    `FROM ${lifts.alias} ` +
+    `${filter.whereClause}` +
+    ')'
+  const baseSqlPrefix = `${filter.policyHint}WITH ${lifts.cte}, ${baseCte} `
+  const queries = [
+    {
+      id: 'q1',
+      purpose: `List per-set performance for recent sessions over ${windowLabel}.`,
+      sql:
+        baseSqlPrefix +
+        'SELECT session_date, exercise, set_order AS set_number, weight, reps, est_1rm, volume ' +
+        'FROM base ' +
+        'ORDER BY session_date DESC, exercise, set_number ASC ' +
+        `LIMIT ${limit}`,
+      params: filter.params,
+    },
+    {
+      id: 'q2',
+      purpose: `Compare early vs late sets by bucketing set order into thirds over ${windowLabel}.`,
+      sql:
+        baseSqlPrefix +
+        ', bucketed AS (' +
+        'SELECT session_date, exercise, set_order, weight, reps, est_1rm, volume, ' +
+        `NTILE(3) OVER (PARTITION BY session_date, exercise ORDER BY set_order) AS set_bucket ` +
+        'FROM base' +
+        ') ' +
+        'SELECT exercise, set_bucket, ' +
+        "CASE set_bucket WHEN 1 THEN 'early' WHEN 2 THEN 'mid' ELSE 'late' END AS bucket_label, " +
+        'AVG(weight) AS avg_weight, AVG(reps) AS avg_reps, AVG(est_1rm) AS avg_est_1rm, ' +
+        'AVG(volume) AS avg_volume, COUNT(*) AS set_count ' +
+        'FROM bucketed ' +
+        'GROUP BY exercise, set_bucket ' +
+        'ORDER BY exercise, set_bucket',
+      params: filter.params,
+    },
+    {
+      id: 'q3',
+      purpose: `Identify the best and worst sets by ${useEstimated1rm ? 'estimated 1RM' : 'weight'} over ${windowLabel}.`,
+      sql:
+        baseSqlPrefix +
+        ', ranked AS (' +
+        `SELECT session_date, exercise, weight, reps, est_1rm, volume, set_order, ` +
+        `${metricExpr} AS metric_value, ` +
+        `ROW_NUMBER() OVER (PARTITION BY exercise ORDER BY ${metricExpr} DESC NULLS LAST, performed_at DESC NULLS LAST) AS rn_best, ` +
+        `ROW_NUMBER() OVER (PARTITION BY exercise ORDER BY ${metricExpr} ASC NULLS LAST, performed_at DESC NULLS LAST) AS rn_worst ` +
+        'FROM base' +
+        ') ' +
+        'SELECT exercise, metric_value, weight, reps, est_1rm, volume, set_order AS set_number, session_date, ' +
+        "CASE WHEN rn_best = 1 THEN 'best' WHEN rn_worst = 1 THEN 'worst' ELSE NULL END AS rank_label " +
+        'FROM ranked ' +
+        'WHERE rn_best = 1 OR rn_worst = 1 ' +
+        'ORDER BY exercise, rank_label',
+      params: filter.params,
+    },
+  ]
+
+  const shouldAnchor = hasExercise
+  if (shouldAnchor) {
+    const anchorWindow = options?.anchorWindow ?? '12 months'
+    const anchorAllTime = Boolean(options?.allTime)
+    const anchorFilter = buildSetsFilter(lifts, {
+      window: anchorWindow,
+      exercise: options?.exercise ?? null,
+      allTime: anchorAllTime,
+    })
+    const anchorLabel = anchorAllTime ? 'all time' : `the last ${anchorWindow}`
+    const anchorBaseCte =
+      `base AS (` +
+      `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+      `${lifts.alias}.weight, ${lifts.alias}.reps, ${lifts.est1rmExpr} AS est_1rm, ` +
+      `${lifts.volumeExpr} AS volume, ${lifts.performedAtExpr} AS performed_at, ` +
+      `${setNumberSelect}, ` +
+      `COALESCE(${setNumberExpr}, ` +
+      `ROW_NUMBER() OVER (PARTITION BY ${lifts.sessionDateExpr}, ${lifts.alias}.exercise ` +
+      `ORDER BY ${lifts.performedAtExpr} ASC NULLS LAST, ` +
+      `${lifts.alias}.weight DESC NULLS LAST, ${lifts.alias}.reps DESC NULLS LAST)) AS set_order ` +
+      `FROM ${lifts.alias} ` +
+      `${anchorFilter.whereClause}` +
+      ')'
+    queries.push({
+      id: 'q4',
+      purpose: `Anchor the best and worst ${options?.exercise} sets over ${anchorLabel}.`,
+      sql:
+        `${anchorFilter.policyHint}WITH ${lifts.cte}, ${anchorBaseCte}, ranked AS (` +
+        `SELECT session_date, exercise, weight, reps, est_1rm, volume, set_order, ` +
+        `${metricExpr} AS metric_value, ` +
+        `ROW_NUMBER() OVER (PARTITION BY exercise ORDER BY ${metricExpr} DESC NULLS LAST, performed_at DESC NULLS LAST) AS rn_best, ` +
+        `ROW_NUMBER() OVER (PARTITION BY exercise ORDER BY ${metricExpr} ASC NULLS LAST, performed_at DESC NULLS LAST) AS rn_worst ` +
+        'FROM base' +
+        ') ' +
+        'SELECT exercise, metric_value, weight, reps, est_1rm, volume, set_order AS set_number, session_date, ' +
+        "CASE WHEN rn_best = 1 THEN 'best' WHEN rn_worst = 1 THEN 'worst' ELSE NULL END AS rank_label " +
+        'FROM ranked ' +
+        'WHERE rn_best = 1 OR rn_worst = 1 ' +
+        'ORDER BY exercise, rank_label',
+      params: anchorFilter.params,
+    })
+  }
+
+  return { queries }
+}
+
 export const buildExerciseSummaryPlan = (
   lifts: SetsBaseCte,
   options?: { limit?: number; window?: string; exercise?: string | null; allTime?: boolean },
@@ -792,3 +928,189 @@ export const buildLightWeightProgressPlan = (lifts: SetsBaseCte): CanonicalPlan 
     },
   ],
 })
+
+export const buildPeriodComparePlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    window1?: string
+    window2?: string
+  },
+): CanonicalPlan => {
+  const w1 = options?.window1 ?? '4 weeks'
+  const w2 = options?.window2 ?? '4 weeks'
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Compare session count, total sets, and total volume between two periods: recent ${w1} vs prior ${w2}.`,
+        sql:
+          `WITH ${lifts.cte}, base AS (` +
+          `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+          `${lifts.volumeExpr} AS volume ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.sessionDateExpr} >= CURRENT_DATE - ($1)::interval - ($2)::interval` +
+          `), recent_period AS (` +
+          `SELECT session_date, exercise, volume ` +
+          `FROM base ` +
+          `WHERE session_date >= CURRENT_DATE - ($1)::interval` +
+          `), prior_period AS (` +
+          `SELECT session_date, exercise, volume ` +
+          `FROM base ` +
+          `WHERE session_date < CURRENT_DATE - ($1)::interval` +
+          `), recent_stats AS (` +
+          `SELECT COUNT(DISTINCT session_date) AS session_count_recent, ` +
+          `COUNT(*) AS set_count_recent, ` +
+          `COALESCE(SUM(volume), 0) AS total_volume_recent ` +
+          `FROM recent_period` +
+          `), prior_stats AS (` +
+          `SELECT COUNT(DISTINCT session_date) AS session_count_prior, ` +
+          `COUNT(*) AS set_count_prior, ` +
+          `COALESCE(SUM(volume), 0) AS total_volume_prior ` +
+          `FROM prior_period` +
+          `) ` +
+          `SELECT session_count_recent, session_count_prior, ` +
+          `(session_count_recent - session_count_prior) AS session_delta, ` +
+          `set_count_recent, set_count_prior, ` +
+          `(set_count_recent - set_count_prior) AS set_delta, ` +
+          `total_volume_recent, total_volume_prior, ` +
+          `(total_volume_recent - total_volume_prior) AS volume_delta ` +
+          `FROM recent_stats, prior_stats`,
+        params: [w1, w2],
+      },
+      {
+        id: 'q2',
+        purpose: `Breakdown by exercise: compare top exercises between recent ${w1} and prior ${w2}.`,
+        sql:
+          `WITH ${lifts.cte}, base AS (` +
+          `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
+          `${lifts.volumeExpr} AS volume ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.sessionDateExpr} >= CURRENT_DATE - ($1)::interval - ($2)::interval` +
+          `), recent_exercise_stats AS (` +
+          `SELECT exercise, COUNT(*) AS set_count_recent, ` +
+          `COALESCE(SUM(volume), 0) AS volume_recent, ` +
+          `COUNT(DISTINCT session_date) AS session_count_recent ` +
+          `FROM base ` +
+          `WHERE session_date >= CURRENT_DATE - ($1)::interval ` +
+          `GROUP BY exercise` +
+          `), prior_exercise_stats AS (` +
+          `SELECT exercise, COUNT(*) AS set_count_prior, ` +
+          `COALESCE(SUM(volume), 0) AS volume_prior, ` +
+          `COUNT(DISTINCT session_date) AS session_count_prior ` +
+          `FROM base ` +
+          `WHERE session_date < CURRENT_DATE - ($1)::interval ` +
+          `GROUP BY exercise` +
+          `) ` +
+          `SELECT COALESCE(r.exercise, p.exercise) AS exercise, ` +
+          `COALESCE(r.set_count_recent, 0) AS set_count_recent, ` +
+          `COALESCE(p.set_count_prior, 0) AS set_count_prior, ` +
+          `(COALESCE(r.set_count_recent, 0) - COALESCE(p.set_count_prior, 0)) AS set_delta, ` +
+          `COALESCE(r.volume_recent, 0) AS volume_recent, ` +
+          `COALESCE(p.volume_prior, 0) AS volume_prior, ` +
+          `(COALESCE(r.volume_recent, 0) - COALESCE(p.volume_prior, 0)) AS volume_delta ` +
+          `FROM recent_exercise_stats r ` +
+          `FULL OUTER JOIN prior_exercise_stats p ON r.exercise = p.exercise ` +
+          `WHERE COALESCE(r.set_count_recent, p.set_count_prior) >= 1 ` +
+          `ORDER BY volume_delta DESC NULLS LAST ` +
+          `LIMIT 20`,
+        params: [w1, w2],
+      },
+      {
+        id: 'q3',
+        purpose: `Adherence metrics: longest weekly streak and longest weekly gap in recent ${w1} and prior ${w2}.`,
+        sql:
+          `WITH ${lifts.cte}, weeks AS (` +
+          `SELECT DISTINCT DATE_TRUNC('week', ${lifts.sessionDateExpr})::date AS week_start ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.sessionDateExpr} >= CURRENT_DATE - ($1)::interval - ($2)::interval` +
+          `), recent_weeks AS (` +
+          `SELECT week_start FROM weeks WHERE week_start >= CURRENT_DATE - ($1)::interval` +
+          `), prior_weeks AS (` +
+          `SELECT week_start FROM weeks ` +
+          `WHERE week_start < CURRENT_DATE - ($1)::interval ` +
+          `AND week_start >= CURRENT_DATE - ($1)::interval - ($2)::interval` +
+          `), recent_streaks AS (` +
+          `SELECT week_start, ` +
+          `week_start - (ROW_NUMBER() OVER (ORDER BY week_start) * INTERVAL '7 days') AS streak_group ` +
+          `FROM recent_weeks` +
+          `), prior_streaks AS (` +
+          `SELECT week_start, ` +
+          `week_start - (ROW_NUMBER() OVER (ORDER BY week_start) * INTERVAL '7 days') AS streak_group ` +
+          `FROM prior_weeks` +
+          `), recent_streak_stats AS (` +
+          `SELECT COUNT(*) AS streak_len, MIN(week_start) AS streak_start, MAX(week_start) AS streak_end ` +
+          `FROM recent_streaks GROUP BY streak_group` +
+          `), prior_streak_stats AS (` +
+          `SELECT COUNT(*) AS streak_len, MIN(week_start) AS streak_start, MAX(week_start) AS streak_end ` +
+          `FROM prior_streaks GROUP BY streak_group` +
+          `), recent_longest AS (` +
+          `SELECT streak_len, streak_start, streak_end ` +
+          `FROM recent_streak_stats ORDER BY streak_len DESC NULLS LAST LIMIT 1` +
+          `), prior_longest AS (` +
+          `SELECT streak_len, streak_start, streak_end ` +
+          `FROM prior_streak_stats ORDER BY streak_len DESC NULLS LAST LIMIT 1` +
+          `), recent_gaps AS (` +
+          `SELECT week_start, LAG(week_start) OVER (ORDER BY week_start) AS prev_week_start, ` +
+          `((week_start - LAG(week_start) OVER (ORDER BY week_start)) / 7) - 1 AS missed_weeks ` +
+          `FROM recent_weeks` +
+          `), prior_gaps AS (` +
+          `SELECT week_start, LAG(week_start) OVER (ORDER BY week_start) AS prev_week_start, ` +
+          `((week_start - LAG(week_start) OVER (ORDER BY week_start)) / 7) - 1 AS missed_weeks ` +
+          `FROM prior_weeks` +
+          `), recent_gap_stats AS (` +
+          `SELECT COALESCE(MAX(missed_weeks), 0) AS max_missed_weeks ` +
+          `FROM recent_gaps WHERE missed_weeks IS NOT NULL` +
+          `), prior_gap_stats AS (` +
+          `SELECT COALESCE(MAX(missed_weeks), 0) AS max_missed_weeks ` +
+          `FROM prior_gaps WHERE missed_weeks IS NOT NULL` +
+          `) ` +
+          `SELECT ` +
+          `COALESCE((SELECT streak_len FROM recent_longest), 0) AS longest_streak_recent_weeks, ` +
+          `(SELECT streak_start FROM recent_longest) AS longest_streak_recent_start, ` +
+          `(SELECT streak_end FROM recent_longest) AS longest_streak_recent_end, ` +
+          `COALESCE((SELECT max_missed_weeks FROM recent_gap_stats), 0) AS longest_gap_recent_weeks, ` +
+          `COALESCE((SELECT streak_len FROM prior_longest), 0) AS longest_streak_prior_weeks, ` +
+          `(SELECT streak_start FROM prior_longest) AS longest_streak_prior_start, ` +
+          `(SELECT streak_end FROM prior_longest) AS longest_streak_prior_end, ` +
+          `COALESCE((SELECT max_missed_weeks FROM prior_gap_stats), 0) AS longest_gap_prior_weeks`,
+        params: [w1, w2],
+      },
+      {
+        id: 'q4',
+        purpose: `Recent missed weeks or months within the last ${w1}.`,
+        sql:
+          `WITH ${lifts.cte}, recent_weeks AS (` +
+          `SELECT DISTINCT DATE_TRUNC('week', ${lifts.sessionDateExpr})::date AS week_start ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.sessionDateExpr} >= CURRENT_DATE - ($1)::interval` +
+          `), week_gaps AS (` +
+          `SELECT week_start, LAG(week_start) OVER (ORDER BY week_start) AS prev_week_start, ` +
+          `((week_start - LAG(week_start) OVER (ORDER BY week_start)) / 7) - 1 AS missed_weeks ` +
+          `FROM recent_weeks` +
+          `), recent_months AS (` +
+          `SELECT DISTINCT DATE_TRUNC('month', ${lifts.sessionDateExpr})::date AS month_start ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.sessionDateExpr} >= CURRENT_DATE - ($1)::interval` +
+          `), month_gaps AS (` +
+          `SELECT month_start, LAG(month_start) OVER (ORDER BY month_start) AS prev_month_start, ` +
+          `(` +
+          `(EXTRACT(YEAR FROM month_start) * 12 + EXTRACT(MONTH FROM month_start)) - ` +
+          `(EXTRACT(YEAR FROM LAG(month_start) OVER (ORDER BY month_start)) * 12 + ` +
+          `EXTRACT(MONTH FROM LAG(month_start) OVER (ORDER BY month_start))` +
+          `) - 1 AS missed_months ` +
+          `FROM recent_months` +
+          `) ` +
+          `SELECT 'week' AS gap_grain, prev_week_start AS gap_start, week_start AS gap_end, ` +
+          `missed_weeks::int AS missed_count ` +
+          `FROM week_gaps WHERE missed_weeks >= 1 ` +
+          `UNION ALL ` +
+          `SELECT 'month' AS gap_grain, prev_month_start AS gap_start, month_start AS gap_end, ` +
+          `missed_months::int AS missed_count ` +
+          `FROM month_gaps WHERE missed_months >= 1 ` +
+          `ORDER BY gap_end DESC ` +
+          `LIMIT 6`,
+        params: [w1],
+      },
+    ],
+  }
+}
