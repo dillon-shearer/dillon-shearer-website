@@ -19,9 +19,11 @@ import {
 import type {
   GymChatCitation,
   GymChatChartSpec,
+  GymChatConversationState,
   GymChatMessage,
   GymChatQuery,
   GymChatResponse,
+  GymChatTimeWindow,
 } from '@/types/gym-chat'
 import type { Components } from 'react-markdown'
 
@@ -42,6 +44,7 @@ type ChatClientProps = {
 }
 
 const STORAGE_KEY = 'gym-chat-history-v1'
+const STATE_STORAGE_KEY = 'gym-chat-state-v1'
 
 const SUGGESTED_QUESTIONS = [
   'What was my weekly training volume over the last 12 months?',
@@ -140,6 +143,14 @@ const buildMarkdownComponents = (role: GymChatMessage['role'], anchorPrefix: str
         </a>
       )
     },
+    table: ({ node, className, ...props }: any) => (
+      <div className="my-3 max-w-full overflow-x-auto rounded-xl border border-white/10">
+        <table
+          {...props}
+          className={['min-w-full text-xs text-white/80', className].filter(Boolean).join(' ')}
+        />
+      </div>
+    ),
   }
 }
 
@@ -168,8 +179,8 @@ const renderPreviewTable = (rows: Record<string, unknown>[]) => {
   }
   const headers = Object.keys(rows[0])
   return (
-    <div className="overflow-x-auto rounded-xl border border-white/10">
-      <table className="w-full text-xs text-white/80">
+    <div className="max-w-full overflow-x-auto rounded-xl border border-white/10">
+      <table className="min-w-full text-xs text-white/80">
         <thead className="bg-white/5 text-white/70">
           <tr>
             {headers.map(header => (
@@ -196,7 +207,7 @@ const renderPreviewTable = (rows: Record<string, unknown>[]) => {
 }
 
 const formatPolicyWindow = (
-  value: '90 days' | '12 months' | 'all_time' | null | undefined,
+  value: GymChatTimeWindow | null | undefined,
 ) => {
   if (value === 'all_time') return 'all time'
   if (!value) return 'not applied'
@@ -309,7 +320,11 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
+  const [usedFollowUps, setUsedFollowUps] = useState<Set<string>>(() => new Set())
+  const [conversationState, setConversationState] = useState<GymChatConversationState>({})
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const lastAssistantMessageIdRef = useRef<string | null>(null)
   const inputRef = useRef('')
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -331,6 +346,20 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(STATE_STORAGE_KEY)
+    if (!stored) return
+    try {
+      const parsed = JSON.parse(stored) as GymChatConversationState
+      if (parsed && typeof parsed === 'object') {
+        setConversationState(parsed)
+      }
+    } catch (error) {
+      console.warn('Unable to load chat state.', error)
+    }
+  }, [])
+
+  useEffect(() => {
     if (hasPrefilled.current) return
     const prompt = searchParams.get('prompt')
     if (prompt) {
@@ -343,6 +372,11 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     if (typeof window === 'undefined') return
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
   }, [messages])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(conversationState))
+  }, [conversationState])
 
   useEffect(() => {
     inputRef.current = input
@@ -360,11 +394,42 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     const nextHeight = Math.min(textarea.scrollHeight, maxHeight)
     textarea.style.height = `${nextHeight}px`
   }, [input])
- 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    setAutoScrollEnabled(current => (current !== isNearBottom ? isNearBottom : current))
+  }, [])
+
+  useEffect(() => {
+    const latestAssistant = [...messages].reverse().find(message => message.role === 'assistant')
+    if (!latestAssistant) {
+      lastAssistantMessageIdRef.current = null
+      return
+    }
+    if (lastAssistantMessageIdRef.current === latestAssistant.id) return
+    lastAssistantMessageIdRef.current = latestAssistant.id
+    if (autoScrollEnabled) {
+      scrollToBottom()
+    }
+  }, [messages, autoScrollEnabled, scrollToBottom])
+
+  const scrollToBottomSoon = useCallback(
+    (behavior: ScrollBehavior = 'auto') => {
+      if (!scrollContainerRef.current) return
+      requestAnimationFrame(() => {
+        scrollToBottom(behavior)
+      })
+    },
+    [scrollToBottom],
+  )
 
   const handleSubmit = useCallback(
     async (overrideInput?: string) => {
@@ -383,16 +448,30 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
       setMessages(nextMessages)
       setInput('')
       setIsLoading(true)
+      setAutoScrollEnabled(true)
+      scrollToBottomSoon('auto')
 
+      let timeoutId: ReturnType<typeof setTimeout> | undefined
       try {
-        const res = await fetch('/api/gym-chat', {
+        const controller = new AbortController()
+        const timeoutMs = 25000
+        const fetchPromise = fetch('/api/gym-chat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             messages: nextMessages.map(message => ({ role: message.role, content: message.content })),
             client: { timezone: buildTimezone() },
+            conversationState,
           }),
+          signal: controller.signal,
         })
+        const timeoutPromise = new Promise<never>((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            controller.abort()
+            reject(new Error('This is taking longer than usual. Please try again.'))
+          }, timeoutMs)
+        })
+        const res = (await Promise.race([fetchPromise, timeoutPromise])) as Response
         const data = (await res.json()) as GymChatResponse
 
         if (!res.ok) {
@@ -409,6 +488,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
           chartSpecs: data.chartSpecs,
           followUps: data.followUps,
         }
+        setConversationState(data.conversationState ?? {})
         setMessages(current => [...current, assistantMessage])
       } catch (error) {
         const assistantMessage: ChatMessage = {
@@ -417,12 +497,14 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
           content: error instanceof Error ? error.message : 'Something went wrong. Please try again.',
           createdAt: new Date().toISOString(),
         }
+        setConversationState({})
         setMessages(current => [...current, assistantMessage])
       } finally {
+        if (timeoutId) clearTimeout(timeoutId)
         setIsLoading(false)
       }
     },
-    [isLoading, messages],
+    [isLoading, messages, conversationState, scrollToBottomSoon],
   )
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -433,8 +515,17 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   }
 
   const handleSuggestedQuestion = useCallback(
-    (question: string) => {
+    (question: string, sourceId?: string) => {
       if (isLoading) return
+      if (sourceId) {
+        const followUpKey = `${sourceId}::${question}`
+        setUsedFollowUps(current => {
+          if (current.has(followUpKey)) return current
+          const next = new Set(current)
+          next.add(followUpKey)
+          return next
+        })
+      }
       void handleSubmit(question)
     },
     [handleSubmit, isLoading],
@@ -477,16 +568,27 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
                       Follow-up ideas
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {message.followUps.map(followUp => (
-                        <button
-                          key={followUp}
-                          type="button"
-                          onClick={() => handleSuggestedQuestion(followUp)}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] text-white/60 transition hover:border-white/25 hover:text-white/80"
-                        >
-                          {followUp}
-                        </button>
-                      ))}
+                      {message.followUps.map(followUp => {
+                        const followUpKey = `${message.id}::${followUp}`
+                        const isUsed = usedFollowUps.has(followUpKey)
+                        return (
+                          <button
+                            key={followUp}
+                            type="button"
+                            onClick={() => handleSuggestedQuestion(followUp, message.id)}
+                            disabled={isUsed}
+                            aria-disabled={isUsed}
+                            className={[
+                              'rounded-full border px-3 py-1 text-[10px] transition disabled:cursor-not-allowed disabled:opacity-60',
+                              isUsed
+                                ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100/80'
+                                : 'border-white/10 bg-white/5 text-white/60 hover:border-white/25 hover:text-white/80',
+                            ].join(' ')}
+                          >
+                            {followUp}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 ) : null}
@@ -496,7 +598,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         </div>
       )
     })
-  }, [messages, handleSuggestedQuestion])
+  }, [messages, handleSuggestedQuestion, usedFollowUps])
 
   const showStart = messages.length === 0
 
@@ -520,7 +622,10 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
           ) : null}
           <button
             type="button"
-            onClick={() => setMessages([])}
+            onClick={() => {
+              setMessages([])
+              setConversationState({})
+            }}
             aria-label="Clear chat history"
             title="Clear"
             className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-white/60 transition hover:border-white/30 hover:text-white"
@@ -532,7 +637,11 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         </div>
       </div>
 
-      <div className="mt-4 flex-1 overflow-y-auto pr-1">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="mt-4 w-full flex-1 overflow-x-hidden overflow-y-auto pr-1"
+      >
         {showStart ? (
           <div className="flex h-full items-center justify-center">
             <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-black/50 p-6 text-center shadow-2xl shadow-black/40 backdrop-blur">
@@ -572,7 +681,6 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
                 </div>
               </div>
             ) : null}
-            <div ref={bottomRef} />
           </div>
         )}
       </div>

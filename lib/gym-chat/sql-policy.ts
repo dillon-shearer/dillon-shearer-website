@@ -11,6 +11,7 @@ import type {
 } from 'pgsql-ast-parser'
 
 import { getCatalogAllowlist, type CatalogAllowlist } from './catalog'
+import type { GymChatTimeWindow } from '@/types/gym-chat'
 
 export const DEFAULT_LIMIT = 200
 export const HARD_LIMIT = 1000
@@ -52,9 +53,14 @@ const ALLOWED_STRING_LITERALS = new Set([
 const INTERVAL_LITERAL_REGEX = /^\d+\s+(day|days|week|weeks|month|months|year|years)$/i
 const COMPARISON_OPERATORS = new Set<BinaryOperator>(['=', '!=', '>', '>=', '<', '<='])
 
-const DATE_COLUMNS = new Set<string>(['date', 'timestamp'])
+const DATE_COLUMNS = new Set<string>(['date', 'timestamp', 'session_date', 'performed_at'])
 const VIRTUAL_COLUMNS = new Set<string>(['body_part'])
 const POLICY_HINT_REGEX = /^\s*\/\*policy:([\s\S]*?)\*\/\s*/i
+const UNSUPPORTED_SQL_PATTERNS: Array<{ regex: RegExp; message: string }> = [
+  { regex: /\bFILTER\s*\(/i, message: 'Unsupported syntax: FILTER aggregates are not supported.' },
+  { regex: /\bROWS\s+BETWEEN\b/i, message: 'Unsupported syntax: window frames are not supported.' },
+  { regex: /\bRANGE\s+BETWEEN\b/i, message: 'Unsupported syntax: window frames are not supported.' },
+]
 
 type PolicyHints = {
   timeWindow?: 'all_time'
@@ -67,6 +73,25 @@ type ValidationSummary = {
   cteAliases: Set<string>
   hasDateFilter: boolean
   isTrendQuery: boolean
+}
+
+const collectSelectColumnNames = (statement: SelectFromStatement) => {
+  const columns = (statement.columns ?? []) as Array<{
+    alias?: { name?: string }
+    expr: { type: string; name?: string }
+  }>
+  const names = new Set<string>()
+  columns.forEach(column => {
+    const alias = column.alias?.name
+    if (alias) {
+      names.add(normalizeName(alias))
+      return
+    }
+    if (column.expr && 'name' in column.expr && typeof column.expr.name === 'string') {
+      names.add(normalizeName(column.expr.name))
+    }
+  })
+  return names
 }
 
 const parsePolicyHints = (segment: string): PolicyHints => {
@@ -102,7 +127,7 @@ export type SqlPolicyResult = {
   sql: string
   params: unknown[]
   appliedLimit: number
-  appliedTimeWindow: '90 days' | '12 months' | 'all_time' | null
+  appliedTimeWindow: GymChatTimeWindow | null
 }
 
 const normalizeName = (value: string) => value.trim().toLowerCase()
@@ -122,6 +147,14 @@ const ensureAllowedKeywordUsage = (sql: string) => {
     const pattern = new RegExp(`\\b${keyword}\\b`, 'i')
     if (pattern.test(lowered)) {
       throw new Error(`Unsafe keyword detected: ${keyword}`)
+    }
+  }
+}
+
+const ensureSupportedSqlSyntax = (sql: string) => {
+  for (const pattern of UNSUPPORTED_SQL_PATTERNS) {
+    if (pattern.regex.test(sql)) {
+      throw new Error(pattern.message)
     }
   }
 }
@@ -166,6 +199,7 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
   const tables: TableRef[] = []
   const aliasToTable = new Map<string, string>()
   const cteAliases = new Set<string>()
+  const cteColumns = new Set<string>()
   const errors: string[] = []
   let isTrendQuery = false
   let allowStar = false
@@ -173,6 +207,7 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
   const derivedColumns = new Set<string>()
   const derivedTables = new Set<string>()
   const derivedTablesAllowAll = new Set<string>()
+  const referencedTableRefs = new Set<string>()
   const allowAllTables = allowlist.tables.size === 0
 
   const mainSelection = findMainSelection(statement)
@@ -202,10 +237,13 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
   const visitor = astVisitor(map => ({
     with: st => {
       st.bind.forEach(binding => {
-        cteAliases.add(normalizeName(binding.alias.name))
+        const aliasName = normalizeName(binding.alias.name)
+        cteAliases.add(aliasName)
         if (binding.statement.type !== 'select') {
           errors.push('WITH bindings must be SELECT statements.')
+          return
         }
+        collectSelectColumnNames(binding.statement).forEach(name => cteColumns.add(name))
       })
       if (st.in.type !== 'select') {
         errors.push('WITH must wrap a SELECT statement.')
@@ -218,7 +256,7 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
       if (isSystemSchema(schema)) {
         errors.push(`System schema is not allowed: ${schema}`)
       }
-      if (!allowAllTables && !allowlist.tables.has(tableName)) {
+      if (!allowAllTables && !allowlist.tables.has(tableName) && !cteAliases.has(tableName)) {
         errors.push(`Table is not allowlisted: ${tableName}`)
       }
       const alias = table.name.alias ? normalizeName(table.name.alias) : null
@@ -322,10 +360,16 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
         return
       }
       const column = normalizeName(ref.name)
+      if (ref.table) {
+        referencedTableRefs.add(normalizeName(ref.table.name))
+      }
       if (!ref.table && selectionAliases.has(column)) {
         return
       }
       if (!ref.table && derivedColumns.has(column)) {
+        return
+      }
+      if (!ref.table && cteColumns.has(column)) {
         return
       }
       if (ref.table?.schema && isSystemSchema(ref.table.schema)) {
@@ -349,6 +393,9 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
           return
         }
         const tableName = aliasToTable.get(tableRefName) ?? tableRefName
+        if (cteAliases.has(tableName)) {
+          return
+        }
         if (cteAliases.has(tableRefName)) {
           return
         }
@@ -390,6 +437,24 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
 
   if (!tables.length) {
     errors.push('At least one allowlisted table is required.')
+  }
+
+  if (referencedTableRefs.size) {
+    const knownRefs = new Set<string>()
+    tables.forEach(table => {
+      knownRefs.add(normalizeName(table.name))
+      if (table.alias) {
+        knownRefs.add(normalizeName(table.alias))
+      }
+    })
+    derivedTables.forEach(name => knownRefs.add(normalizeName(name)))
+    derivedTablesAllowAll.forEach(name => knownRefs.add(normalizeName(name)))
+    cteAliases.forEach(alias => knownRefs.add(normalizeName(alias)))
+    referencedTableRefs.forEach(ref => {
+      if (!knownRefs.has(ref)) {
+        errors.push(`Unknown table reference: ${ref}`)
+      }
+    })
   }
 
   if (errors.length) {
@@ -468,10 +533,10 @@ const findMainSelection = (statement: SelectStatement): SelectFromStatement | nu
 const maybeCastDateRef = (expr: Expr): Expr => {
   if (expr.type !== 'ref') return expr
   const name = normalizeName(expr.name)
-  if (name === 'date') {
+  if (name === 'date' || name === 'session_date') {
     return { type: 'cast', to: { name: 'date' }, operand: expr }
   }
-  if (name === 'timestamp') {
+  if (name === 'timestamp' || name === 'performed_at') {
     return { type: 'cast', to: { name: 'timestamptz' }, operand: expr }
   }
   return expr
@@ -549,7 +614,7 @@ const applyTimeWindow = (
   selection: SelectFromStatement,
   summary: ValidationSummary,
   requestedWindow: PolicyHints['timeWindow'],
-): { selection: SelectFromStatement; applied: '90 days' | '12 months' | 'all_time' | null } => {
+): { selection: SelectFromStatement; applied: '30 days' | '90 days' | '12 months' | 'all_time' | null } => {
   if (requestedWindow === 'all_time') {
     return { selection, applied: 'all_time' }
   }
@@ -568,7 +633,11 @@ const applyPolicyToStatement = (
   statement: SelectStatement,
   summary: ValidationSummary,
   hints: PolicyHints,
-): { statement: SelectStatement; limit: number; timeWindow: '90 days' | '12 months' | 'all_time' | null } => {
+): {
+  statement: SelectStatement
+  limit: number
+  timeWindow: '30 days' | '90 days' | '12 months' | 'all_time' | null
+} => {
   ensureNoUnionOrValues(statement)
 
   if (statement.type === 'select') {
@@ -622,6 +691,7 @@ export const validateAndRewriteSql = (rawSql: string, params: unknown[]): SqlPol
     .replace(/current_date\s*-\s*\$(\d+)/gi, (_match, index) => `current_date - ($${index})::interval`)
   const { sql: hintFreeSql, hints } = stripPolicyHints(normalizedSql)
   ensureAllowedKeywordUsage(hintFreeSql)
+  ensureSupportedSqlSyntax(hintFreeSql)
 
   const statements = parse(hintFreeSql)
   if (statements.length !== 1) {

@@ -1,7 +1,7 @@
 // app/demos/gym-dashboard/ui/DashboardClient.tsx
 'use client'
 
-import { useMemo, useState, useRef, useEffect } from 'react'
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import type { GymLift } from '../form/actions'
 import ChatClient from '../chat/ChatClient'
 import VolumeChart from './VolumeChart'
@@ -234,6 +234,41 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const [mode, setMode] = useState<RangeMode>('day')
   const [prevMode, setPrevMode] = useState<RangeMode | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
+  const [bubbleOffset, setBubbleOffset] = useState({ x: 0, y: 0 })
+
+  const clampBubble = useCallback(() => {
+    const el = bubbleRef.current
+    if (!el || typeof window === 'undefined') return
+    const rect = el.getBoundingClientRect()
+    const padding = 12
+    let dx = 0
+    let dy = 0
+    const maxRight = window.innerWidth - padding
+    const maxBottom = window.innerHeight - padding
+    if (rect.right > maxRight) dx -= rect.right - maxRight
+    if (rect.left < padding) dx += padding - rect.left
+    if (rect.bottom > maxBottom) dy -= rect.bottom - maxBottom
+    if (rect.top < padding) dy += padding - rect.top
+    if (dx !== 0 || dy !== 0) {
+      setBubbleOffset(current => ({
+        x: Math.round(current.x + dx),
+        y: Math.round(current.y + dy),
+      }))
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleResize = () => requestAnimationFrame(clampBubble)
+    window.addEventListener('resize', handleResize)
+    handleResize()
+    return () => window.removeEventListener('resize', handleResize)
+  }, [clampBubble])
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(clampBubble)
+    return () => cancelAnimationFrame(frame)
+  }, [isChatOpen, clampBubble])
 
   const allYears = useMemo(
     () => unique(lifts.map(l => new Date(l.date).getUTCFullYear())).sort((a, b) => b - a),
@@ -789,7 +824,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         )}
       </div>
 
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+      <div
+        ref={bubbleRef}
+        className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3"
+        style={{ transform: `translate(${bubbleOffset.x}px, ${bubbleOffset.y}px)` }}
+      >
         {isChatOpen ? (
           <div className="h-[75vh] max-h-[640px] w-[min(460px,94vw)] overflow-hidden rounded-3xl border border-gray-800 bg-gray-950/95 shadow-2xl backdrop-blur">
             <ChatClient embedded onClose={() => setIsChatOpen(false)} />

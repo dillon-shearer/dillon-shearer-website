@@ -116,6 +116,25 @@ This project is tailored to my workflow but feel free to fork it. If you add dem
 
 Enjoy exploring the demos and adapting them to your own stack.
 
+## AI-Assisted Changes
+
+Some parts of this project, especially the Gym Dashboard demo and the shared gym-chat pipeline, are maintained with the help of AI agents.
+
+Recent agent contribution:
+- **[2026-01-01T19:00:34Z] Gym Chat SQL & Explanation Refinement**
+  - **Agent / Model**: GPT-5 (Builder Agent)
+  - **Scope**: `app/api/gym-chat/route.ts`, `lib/gym-chat/*`, `app/demos/gym-dashboard/README.md`
+  - **Summary**: Improved gym-chat reliability and UX based on real user transcripts:
+    - Fixed SQL alias bugs for muscle-group and top-end-effort analyses.
+    - Hardened LLM error handling to distinguish planning vs explanation failures.
+    - Tightened explanation and follow-up behavior to stay on topic and sound user-generated.
+  - **Details**: See `app/demos/gym-dashboard/README.md` under "AI Agent Change Log".
+- **[2026-01-01T19:29:59Z] Gym Chat Canonical SQL and Clarification Fixes**
+  - **Agent / Model**: GPT-5 (Codex)
+  - **Scope**: `app/api/gym-chat/route.ts`, `app/demos/gym-dashboard/README.md`, `README.md`
+  - **Summary**: Refined gym-chat behavior based on real transcripts: canonical SQL now bypasses generic policy rewriting (with safety checks) so top-end/muscle-group queries run cleanly, the "return for effort" clarification advances on menu replies, and recovery failures avoid empty "inspect results" prompts.
+  - **Details**: See `app/demos/gym-dashboard/README.md` under "AI Agent Change Log".
+
 ## KOReader Remote Demo
 
 The `/koreader-remote` surface lets you flip KOReader pages from your phone or laptop while your Kindle stays on a stand nearby. It never proxies LAN traffic through a server—commands originate from the browser that you have open.

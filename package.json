@@ -7,7 +7,12 @@
     "test": "tsx tests/koreader-remote.test.ts",
     "sql": "tsx scripts/run-sql.ts",
     "gym-chat:policy": "tsx scripts/gym-chat-sql-policy.ts",
-    "gym-chat:eval": "tsx eval/run-gym-chat-eval.ts"
+    "gym-chat:canonical-sql": "tsx scripts/gym-chat-canonical-sql.ts",
+    "gym-chat:eval": "tsx eval/run-gym-chat-eval.ts",
+    "gym-chat:clarification-eval": "tsx eval/run-gym-chat-clarification-eval.ts",
+    "gym-chat:multiturn-eval": "tsx eval/run-gym-chat-multiturn-eval.ts",
+    "gym-chat:top-end-compare-eval": "tsx eval/run-gym-chat-top-end-compare-eval.ts",
+    "gym-chat:workout-plan-eval": "tsx eval/run-gym-chat-workout-plan-eval.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.6",

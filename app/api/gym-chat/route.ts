@@ -3,22 +3,72 @@ import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import { createClient, createPool } from '@vercel/postgres'
 
-import { loadGymCatalog } from '@/lib/gym-chat/catalog'
+import { getCatalogTables, loadGymCatalog } from '@/lib/gym-chat/catalog'
+import {
+  buildFavoriteSplitDayPlan,
+  buildLightWeightProgressPlan,
+  buildMuscleGroupComparisonPlan,
+  buildProgressiveOverloadPlan,
+  buildReturnEffortVolumePlan,
+  buildReturnEffortProgressionPlan,
+  buildSessionCountPlan,
+  buildSetCountPlan,
+  buildStalledLiftsPlan,
+  buildTopWeightSetsPlan,
+  buildTopEndEffortsComparisonPlan,
+  buildTopEndEffortsPlan,
+  buildVolumeRankingPlan,
+  buildWeeklyVolumePlan,
+  buildWorstDayVolumePlan,
+} from '@/lib/gym-chat/canonical-plans'
+import { buildSetsBaseCte } from '@/lib/gym-chat/sql-builders'
 import {
   classifyQuestion,
   planGymSql,
+  repairGymSql,
   explainFitnessGeneral,
   explainGymResults,
   isLlmRequestError,
 } from '@/lib/gym-chat/llm'
 import {
+  DEFAULT_LIMIT,
   MAX_PREVIEW_ROWS,
   QUERY_TIMEOUT_MS,
   validateAndRewriteSql,
 } from '@/lib/gym-chat/sql-policy'
+import {
+  buildQueryResultMetadata,
+  buildFallbackExplanation,
+  buildAnalysisFollowUps,
+  buildPlanCorrectionAcknowledgement,
+  buildResponseMeta,
+  buildWorkoutPlanFromHistory,
+  buildWorkoutPlanFallbackMessage,
+  extractRequestedTopN,
+  formatCoverageLine,
+  validateRankingResponse,
+} from '@/lib/gym-chat/response-utils'
+import { buildLlmContext, classifyTurnMode, RETURN_EFFORT_CHOICE_REGEX } from '@/lib/gym-chat/conversation'
+import { buildSqlErrorAssistantMessage } from '@/lib/gym-chat/sql-errors'
 import { TEMPLATES, selectTemplates } from '@/lib/gym-chat/templates'
+import {
+  buildWorkoutPlanQueries,
+  mergeWorkoutPlanMeta,
+  normalizeMuscleName,
+  parseWorkoutPlanMeta,
+} from '@/lib/gym-chat/workout-planner'
 import type { GymChatTemplateName } from '@/lib/gym-chat/templates'
-import type { GymChatCitation, GymChatMessage, GymChatQuery, GymChatResponse } from '@/types/gym-chat'
+import type {
+  AnalysisKind,
+  GymChatCitation,
+  GymChatConversationState,
+  GymChatMessage,
+  GymChatQuery,
+  GymChatResponse,
+  PendingClarification,
+  TargetMuscleConstraint,
+  WorkoutPlanAnalysisMeta,
+} from '@/types/gym-chat'
 
 type IntentType = 'descriptive' | 'trend' | 'comparison' | 'diagnostic' | 'planning'
 type PrimaryGrain = 'set' | 'session' | 'week' | 'month' | 'all_time'
@@ -39,6 +89,12 @@ const SUGGESTED_QUESTIONS = [
   'How should I structure a 4-day split to gain muscle?',
   'Is full body training 3x/week enough?',
   'How should I set a bench press goal?',
+]
+
+const SUGGESTED_LIFT_FOLLOWUPS = [
+  'Analyze my Incline Press performance.',
+  'How has my Hack Squat progressed over the last 12 weeks?',
+  'Show my Bench Press trend for the past 3 months.',
 ]
 
 const buildRefusalMessage = (detail?: string) =>
@@ -83,6 +139,181 @@ const extractLatestUserQuestion = (messages: GymChatMessage[]) => {
 
 const hasDigits = (value: string) => /\d/.test(value)
 
+const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
+
+const ANALYSIS_KINDS: AnalysisKind[] = [
+  'muscle_group_balance',
+  'return_for_effort_volume',
+  'return_for_effort_progression',
+  'stalled_lifts',
+  'lighter_weight_progress',
+  'top_weight_sets',
+  'lowest_volume_day',
+  'favorite_split_day',
+  'weekly_volume',
+  'top_end_efforts',
+  'top_end_efforts_compare_12m_3m',
+  'progressive_overload',
+  'set_count',
+  'volume',
+  'session_count',
+  'other',
+]
+
+const normalizeAnalysisKind = (value: unknown): AnalysisKind | undefined => {
+  if (typeof value !== 'string') return undefined
+  return ANALYSIS_KINDS.find(kind => kind === value) ?? undefined
+}
+
+const normalizeAnalysisTargets = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const targets = value.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+  return targets.length ? targets : undefined
+}
+
+const normalizePendingClarification = (value: unknown): PendingClarification | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const kind = (value as PendingClarification).kind
+  if (kind === 'return_for_effort_metric' || kind === 'timeframe') {
+    return { kind }
+  }
+  return undefined
+}
+
+const normalizeTargetMuscleConstraint = (value: unknown): TargetMuscleConstraint | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as TargetMuscleConstraint
+  if (!Array.isArray(raw.include) || raw.include.length === 0) return undefined
+  const include = raw.include
+    .map(entry => normalizeMuscleName(entry) ?? entry)
+    .filter(Boolean)
+  if (!include.length) return undefined
+  const exclude = Array.isArray(raw.exclude)
+    ? raw.exclude.map(entry => normalizeMuscleName(entry) ?? entry).filter(Boolean)
+    : []
+  const excludeFiltered = exclude.filter(entry => !include.includes(entry))
+  return {
+    include,
+    exclude: excludeFiltered.length ? excludeFiltered : undefined,
+    strict: raw.strict ? true : undefined,
+  }
+}
+
+const normalizeWorkoutPlanMeta = (value: unknown): WorkoutPlanAnalysisMeta | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as WorkoutPlanAnalysisMeta
+  const targetsMuscles = normalizeTargetMuscleConstraint(raw.targetsMuscles)
+  const usesHistoricalLifts = raw.usesHistoricalLifts ? true : undefined
+  if (!targetsMuscles && !usesHistoricalLifts) return undefined
+  return {
+    targetsMuscles,
+    usesHistoricalLifts,
+  }
+}
+
+const normalizeConversationState = (value: unknown): GymChatConversationState => {
+  if (!value || typeof value !== 'object') return {}
+  const state = value as GymChatConversationState
+  const lastAnalysisKind = normalizeAnalysisKind(state.lastAnalysis?.kind)
+  const lastErrorKind = normalizeAnalysisKind(state.lastError?.analysisKind)
+  const lastPlanMeta = normalizeWorkoutPlanMeta(state.lastPlanMeta)
+  const lastAnalysisTargets = normalizeAnalysisTargets(state.lastAnalysis?.targets)
+  const errorType =
+    state.lastError?.type === 'sql' || state.lastError?.type === 'explanation' || state.lastError?.type === 'policy'
+      ? state.lastError.type
+      : undefined
+  return {
+    lastAnalysis: lastAnalysisKind
+      ? {
+          kind: lastAnalysisKind,
+          canonicalPlanId: state.lastAnalysis?.canonicalPlanId,
+          timeframe: state.lastAnalysis?.timeframe,
+          targets: lastAnalysisTargets,
+        }
+      : undefined,
+    lastPlanMeta,
+    pendingClarification: normalizePendingClarification(state.pendingClarification),
+    lastError: errorType
+      ? {
+          type: errorType,
+          analysisKind: lastErrorKind,
+          canonicalPlanId: state.lastError?.canonicalPlanId,
+        }
+      : undefined,
+  }
+}
+
+const shouldKeepReturnEffortFollowUp = (question: string) => {
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  const followUps = [
+    RETURN_EFFORT_VOLUME_QUESTION,
+    `${RETURN_EFFORT_VOLUME_QUESTION}?`,
+    RETURN_EFFORT_PROGRESSION_QUESTION,
+    `${RETURN_EFFORT_PROGRESSION_QUESTION}?`,
+  ].map(entry => normalizeWhitespace(entry).toLowerCase())
+  return followUps.includes(normalized)
+}
+
+const resolveReturnEffortAnalysisKind = (question: string): AnalysisKind | undefined => {
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  if (normalized === normalizeWhitespace(RETURN_EFFORT_VOLUME_QUESTION).toLowerCase()) {
+    return 'return_for_effort_volume'
+  }
+  if (
+    normalized === normalizeWhitespace(RETURN_EFFORT_PROGRESSION_QUESTION).toLowerCase() ||
+    RETURN_EFFORT_PROGRESSION_REGEX.test(question)
+  ) {
+    return 'return_for_effort_progression'
+  }
+  return undefined
+}
+
+const resolveReturnEffortChoice = (
+  messages: GymChatMessage[],
+  question: string,
+  pendingClarification?: PendingClarification,
+): {
+  messages: GymChatMessage[]
+  question: string
+  didResolve: boolean
+  clearPending: boolean
+  analysisKind?: AnalysisKind
+} => {
+  if (!pendingClarification || pendingClarification.kind !== 'return_for_effort_metric') {
+    return { messages, question, didResolve: false, clearPending: false, analysisKind: undefined }
+  }
+  if (shouldKeepReturnEffortFollowUp(question)) {
+    const analysisKind: AnalysisKind = normalizeWhitespace(question).toLowerCase().includes('total volume')
+      ? 'return_for_effort_volume'
+      : 'return_for_effort_progression'
+    return { messages, question, didResolve: true, clearPending: true, analysisKind }
+  }
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  if (normalized.includes('volume') || normalized.includes('total')) {
+    const analysisKind: AnalysisKind = 'return_for_effort_volume'
+    return { messages, question: RETURN_EFFORT_VOLUME_QUESTION, didResolve: true, clearPending: true, analysisKind }
+  }
+  if (normalized.includes('progress') || normalized.includes('over time') || normalized.includes('trend')) {
+    const analysisKind: AnalysisKind = 'return_for_effort_progression'
+    return { messages, question: RETURN_EFFORT_PROGRESSION_QUESTION, didResolve: true, clearPending: true, analysisKind }
+  }
+  const match = normalized.match(RETURN_EFFORT_CHOICE_REGEX)
+  if (!match?.[1]) {
+    return { messages, question, didResolve: false, clearPending: true, analysisKind: undefined }
+  }
+  const isVolume = match[1].toLowerCase() === 'a'
+  const rewritten = isVolume ? RETURN_EFFORT_VOLUME_QUESTION : RETURN_EFFORT_PROGRESSION_QUESTION
+  const updated = [...messages]
+  for (let i = updated.length - 1; i >= 0; i -= 1) {
+    if (updated[i].role === 'user') {
+      updated[i] = { ...updated[i], content: rewritten }
+      break
+    }
+  }
+  const analysisKind: AnalysisKind = isVolume ? 'return_for_effort_volume' : 'return_for_effort_progression'
+  return { messages: updated, question: rewritten, didResolve: true, clearPending: true, analysisKind }
+}
+
 const extractMarkers = (message: string) => {
   const markers = new Set<string>()
   const regex = /\[([a-zA-Z0-9_-]+)\]/g
@@ -98,6 +329,174 @@ const formatCellValue = (value: unknown) => {
   if (typeof value === 'bigint') return Number(value)
   if (value && typeof value === 'object') return JSON.stringify(value)
   return value
+}
+
+const CANONICAL_SQL_UNSAFE_KEYWORDS = [
+  'insert',
+  'update',
+  'delete',
+  'drop',
+  'alter',
+  'create',
+  'truncate',
+  'grant',
+  'revoke',
+  'merge',
+  'call',
+  'execute',
+  'vacuum',
+  'copy',
+]
+
+const validateCanonicalSqlSafety = (sql: string) => {
+  const trimmed = sql.trim()
+  if (!trimmed) return 'Only SELECT or WITH statements are allowed.'
+  const lowered = trimmed.toLowerCase()
+  if (!(lowered.startsWith('select') || lowered.startsWith('with'))) {
+    return 'Only SELECT or WITH statements are allowed.'
+  }
+  if (trimmed.includes(';')) {
+    return 'Unsafe keyword detected: ;'
+  }
+  for (const keyword of CANONICAL_SQL_UNSAFE_KEYWORDS) {
+    const pattern = new RegExp(`\\b${keyword}\\b`, 'i')
+    if (pattern.test(lowered)) {
+      return `Unsafe keyword detected: ${keyword}`
+    }
+  }
+  return null
+}
+
+const inferCanonicalTimeWindow = (params: unknown[]) => {
+  const normalized = params.map(value => String(value).toLowerCase())
+  if (normalized.some(value => value.includes('all_time') || value.includes('all time'))) return 'all_time'
+  const candidates = normalized
+    .map(value => {
+      const match = value.match(/(\d+)\s*(day|week|month|year)s?\b/)
+      if (!match?.[1] || !match[2]) return null
+      const count = Number(match[1])
+      if (!Number.isFinite(count) || count <= 0) return null
+      const unit = match[2] as 'day' | 'week' | 'month' | 'year'
+      const label = `${count} ${pluralizeUnit(unit, count)}`
+      const days =
+        unit === 'day'
+          ? count
+          : unit === 'week'
+            ? count * 7
+            : unit === 'month'
+              ? count * 30
+              : count * 365
+      return { label, days }
+    })
+    .filter((entry): entry is { label: string; days: number } => Boolean(entry))
+  if (!candidates.length) return null
+  return candidates.reduce((best, entry) => (entry.days > best.days ? entry : best)).label
+}
+
+const inferCanonicalLimit = (sql: string) => {
+  const match = sql.match(/\blimit\s+(\d+)\b/i)
+  if (!match?.[1]) return DEFAULT_LIMIT
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_LIMIT
+  return Math.floor(value)
+}
+
+const inferAnalysisKindFromResponseMeta = (meta: { metricName: string | null }): AnalysisKind | undefined => {
+  if (meta.metricName === 'total sets') return 'set_count'
+  if (meta.metricName === 'total volume') return 'volume'
+  if (meta.metricName === 'sessions') return 'session_count'
+  return undefined
+}
+
+const inferTopEndWindowLabel = (query: GymChatQuery): '12 months' | '3 months' | null => {
+  const paramText = query.params.map(value => String(value)).join(' ').toLowerCase()
+  const purpose = query.purpose.toLowerCase()
+  const combined = `${purpose} ${paramText}`
+  if (combined.includes('12 months') || combined.includes('12 month')) return '12 months'
+  if (combined.includes('3 months') || combined.includes('3 month')) return '3 months'
+  return null
+}
+
+const buildTopEndComparisonNotes = (queries: GymChatQuery[]) => {
+  const status = {
+    '12 months': { hasQuery: false, hasData: false, hasError: false },
+    '3 months': { hasQuery: false, hasData: false, hasError: false },
+  }
+  queries.forEach(query => {
+    const windowLabel = inferTopEndWindowLabel(query)
+    if (!windowLabel) return
+    status[windowLabel].hasQuery = true
+    if (query.error) {
+      status[windowLabel].hasError = true
+      return
+    }
+    if (query.rowCount > 0 || query.previewRows.length > 0) {
+      status[windowLabel].hasData = true
+    }
+  })
+  const notes: string[] = []
+  ;(['12 months', '3 months'] as const).forEach(windowLabel => {
+    const entry = status[windowLabel]
+    if (!entry.hasQuery) {
+      notes.push(
+        `No ${windowLabel} query ran. State that only the available window(s) were analyzed and avoid claiming a comparison.`,
+      )
+      return
+    }
+    if (entry.hasError) {
+      notes.push(
+        `The ${windowLabel} window had query errors. Call out the failure and avoid claiming a full comparison.`,
+      )
+      return
+    }
+    if (!entry.hasData) {
+      notes.push(
+        `The ${windowLabel} window returned no rows. Mention the sparse window and avoid forcing a comparison.`,
+      )
+    }
+  })
+  return notes
+}
+
+const applyAnalysisState = (
+  state: GymChatConversationState,
+  input: {
+    kind: AnalysisKind
+    canonicalPlanId?: string
+    timeframe?: string
+    targets?: string[]
+  },
+) => ({
+  ...state,
+  pendingClarification: null,
+  lastAnalysis: {
+    kind: input.kind,
+    canonicalPlanId: input.canonicalPlanId,
+    timeframe: input.timeframe,
+    targets: input.targets,
+  },
+  lastError: undefined,
+})
+
+const applyErrorState = (
+  state: GymChatConversationState,
+  input: { type: 'sql' | 'explanation' | 'policy'; analysisKind?: AnalysisKind; canonicalPlanId?: string },
+) => ({
+  ...state,
+  pendingClarification: null,
+  lastError: {
+    type: input.type,
+    analysisKind: input.analysisKind,
+    canonicalPlanId: input.canonicalPlanId,
+  },
+})
+
+const applyPlanMeta = (state: GymChatConversationState, planMeta?: WorkoutPlanAnalysisMeta) => {
+  if (!planMeta) return state
+  return {
+    ...state,
+    lastPlanMeta: planMeta,
+  }
 }
 
 const formatStructuredAssistantMessage = (
@@ -185,6 +584,29 @@ const formatStructuredAssistantMessage = (
   }
 }
 
+const normalizeFollowUp = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const prefixMatch = trimmed.match(/^(would you like (me )?to|interested in|are you interested in)\s+/i)
+  let next = prefixMatch ? trimmed.slice(prefixMatch[0].length) : trimmed
+  next = next.replace(/^see\b/i, 'Show')
+  next = next.replace(/^view\b/i, 'Show')
+  next = next.replace(/^to\s+/i, '')
+  next = next.trim()
+  if (!next) return null
+  next = `${next.charAt(0).toUpperCase()}${next.slice(1)}`
+  next = next.replace(/[.?!]+$/, '')
+  return `${next}?`
+}
+
+const sanitizeFollowUps = (followUps?: string[]) => {
+  if (!followUps?.length) return undefined
+  const cleaned = followUps
+    .map(entry => normalizeFollowUp(entry))
+    .filter((entry): entry is string => Boolean(entry))
+  return cleaned.length ? cleaned : undefined
+}
+
 const buildFallbackCitations = (assistantMessage: string, queries: GymChatQuery[]) => {
   const eligibleQueries = queries.filter(query => !query.error && query.previewRows.length > 0)
   if (!eligibleQueries.length) return null
@@ -244,6 +666,17 @@ const pluralizeUnit = (unit: 'day' | 'week' | 'month' | 'year', value: number) =
   return 'years'
 }
 
+const extractExplicitWindow = (text: string) => {
+  if (!text) return null
+  const normalized = text.toLowerCase()
+  const match = normalized.match(/(\d+)\s*(day|week|month|year)s?\b/)
+  if (!match?.[1] || !match[2]) return null
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+  const unit = match[2] as 'day' | 'week' | 'month' | 'year'
+  return `${value} ${pluralizeUnit(unit, value)}`
+}
+
 const coerceIntervalParams = (sql: string, params: unknown[], hints: IntervalHints) => {
   const matches = Array.from(sql.matchAll(INTERVAL_PLACEHOLDER_REGEX))
   if (!matches.length) return params
@@ -294,7 +727,60 @@ const GYM_INTENT_KEYWORDS = [
   'lifts',
   'day tag',
   'pr',
+  'quads',
+  'hamstrings',
+  'glutes',
+  'calves',
+  'hips',
+  'core',
+  'chest',
+  'back',
+  'shoulders',
+  'biceps',
+  'triceps',
+  'forearms',
 ]
+
+const PROGRESSIVE_OVERLOAD_REGEX = /progressive overload|overload streak|longest streak|streak\b.*overload/i
+const MUSCLE_GROUP_COMPARISON_REGEX =
+  /muscle group|body part|body parts|compare\b.*(12\s*weeks|12-week)|average weekly volume/i
+const TOP_END_EFFORT_REGEX =
+  /top[-\s]?end efforts?|true top[-\s]?end|max(?:imal)? efforts?|max efforts?/i
+const TOP_END_COMPARE_SIGNAL_REGEX = /\bcompare\b|\bvs\b|\bversus\b/i
+const TWELVE_MONTH_REGEX = /\b12\s*(months?|mos?|m)\b|\b12-month\b|\b12m\b/i
+const THREE_MONTH_REGEX = /\b3\s*(months?|mos?|m)\b|\b3-month\b|\b3m\b/i
+const TOP_WEIGHT_SETS_REGEX =
+  /top\s*\d+\s*(?:highest|heaviest)[-\s]?weight\s*sets?|highest[-\s]?weight\s*sets?|heaviest\s*sets?/i
+const WORST_DAY_REGEX =
+  /worst day|lowest\s+total\s+volume|lowest\s+volume\s+(?:session|day)|least\s+volume/i
+const FAVORITE_SPLIT_REGEX =
+  /fav(?:orite)?\s+(?:split|split day|day tag)|which\s+split.*(?:most|often)|split\s+.*(?:most|often)/i
+const WEEKLY_VOLUME_REGEX = /weekly\s+(?:training\s+)?volume|volume\s+per\s+week/i
+const SET_COUNT_REGEX =
+  /\b(total\s+sets|set\s+count|sets\s+per\s+exercise|most\s+sets|highest\s+sets|set rankings?)\b/i
+const VOLUME_RANKING_REGEX =
+  /\b(total\s+volume\s+per\s+exercise|most\s+total\s+volume|highest\s+volume|most\s+volume|tonnage|lb-reps|kg-reps)\b/i
+const SESSION_COUNT_REGEX =
+  /\b(how\s+many\s+sessions|session\s+count|sessions\s+(?:did|have)\s+i|training\s+days)\b/i
+const SESSION_TREND_REGEX = /\bper\s+week|per\s+month|by\s+week|by\s+month\b/i
+const RETURN_EFFORT_REGEX =
+  /return for effort|return on effort|bang for (my )?buck|bang[-\s]?for[-\s]?(my )?buck/i
+const RETURN_EFFORT_PROGRESSION_REGEX =
+  /progression over time for each exercise|progression over time for each lift|return for effort.*progression/i
+const STALLED_LIFTS_REGEX = /stalled|stalling|stall\b|plateau|stagnat/i
+const LIGHTER_WEIGHTS_REGEX = /lighter weights?|using lighter|lighter weight/i
+const RETURN_EFFORT_VOLUME_QUESTION = 'Show total volume per exercise over the last 90 days.'
+const RETURN_EFFORT_PROGRESSION_QUESTION = 'Show my progression over time for each exercise.'
+const PLAN_CORRECTION_REGEX =
+  /\b(you gave me|you suggested|you included|that's wrong|that is wrong|i asked for|ensure your suggestions|only)\b/i
+
+const hasBodyPartsMapping = () => {
+  const tables = getCatalogTables()
+  const meta = tables.find(table => table.name.toLowerCase() === 'gym_day_meta')
+  if (!meta) return false
+  return meta.columns.some(column => column.name.toLowerCase() === 'body_parts')
+}
+
 
 const PLANNING_KEYWORDS = [
   'next',
@@ -406,6 +892,31 @@ const TARGET_KEYWORD_MAP: Array<{ keywords: string[]; target: string }> = [
   { keywords: ['equipment', 'machine', 'barbell', 'dumbbell'], target: 'equipment' },
 ]
 
+const ANALYSIS_TEMPLATE_HINTS: Partial<Record<AnalysisKind, GymChatTemplateName>> = {
+  stalled_lifts: 'plateau_vs_progress',
+  muscle_group_balance: 'body_part_balance',
+  weekly_volume: 'workload_consistency',
+  favorite_split_day: 'workload_consistency',
+}
+
+const ANALYSIS_INTENT_HINTS: Partial<Record<AnalysisKind, IntentType>> = {
+  muscle_group_balance: 'comparison',
+  return_for_effort_volume: 'comparison',
+  return_for_effort_progression: 'trend',
+  stalled_lifts: 'diagnostic',
+  lighter_weight_progress: 'comparison',
+  top_weight_sets: 'comparison',
+  lowest_volume_day: 'diagnostic',
+  favorite_split_day: 'descriptive',
+  weekly_volume: 'trend',
+  top_end_efforts: 'trend',
+  top_end_efforts_compare_12m_3m: 'comparison',
+  progressive_overload: 'trend',
+  set_count: 'comparison',
+  volume: 'comparison',
+  session_count: 'trend',
+}
+
 
 const ALLOWED_PRIMARY_GRAINS: PrimaryGrain[] = ['set', 'session', 'week', 'month', 'all_time']
 
@@ -440,6 +951,32 @@ const containsKeyword = (text: string, keywords: string[]) => {
   return keywords.some(keyword => normalized.includes(keyword))
 }
 
+const isTopEndEffortsComparisonQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = text.toLowerCase()
+  if (!TOP_END_EFFORT_REGEX.test(normalized)) return false
+  const has12 = TWELVE_MONTH_REGEX.test(normalized)
+  const has3 = THREE_MONTH_REGEX.test(normalized)
+  if (!has12 || !has3) return false
+  if (TOP_END_COMPARE_SIGNAL_REGEX.test(normalized)) return true
+  return normalized.includes('last 12') && normalized.includes('last 3')
+}
+
+const isTopWeightSetsQuestion = (text: string) => TOP_WEIGHT_SETS_REGEX.test(text || '')
+
+const isWorstDayQuestion = (text: string) => WORST_DAY_REGEX.test(text || '')
+
+const isFavoriteSplitQuestion = (text: string) => FAVORITE_SPLIT_REGEX.test(text || '')
+
+const isWeeklyVolumeQuestion = (text: string) => WEEKLY_VOLUME_REGEX.test(text || '')
+
+const isSetCountQuestion = (text: string) => SET_COUNT_REGEX.test(text || '')
+
+const isVolumeRankingQuestion = (text: string) => VOLUME_RANKING_REGEX.test(text || '')
+
+const isSessionCountQuestion = (text: string) =>
+  SESSION_COUNT_REGEX.test(text || '') && !SESSION_TREND_REGEX.test(text || '')
+
 const inferIntentType = (text: string): IntentType | undefined => {
   if (!text) return undefined
   if (containsKeyword(text, PLANNING_KEYWORDS)) return 'planning'
@@ -471,6 +1008,15 @@ const inferTargets = (text: string) => {
 }
 
 const RELATIVE_WINDOW_DETECT_REGEX = /(\d+)[-\s]+(day|week|month|year)s?\b/i
+
+const UNSAFE_POLICY_ERROR_PATTERNS = [
+  /unsafe keyword detected/i,
+  /only select/i,
+  /union, values, and recursive/i,
+  /system schema is not allowed/i,
+]
+
+const isUnsafePolicyError = (error: string) => UNSAFE_POLICY_ERROR_PATTERNS.some(pattern => pattern.test(error))
 
 const shouldConfirmPlan = (question: string, intentType?: IntentType) => {
   if (!question) return false
@@ -524,6 +1070,8 @@ export async function POST(req: Request) {
   const requestId = randomUUID()
   const startedAt = Date.now()
   const wantsEvalMeta = req.headers.get('x-gym-chat-eval') === '1'
+  const wantsDebugSql = req.headers.get('x-gym-chat-debug') === '1'
+  let conversationState: GymChatConversationState = {}
   const log = (...args: unknown[]) => {
     console.info(`[gym-chat:${requestId}]`, ...args)
   }
@@ -532,15 +1080,23 @@ export async function POST(req: Request) {
     init?: { status?: number },
     meta?: GymChatEvalMeta,
   ) => {
+    const payload =
+      'assistantMessage' in body
+        ? { ...body, conversationState }
+        : body
     const headers = wantsEvalMeta ? buildEvalHeaders(meta) : undefined
     if (headers) {
-      return NextResponse.json(body, { ...(init ?? {}), headers })
+      return NextResponse.json(payload, { ...(init ?? {}), headers })
     }
-    return NextResponse.json(body, init)
+    return NextResponse.json(payload, init)
   }
 
   try {
-    let payload: { messages?: GymChatMessage[]; client?: { timezone?: string } }
+    let payload: {
+      messages?: GymChatMessage[]
+      client?: { timezone?: string }
+      conversationState?: GymChatConversationState | null
+    }
     try {
       payload = await req.json()
     } catch (error) {
@@ -551,32 +1107,120 @@ export async function POST(req: Request) {
       log('catalog load failed', error)
     })
 
-    const messages = normalizeMessages(payload.messages ?? [])
+    conversationState = normalizeConversationState(payload.conversationState)
+
+    let messages = normalizeMessages(payload.messages ?? [])
     if (!messages.length) {
       return respond({ error: 'Messages are required.' }, { status: 400 })
     }
 
-    const question = extractLatestUserQuestion(messages)
+    let question = extractLatestUserQuestion(messages)
     if (!question) {
       return respond({ error: 'User question is required.' }, { status: 400 })
     }
 
     const timezone = payload.client?.timezone ?? 'UTC'
 
-    const classification = await classifyQuestion(messages)
+    let turnMode = classifyTurnMode({ message: question, state: conversationState })
+    let analysisKindOverride: AnalysisKind | undefined
+
+    if (conversationState.pendingClarification && turnMode !== 'clarification_answer') {
+      conversationState = { ...conversationState, pendingClarification: null }
+    }
+    if (turnMode === 'new_question' && conversationState.lastError) {
+      conversationState = { ...conversationState, lastError: undefined }
+    }
+
+    const parsedPlanMeta = parseWorkoutPlanMeta(question)
+    const planMeta = mergeWorkoutPlanMeta(
+      turnMode === 'analysis_followup' ? conversationState.lastPlanMeta : undefined,
+      parsedPlanMeta,
+    )
+    const hasMuscleConstraint = Boolean(planMeta?.targetsMuscles?.include?.length)
+    const wantsHistoricalLifts = Boolean(planMeta?.usesHistoricalLifts)
+    const wantsCorrectionAcknowledgement =
+      Boolean(conversationState.lastPlanMeta) && turnMode === 'analysis_followup' && PLAN_CORRECTION_REGEX.test(question)
+
+    if (turnMode === 'clarification_answer') {
+      const resolvedReturnEffort = resolveReturnEffortChoice(
+        messages,
+        question,
+        conversationState.pendingClarification ?? undefined,
+      )
+      messages = resolvedReturnEffort.messages
+      question = resolvedReturnEffort.question
+      analysisKindOverride = resolvedReturnEffort.analysisKind
+      if (resolvedReturnEffort.clearPending) {
+        conversationState = { ...conversationState, pendingClarification: null }
+      }
+      if (!resolvedReturnEffort.didResolve) {
+        turnMode = 'new_question'
+        messages = [{ role: 'user', content: question }]
+      }
+    }
+    if (isTopEndEffortsComparisonQuestion(question)) {
+      analysisKindOverride = 'top_end_efforts_compare_12m_3m'
+    }
+    if (!analysisKindOverride && isTopWeightSetsQuestion(question)) {
+      analysisKindOverride = 'top_weight_sets'
+    }
+    if (!analysisKindOverride && isWorstDayQuestion(question)) {
+      analysisKindOverride = 'lowest_volume_day'
+    }
+    if (!analysisKindOverride && isFavoriteSplitQuestion(question)) {
+      analysisKindOverride = 'favorite_split_day'
+    }
+    if (!analysisKindOverride && isWeeklyVolumeQuestion(question)) {
+      analysisKindOverride = 'weekly_volume'
+    }
+    if (!analysisKindOverride) {
+      analysisKindOverride = resolveReturnEffortAnalysisKind(question)
+    }
+    if (!analysisKindOverride && isSetCountQuestion(question)) {
+      analysisKindOverride = 'set_count'
+    }
+    if (!analysisKindOverride && isVolumeRankingQuestion(question)) {
+      analysisKindOverride = 'volume'
+    }
+    if (!analysisKindOverride && isSessionCountQuestion(question)) {
+      analysisKindOverride = 'session_count'
+    }
+    if (turnMode === 'analysis_followup' && !analysisKindOverride && conversationState.lastAnalysis?.kind) {
+      analysisKindOverride = conversationState.lastAnalysis.kind
+    }
+
+    const llmMessages = buildLlmContext({ question, state: conversationState, mode: turnMode })
+    let classification: Awaited<ReturnType<typeof classifyQuestion>>
+    try {
+      classification = await classifyQuestion(llmMessages)
+    } catch (error) {
+      if (isLlmRequestError(error)) {
+        log('classification failed', { status: error.status, retryable: error.retryable, detail: error.detail })
+        const likelyGymQuestion = looksLikeGymIntent(question) || hasMuscleConstraint
+        const assistantMessage = likelyGymQuestion
+          ? "I'm not sure I understood the specific analysis you're after. Can you rephrase with a lift or focus area and a timeframe?"
+          : "I'm not sure I understood that. Can you clarify what you'd like to know about training or your workout history?"
+        const response: GymChatResponse = {
+          assistantMessage,
+          citations: [],
+          queries: [],
+        }
+        return respond(response)
+      }
+      throw error
+    }
     log('classification', classification)
     classification.primaryGrain = normalizePrimaryGrainValue(classification.primaryGrain)
     const intervalHints = extractIntervalHints(question)
-    const userContext = messages.filter(message => message.role === 'user').map(message => message.content).join(' ')
-    const combinedUserText = `${question} ${userContext}`
-    const likelyGymIntent = looksLikeGymIntent(combinedUserText)
-    const likelyPlanningIntent = looksLikePlanningIntent(combinedUserText)
+    const combinedUserText = question
+    const likelyGymIntent = looksLikeGymIntent(combinedUserText) || hasMuscleConstraint
+    const likelyPlanningIntent = looksLikePlanningIntent(combinedUserText) || hasMuscleConstraint
     if (likelyGymIntent) {
       if (classification.domain === 'other') {
         log('classification override: forcing fitness_general domain due to workout intent heuristics')
         classification.domain = 'fitness_general'
       }
-      if (classification.confidence < 0.9 && classification.domain !== 'other') {
+      if (classification.confidence < 0.9) {
         classification.confidence = 0.9
       }
       if (classification.clarifyingQuestion) {
@@ -593,6 +1237,30 @@ export async function POST(req: Request) {
       }
       if (classification.clarifyingQuestion) {
         classification.clarifyingQuestion = undefined
+      }
+    }
+    if (wantsHistoricalLifts && classification.domain !== 'gym_data') {
+      classification.domain = 'gym_data'
+      classification.confidence = Math.max(classification.confidence, 0.8)
+      classification.clarifyingQuestion = undefined
+    }
+    if (hasMuscleConstraint && classification.intentType !== 'planning') {
+      classification.intentType = 'planning'
+    }
+    const hasGymContextOverride =
+      Boolean(analysisKindOverride) ||
+      (turnMode === 'analysis_followup' && (conversationState.lastAnalysis || conversationState.lastPlanMeta))
+    if (hasGymContextOverride && classification.domain !== 'gym_data') {
+      classification.domain = 'gym_data'
+      classification.confidence = Math.max(classification.confidence, 0.8)
+      if (classification.clarifyingQuestion) {
+        classification.clarifyingQuestion = undefined
+      }
+    }
+    if (analysisKindOverride) {
+      const hintedIntent = ANALYSIS_INTENT_HINTS[analysisKindOverride]
+      if (hintedIntent && (turnMode === 'analysis_followup' || !classification.intentType)) {
+        classification.intentType = hintedIntent
       }
     }
     if (!classification.intentType) {
@@ -612,6 +1280,10 @@ export async function POST(req: Request) {
       const mergedTargets = new Set([...(classification.targets ?? []), ...inferredTargets])
       classification.targets = Array.from(mergedTargets)
     }
+    if (hasMuscleConstraint) {
+      const mergedTargets = new Set([...(classification.targets ?? []), 'body_part'])
+      classification.targets = Array.from(mergedTargets)
+    }
     if (!classification.intentType) {
       classification.intentType = 'descriptive'
     }
@@ -620,12 +1292,19 @@ export async function POST(req: Request) {
       intentType: classification.intentType,
       primaryGrain: classification.primaryGrain,
       targets: classification.targets,
+      planMeta,
     }
-    const templateSelection = selectTemplates({
+    let templateSelection = selectTemplates({
       question: combinedUserText,
       intentType: classification.intentType,
       targets: classification.targets,
     })
+    if (turnMode === 'analysis_followup' && conversationState.lastAnalysis?.kind) {
+      const hinted = ANALYSIS_TEMPLATE_HINTS[conversationState.lastAnalysis.kind]
+      if (hinted) {
+        templateSelection = { primary: hinted, secondary: templateSelection.secondary }
+      }
+    }
     let evalMeta: GymChatEvalMeta = {
       intentType: classification.intentType,
       selectedTemplate: templateSelection.primary,
@@ -645,23 +1324,31 @@ export async function POST(req: Request) {
     }
 
     if (classification.confidence < 0.8) {
-      const response: GymChatResponse = {
-        assistantMessage:
-          classification.clarifyingQuestion ||
-          'Can you clarify what gym data you want to analyze?',
-        citations: [],
-        queries: [],
+      if (classification.domain === 'gym_data') {
+        classification.confidence = 0.8
+        classification.clarifyingQuestion = undefined
+      } else {
+        const followUps = undefined
+        const response: GymChatResponse = {
+          assistantMessage:
+            classification.clarifyingQuestion ||
+            'Can you clarify what gym data you want to analyze?',
+          citations: [],
+          queries: [],
+          followUps,
+        }
+        return respond(response, undefined, evalMeta)
       }
-      return respond(response, undefined, evalMeta)
     }
 
     if (classification.domain === 'fitness_general') {
-      const explanation = await explainFitnessGeneral(messages)
+      const explanation = await explainFitnessGeneral(llmMessages)
+      conversationState = applyPlanMeta(conversationState, planMeta)
       const response: GymChatResponse = {
         assistantMessage: explanation.assistantMessage,
         citations: [],
         queries: [],
-        followUps: explanation.followUps,
+        followUps: sanitizeFollowUps(explanation.followUps),
       }
       return respond(response, undefined, { ...evalMeta, queryCount: 0 })
     }
@@ -677,21 +1364,27 @@ export async function POST(req: Request) {
       return respond(response, undefined, evalMeta)
     }
 
-    const plan = await planGymSql(messages, timezone, {
-      ...intentHints,
-      template: templateSelection.primary,
-      secondaryTemplate: templateSelection.secondary,
-    })
-    if (plan.refusal) {
+    if (classification.domain === 'gym_data' && RETURN_EFFORT_REGEX.test(question) && !analysisKindOverride) {
+      conversationState = { ...conversationState, pendingClarification: { kind: 'return_for_effort_metric' } }
       const response: GymChatResponse = {
-        assistantMessage: plan.refusal.message,
+        assistantMessage:
+          "When you say 'return for effort', do you mean (a) total volume per exercise, (b) progression over time, or (c) something else? " +
+          'I can compute (a) or (b) from your logs.',
         citations: [],
         queries: [],
-        refusal: plan.refusal,
+        followUps: [
+          'Show total volume per exercise over the last 90 days?',
+          'Show my progression over time for each exercise?',
+        ],
       }
       return respond(response, undefined, evalMeta)
     }
 
+    const plan = await planGymSql(llmMessages, timezone, {
+      ...intentHints,
+      template: templateSelection.primary,
+      secondaryTemplate: templateSelection.secondary,
+    })
     const plannedTemplate = normalizeTemplateName(plan.template)
     const plannedSecondaryTemplate = normalizeTemplateName(plan.secondaryTemplate)
     const selectedTemplate = plannedTemplate ?? templateSelection.primary
@@ -706,10 +1399,160 @@ export async function POST(req: Request) {
       secondaryTemplate,
     }
 
-    const plannedQueries = (plan.queries ?? []).map((query, index) => ({
+    const useBodyParts = hasBodyPartsMapping()
+    const setsBase = buildSetsBaseCte()
+    const explicitWindow = extractExplicitWindow(question)
+    const requestedTopN = extractRequestedTopN(question)
+    const topWeightLimit = requestedTopN ?? 5
+    const rankingLimit = requestedTopN ?? 10
+    const topWeightWindow = explicitWindow ?? '90 days'
+    const worstDayWindow = explicitWindow ?? '30 days'
+    const favoriteSplitWindow = explicitWindow ?? '12 months'
+    const weeklyVolumeWindow = explicitWindow ?? '12 months'
+    const planningWindow = explicitWindow ?? '12 months'
+    const sessionCountWindow = explicitWindow ?? '12 weeks'
+    const normalizedQuestion = normalizeWhitespace(question).toLowerCase()
+    const isReturnEffortProgression =
+      analysisKindOverride === 'return_for_effort_progression' ||
+      normalizedQuestion === normalizeWhitespace(RETURN_EFFORT_PROGRESSION_QUESTION).toLowerCase() ||
+      RETURN_EFFORT_PROGRESSION_REGEX.test(question)
+    const isStalledLiftsQuestion = STALLED_LIFTS_REGEX.test(question)
+    const isLightWeightProgressQuestion = LIGHTER_WEIGHTS_REGEX.test(question)
+    const isMuscleGroupQuestion = MUSCLE_GROUP_COMPARISON_REGEX.test(combinedUserText)
+    const isTopEndEffortQuestion = TOP_END_EFFORT_REGEX.test(combinedUserText)
+    let canonicalAnalysisKind: AnalysisKind | undefined
+    const workoutPlan =
+      classification.intentType === 'planning' && hasMuscleConstraint && !analysisKindOverride
+        ? buildWorkoutPlanQueries({
+            lifts: setsBase,
+            constraint: planMeta?.targetsMuscles,
+            window: planningWindow,
+            maxExercises: 6,
+          })
+        : null
+    const canonicalPlan = (() => {
+      if (analysisKindOverride === 'progressive_overload') {
+        canonicalAnalysisKind = 'progressive_overload'
+        return buildProgressiveOverloadPlan(setsBase)
+      }
+      if (analysisKindOverride === 'return_for_effort_volume') {
+        canonicalAnalysisKind = 'return_for_effort_volume'
+        return buildReturnEffortVolumePlan(setsBase, {
+          window: explicitWindow ?? '90 days',
+          limit: requestedTopN ?? undefined,
+        })
+      }
+      if (analysisKindOverride === 'return_for_effort_progression') {
+        canonicalAnalysisKind = 'return_for_effort_progression'
+        return buildReturnEffortProgressionPlan(setsBase)
+      }
+      if (analysisKindOverride === 'set_count') {
+        canonicalAnalysisKind = 'set_count'
+        return buildSetCountPlan(setsBase, { limit: rankingLimit, window: topWeightWindow })
+      }
+      if (analysisKindOverride === 'volume') {
+        canonicalAnalysisKind = 'volume'
+        return buildVolumeRankingPlan(setsBase, { limit: rankingLimit, window: topWeightWindow })
+      }
+      if (analysisKindOverride === 'session_count') {
+        canonicalAnalysisKind = 'session_count'
+        return buildSessionCountPlan(setsBase, { window: sessionCountWindow })
+      }
+      if (analysisKindOverride === 'stalled_lifts') {
+        canonicalAnalysisKind = 'stalled_lifts'
+        return buildStalledLiftsPlan(setsBase)
+      }
+      if (analysisKindOverride === 'lighter_weight_progress') {
+        canonicalAnalysisKind = 'lighter_weight_progress'
+        return buildLightWeightProgressPlan(setsBase)
+      }
+      if (analysisKindOverride === 'top_weight_sets') {
+        canonicalAnalysisKind = 'top_weight_sets'
+        return buildTopWeightSetsPlan(setsBase, { limit: topWeightLimit, window: topWeightWindow })
+      }
+      if (analysisKindOverride === 'lowest_volume_day') {
+        canonicalAnalysisKind = 'lowest_volume_day'
+        return buildWorstDayVolumePlan(setsBase, { window: worstDayWindow })
+      }
+      if (analysisKindOverride === 'favorite_split_day') {
+        canonicalAnalysisKind = 'favorite_split_day'
+        return buildFavoriteSplitDayPlan(setsBase, { window: favoriteSplitWindow })
+      }
+      if (analysisKindOverride === 'weekly_volume') {
+        canonicalAnalysisKind = 'weekly_volume'
+        return buildWeeklyVolumePlan(setsBase, { window: weeklyVolumeWindow })
+      }
+      if (analysisKindOverride === 'top_end_efforts') {
+        canonicalAnalysisKind = 'top_end_efforts'
+        return buildTopEndEffortsPlan(setsBase)
+      }
+      if (analysisKindOverride === 'top_end_efforts_compare_12m_3m') {
+        canonicalAnalysisKind = 'top_end_efforts_compare_12m_3m'
+        return buildTopEndEffortsComparisonPlan(setsBase)
+      }
+      if (analysisKindOverride === 'muscle_group_balance') {
+        canonicalAnalysisKind = 'muscle_group_balance'
+        return buildMuscleGroupComparisonPlan(useBodyParts, setsBase)
+      }
+      if (PROGRESSIVE_OVERLOAD_REGEX.test(combinedUserText)) {
+        canonicalAnalysisKind = 'progressive_overload'
+        return buildProgressiveOverloadPlan(setsBase)
+      }
+      if (isReturnEffortProgression) {
+        canonicalAnalysisKind = 'return_for_effort_progression'
+        return buildReturnEffortProgressionPlan(setsBase)
+      }
+      if (isStalledLiftsQuestion) {
+        canonicalAnalysisKind = 'stalled_lifts'
+        return buildStalledLiftsPlan(setsBase)
+      }
+      if (isLightWeightProgressQuestion) {
+        canonicalAnalysisKind = 'lighter_weight_progress'
+        return buildLightWeightProgressPlan(setsBase)
+      }
+      if (isTopWeightSetsQuestion(question)) {
+        canonicalAnalysisKind = 'top_weight_sets'
+        return buildTopWeightSetsPlan(setsBase, { limit: topWeightLimit, window: topWeightWindow })
+      }
+      if (isWorstDayQuestion(question)) {
+        canonicalAnalysisKind = 'lowest_volume_day'
+        return buildWorstDayVolumePlan(setsBase, { window: worstDayWindow })
+      }
+      if (isFavoriteSplitQuestion(question)) {
+        canonicalAnalysisKind = 'favorite_split_day'
+        return buildFavoriteSplitDayPlan(setsBase, { window: favoriteSplitWindow })
+      }
+      if (isWeeklyVolumeQuestion(question)) {
+        canonicalAnalysisKind = 'weekly_volume'
+        return buildWeeklyVolumePlan(setsBase, { window: weeklyVolumeWindow })
+      }
+      if (isTopEndEffortQuestion) {
+        canonicalAnalysisKind = 'top_end_efforts'
+        return buildTopEndEffortsPlan(setsBase)
+      }
+      if (isMuscleGroupQuestion) {
+        canonicalAnalysisKind = 'muscle_group_balance'
+        return buildMuscleGroupComparisonPlan(useBodyParts, setsBase)
+      }
+      return null
+    })()
+
+    if (plan.refusal && !canonicalPlan && !workoutPlan) {
+      const response: GymChatResponse = {
+        assistantMessage: plan.refusal.message,
+        citations: [],
+        queries: [],
+        refusal: plan.refusal,
+      }
+      return respond(response, undefined, evalMeta)
+    }
+
+    const plannedQueries = (workoutPlan?.queries ?? canonicalPlan?.queries ?? plan.queries ?? []).map((query, index) => ({
       ...query,
       id: query.id || `q${index + 1}`,
     }))
+    const isCanonicalPlan = Boolean(canonicalPlan) && !workoutPlan
+    const isWorkoutPlan = Boolean(workoutPlan)
 
     log('planned queries', plannedQueries.length)
 
@@ -723,9 +1566,28 @@ export async function POST(req: Request) {
       return respond(response, undefined, { ...evalMeta, queryCount: 0 })
     }
 
-    const executedQueries: GymChatQuery[] = []
+    let executedQueries: GymChatQuery[] = []
     for (const query of plannedQueries) {
       const normalizedParams = coerceIntervalParams(query.sql, query.params ?? [], intervalHints)
+      if (isCanonicalPlan) {
+        const safetyError = validateCanonicalSqlSafety(query.sql)
+        const appliedLimit = inferCanonicalLimit(query.sql)
+        executedQueries.push({
+          id: query.id,
+          purpose: query.purpose,
+          sql: query.sql,
+          params: normalizedParams,
+          rowCount: 0,
+          durationMs: 0,
+          previewRows: [],
+          error: safetyError,
+          policy: {
+            appliedLimit,
+            appliedTimeWindow: inferCanonicalTimeWindow(normalizedParams),
+          },
+        })
+        continue
+      }
       try {
         const policy = validateAndRewriteSql(query.sql, normalizedParams)
         executedQueries.push({
@@ -756,17 +1618,95 @@ export async function POST(req: Request) {
       }
     }
 
-    const hasPolicyErrors = executedQueries.some(query => query.error)
+    let hasPolicyErrors = executedQueries.some(query => query.error)
     if (hasPolicyErrors) {
-      const response: GymChatResponse = {
-        assistantMessage: 'I could not run that request safely. Please rephrase your question.',
-        citations: [],
-        queries: executedQueries,
-        refusal: {
-          message: 'SQL policy violation.',
-        },
+      const unsafePolicy = executedQueries.some(query => query.error && isUnsafePolicyError(query.error))
+      let nextSqlById: Record<string, string> | undefined
+      if (!unsafePolicy) {
+        const repairPlan = await repairGymSql(
+          llmMessages,
+          timezone,
+          {
+            question,
+            failedQueries: executedQueries.map(query => ({
+              id: query.id,
+              purpose: query.purpose,
+              sql: query.sql,
+              params: query.params,
+              error: query.error,
+            })),
+          },
+          {
+            intentType: intentHints.intentType,
+            primaryGrain: intentHints.primaryGrain,
+            targets: intentHints.targets,
+            planMeta: intentHints.planMeta,
+            template: selectedTemplate,
+            secondaryTemplate,
+          },
+        )
+        if (repairPlan?.queries?.length) {
+          nextSqlById = Object.fromEntries(repairPlan.queries.map(query => [query.id, query.sql]))
+          const repairedQueries = repairPlan.queries.map((query, index) => ({
+            ...query,
+            id: query.id || `q${index + 1}`,
+          }))
+          const nextExecuted: GymChatQuery[] = []
+          for (const query of repairedQueries) {
+            const normalizedParams = coerceIntervalParams(query.sql, query.params ?? [], intervalHints)
+            try {
+              const policy = validateAndRewriteSql(query.sql, normalizedParams)
+              nextExecuted.push({
+                id: query.id,
+                purpose: query.purpose,
+                sql: policy.sql,
+                params: normalizedParams,
+                rowCount: 0,
+                durationMs: 0,
+                previewRows: [],
+                error: null,
+                policy: {
+                  appliedLimit: policy.appliedLimit,
+                  appliedTimeWindow: policy.appliedTimeWindow,
+                },
+              })
+            } catch (error) {
+              nextExecuted.push({
+                id: query.id,
+                purpose: query.purpose,
+                sql: query.sql,
+                params: normalizedParams,
+                rowCount: 0,
+                durationMs: 0,
+                previewRows: [],
+                error: error instanceof Error ? error.message : 'SQL policy violation.',
+              })
+            }
+          }
+          executedQueries = nextExecuted
+          hasPolicyErrors = executedQueries.some(query => query.error)
+        }
       }
-      return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+      if (hasPolicyErrors) {
+        if (unsafePolicy) {
+          const response: GymChatResponse = {
+            assistantMessage: 'I could not run that request safely. Please rephrase your question.',
+            citations: [],
+            queries: executedQueries,
+            refusal: {
+              message: 'SQL policy violation.',
+            },
+          }
+          return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+        }
+        const assistantMessage = buildSqlErrorAssistantMessage(question, executedQueries, { nextSqlById })
+        const response: GymChatResponse = {
+          assistantMessage,
+          citations: [],
+          queries: executedQueries,
+        }
+        return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+      }
     }
 
     const connection = resolveReadonlyConnection()
@@ -782,34 +1722,37 @@ export async function POST(req: Request) {
     }
 
     const usePool = connection.url.includes('-pooler.')
-    if (usePool) {
-      const pool = createPool({ connectionString: connection.url })
-      const client = await pool.connect()
-      try {
-        await client.query(`SET statement_timeout = ${QUERY_TIMEOUT_MS}`)
-        await client.query('SET default_transaction_read_only = on')
+    const runQueries = async (queries: GymChatQuery[]) => {
+      if (usePool) {
+        const pool = createPool({ connectionString: connection.url })
+        const client = await pool.connect()
+        try {
+          await client.query(`SET statement_timeout = ${QUERY_TIMEOUT_MS}`)
+          await client.query('SET default_transaction_read_only = on')
 
-        for (const query of executedQueries) {
-          const result = await executeQuery(client, query.sql, query.params)
-          query.rowCount = result.rowCount
-          query.durationMs = result.durationMs
-          query.previewRows = result.rows.slice(0, MAX_PREVIEW_ROWS)
-          if ('error' in result && result.error) {
-            query.error = result.error
+          for (const query of queries) {
+            const result = await executeQuery(client, query.sql, query.params)
+            query.rowCount = result.rowCount
+            query.durationMs = result.durationMs
+            query.previewRows = result.rows.slice(0, MAX_PREVIEW_ROWS)
+            if ('error' in result && result.error) {
+              query.error = result.error
+            }
           }
+        } finally {
+          client.release()
+          await pool.end()
         }
-      } finally {
-        client.release()
-        await pool.end()
+        return
       }
-    } else {
+
       const client = createClient({ connectionString: connection.url })
       await client.connect()
       try {
         await client.query(`SET statement_timeout = ${QUERY_TIMEOUT_MS}`)
         await client.query('SET default_transaction_read_only = on')
 
-        for (const query of executedQueries) {
+        for (const query of queries) {
           const result = await executeQuery(client, query.sql, query.params)
           query.rowCount = result.rowCount
           query.durationMs = result.durationMs
@@ -823,20 +1766,344 @@ export async function POST(req: Request) {
       }
     }
 
+    await runQueries(executedQueries)
+
     log(
       'executed queries',
       executedQueries.map(query => ({ id: query.id, rowCount: query.rowCount, durationMs: query.durationMs })),
     )
 
-    const allErrors = executedQueries.every(query => query.error)
+    let allErrors = executedQueries.every(query => query.error)
+    let nextSqlById: Record<string, string> | undefined
     if (allErrors) {
+      const repairPlan = await repairGymSql(
+        llmMessages,
+        timezone,
+        {
+          question,
+          failedQueries: executedQueries.map(query => ({
+            id: query.id,
+            purpose: query.purpose,
+            sql: query.sql,
+            params: query.params,
+            error: query.error,
+          })),
+        },
+        {
+          intentType: intentHints.intentType,
+          primaryGrain: intentHints.primaryGrain,
+          targets: intentHints.targets,
+          planMeta: intentHints.planMeta,
+          template: selectedTemplate,
+          secondaryTemplate,
+        },
+      )
+
+      if (repairPlan?.queries?.length) {
+        log('repair plan generated', repairPlan.queries.length)
+        nextSqlById = Object.fromEntries(repairPlan.queries.map(query => [query.id, query.sql]))
+        const repairedQueries = repairPlan.queries.map((query, index) => ({
+          ...query,
+          id: query.id || `q${index + 1}`,
+        }))
+        const nextExecuted: GymChatQuery[] = []
+        for (const query of repairedQueries) {
+          const normalizedParams = coerceIntervalParams(query.sql, query.params ?? [], intervalHints)
+          try {
+            const policy = validateAndRewriteSql(query.sql, normalizedParams)
+            nextExecuted.push({
+              id: query.id,
+              purpose: query.purpose,
+              sql: policy.sql,
+              params: normalizedParams,
+              rowCount: 0,
+              durationMs: 0,
+              previewRows: [],
+              error: null,
+              policy: {
+                appliedLimit: policy.appliedLimit,
+                appliedTimeWindow: policy.appliedTimeWindow,
+              },
+            })
+          } catch (error) {
+            nextExecuted.push({
+              id: query.id,
+              purpose: query.purpose,
+              sql: query.sql,
+              params: normalizedParams,
+              rowCount: 0,
+              durationMs: 0,
+              previewRows: [],
+              error: error instanceof Error ? error.message : 'SQL policy violation.',
+            })
+          }
+        }
+
+        const hasRepairPolicyErrors = nextExecuted.some(query => query.error)
+        if (!hasRepairPolicyErrors) {
+          await runQueries(nextExecuted)
+          executedQueries = nextExecuted
+          allErrors = executedQueries.every(query => query.error)
+          log(
+            'executed repaired queries',
+            executedQueries.map(query => ({ id: query.id, rowCount: query.rowCount, durationMs: query.durationMs })),
+          )
+        }
+      }
+    }
+
+    if (allErrors && isMuscleGroupQuestion && useBodyParts) {
+      log('muscle group plan failed; retrying exercise fallback')
+      const fallbackPlan = buildMuscleGroupComparisonPlan(false, setsBase)
+      const fallbackQueries = (fallbackPlan.queries ?? []).map((query, index) => ({
+        ...query,
+        id: query.id || `q${index + 1}`,
+      }))
+      const fallbackIsCanonical = true
+      if (fallbackQueries.length) {
+        let fallbackExecuted: GymChatQuery[] = []
+        for (const query of fallbackQueries) {
+          const normalizedParams = coerceIntervalParams(query.sql, query.params ?? [], intervalHints)
+          if (fallbackIsCanonical) {
+            const safetyError = validateCanonicalSqlSafety(query.sql)
+            const appliedLimit = inferCanonicalLimit(query.sql)
+            fallbackExecuted.push({
+              id: query.id,
+              purpose: query.purpose,
+              sql: query.sql,
+              params: normalizedParams,
+              rowCount: 0,
+              durationMs: 0,
+              previewRows: [],
+              error: safetyError,
+              policy: {
+                appliedLimit,
+                appliedTimeWindow: inferCanonicalTimeWindow(normalizedParams),
+              },
+            })
+            continue
+          }
+          try {
+            const policy = validateAndRewriteSql(query.sql, normalizedParams)
+            fallbackExecuted.push({
+              id: query.id,
+              purpose: query.purpose,
+              sql: policy.sql,
+              params: normalizedParams,
+              rowCount: 0,
+              durationMs: 0,
+              previewRows: [],
+              error: null,
+              policy: {
+                appliedLimit: policy.appliedLimit,
+                appliedTimeWindow: policy.appliedTimeWindow,
+              },
+            })
+          } catch (error) {
+            fallbackExecuted.push({
+              id: query.id,
+              purpose: query.purpose,
+              sql: query.sql,
+              params: normalizedParams,
+              rowCount: 0,
+              durationMs: 0,
+              previewRows: [],
+              error: error instanceof Error ? error.message : 'SQL policy violation.',
+            })
+          }
+        }
+
+        let fallbackHasPolicyErrors = fallbackExecuted.some(query => query.error)
+        let fallbackNextSqlById: Record<string, string> | undefined
+        if (fallbackHasPolicyErrors && !fallbackIsCanonical) {
+          const fallbackRepair = await repairGymSql(
+            llmMessages,
+            timezone,
+            {
+              question,
+              failedQueries: fallbackExecuted.map(query => ({
+                id: query.id,
+                purpose: query.purpose,
+                sql: query.sql,
+                params: query.params,
+                error: query.error,
+              })),
+            },
+            {
+              intentType: intentHints.intentType,
+              primaryGrain: intentHints.primaryGrain,
+              targets: intentHints.targets,
+              planMeta: intentHints.planMeta,
+              template: selectedTemplate,
+              secondaryTemplate,
+            },
+          )
+          if (fallbackRepair?.queries?.length) {
+            fallbackNextSqlById = Object.fromEntries(fallbackRepair.queries.map(query => [query.id, query.sql]))
+            const repairedFallback = fallbackRepair.queries.map((query, index) => ({
+              ...query,
+              id: query.id || `q${index + 1}`,
+            }))
+            const nextFallback: GymChatQuery[] = []
+            for (const query of repairedFallback) {
+              const normalizedParams = coerceIntervalParams(query.sql, query.params ?? [], intervalHints)
+              try {
+                const policy = validateAndRewriteSql(query.sql, normalizedParams)
+                nextFallback.push({
+                  id: query.id,
+                  purpose: query.purpose,
+                  sql: policy.sql,
+                  params: normalizedParams,
+                  rowCount: 0,
+                  durationMs: 0,
+                  previewRows: [],
+                  error: null,
+                  policy: {
+                    appliedLimit: policy.appliedLimit,
+                    appliedTimeWindow: policy.appliedTimeWindow,
+                  },
+                })
+              } catch (error) {
+                nextFallback.push({
+                  id: query.id,
+                  purpose: query.purpose,
+                  sql: query.sql,
+                  params: normalizedParams,
+                  rowCount: 0,
+                  durationMs: 0,
+                  previewRows: [],
+                  error: error instanceof Error ? error.message : 'SQL policy violation.',
+                })
+              }
+            }
+            fallbackExecuted = nextFallback
+            fallbackHasPolicyErrors = fallbackExecuted.some(query => query.error)
+          }
+        }
+
+        if (!fallbackHasPolicyErrors) {
+          await runQueries(fallbackExecuted)
+        }
+        executedQueries = fallbackExecuted
+        allErrors = executedQueries.every(query => query.error)
+        if (fallbackNextSqlById) {
+          nextSqlById = fallbackNextSqlById
+        }
+        log(
+          'executed fallback queries',
+          executedQueries.map(query => ({ id: query.id, rowCount: query.rowCount, durationMs: query.durationMs })),
+        )
+      }
+    }
+    if (allErrors) {
+      const errorAnalysisKind =
+        analysisKindOverride ?? canonicalAnalysisKind ?? resolveReturnEffortAnalysisKind(question) ?? 'other'
+      conversationState = applyPlanMeta(conversationState, planMeta)
+      conversationState = applyErrorState(conversationState, {
+        type: executedQueries.some(query => query.error && isUnsafePolicyError(query.error)) ? 'policy' : 'sql',
+        analysisKind: errorAnalysisKind,
+        canonicalPlanId: canonicalAnalysisKind,
+      })
+      const assistantMessage = buildSqlErrorAssistantMessage(question, executedQueries, {
+        nextSqlById,
+        debug: wantsDebugSql,
+      })
       const response: GymChatResponse = {
-        assistantMessage: 'I ran into errors while executing the queries. Please try again later.',
+        assistantMessage,
         citations: [],
         queries: executedQueries,
       }
       return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
     }
+
+    if (isWorkoutPlan) {
+      const planQuery = executedQueries.find(query => query.id === 'q1')
+      const hasPlanRows =
+        planQuery && !planQuery.error && (planQuery.rowCount > 0 || planQuery.previewRows.length > 0)
+      if (!hasPlanRows) {
+        const acknowledgement = wantsCorrectionAcknowledgement
+          ? buildPlanCorrectionAcknowledgement(planMeta?.targetsMuscles)
+          : undefined
+        const assistantMessage = buildWorkoutPlanFallbackMessage({
+          constraint: planMeta?.targetsMuscles,
+          usesHistoricalLifts: planMeta?.usesHistoricalLifts,
+          acknowledgement,
+        })
+        conversationState = applyPlanMeta(conversationState, planMeta)
+        const response: GymChatResponse = {
+          assistantMessage,
+          citations: [],
+          queries: executedQueries,
+        }
+        return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+      }
+
+      const acknowledgement = wantsCorrectionAcknowledgement
+        ? buildPlanCorrectionAcknowledgement(planMeta?.targetsMuscles)
+        : undefined
+      const historicalPlan = buildWorkoutPlanFromHistory({
+        query: planQuery,
+        constraint: planMeta?.targetsMuscles,
+        usesHistoricalLifts: planMeta?.usesHistoricalLifts,
+        acknowledgement,
+        maxExercises: 5,
+      })
+      if (historicalPlan) {
+        let assistantMessage = historicalPlan
+        let citations: GymChatCitation[] = []
+        const fallback = buildFallbackCitations(assistantMessage, executedQueries)
+        if (fallback) {
+          assistantMessage = fallback.assistantMessage
+          citations = fallback.citations
+        }
+        const targetList = planMeta?.targetsMuscles?.include?.length
+          ? planMeta.targetsMuscles.include.join(', ')
+          : null
+        const followUps = sanitizeFollowUps(
+          targetList
+            ? [
+                `Show my recent ${targetList} history.`,
+                `Adjust this ${targetList} plan for strength focus.`,
+              ]
+            : ['Show my most recent sessions.', 'Plan another focused session.'],
+        )
+        const planTimeframe =
+          typeof planQuery?.params?.[0] === 'string'
+            ? String(planQuery.params[0])
+            : planQuery?.policy?.appliedTimeWindow ?? undefined
+        const planAnalysisKind = analysisKindOverride ?? canonicalAnalysisKind ?? 'other'
+        conversationState = applyAnalysisState(conversationState, {
+          kind: planAnalysisKind,
+          canonicalPlanId: canonicalAnalysisKind,
+          timeframe: planTimeframe ?? undefined,
+          targets: intentHints.targets,
+        })
+        conversationState = applyPlanMeta(conversationState, planMeta)
+        const response: GymChatResponse = {
+          assistantMessage,
+          citations,
+          queries: executedQueries,
+          followUps,
+        }
+        return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+      }
+    }
+
+    const responseMeta = buildResponseMeta(question, executedQueries)
+    const queryResultMetadata = buildQueryResultMetadata(executedQueries)
+    const analysisKind =
+      analysisKindOverride ??
+      canonicalAnalysisKind ??
+      resolveReturnEffortAnalysisKind(question) ??
+      inferAnalysisKindFromResponseMeta(responseMeta) ??
+      'other'
+    const analysisTimeframe =
+      analysisKind === 'top_end_efforts_compare_12m_3m'
+        ? '12 months vs 3 months'
+        : responseMeta.timeWindowLabel ?? undefined
+    const canonicalPlanId = canonicalAnalysisKind ?? undefined
+    const comparisonNotes =
+      analysisKind === 'top_end_efforts_compare_12m_3m' ? buildTopEndComparisonNotes(executedQueries) : []
 
     const explainChecklist = (() => {
       const checklist: string[] = []
@@ -850,46 +2117,44 @@ export async function POST(req: Request) {
           }
         })
       }
+      if (analysisKind === 'top_end_efforts_compare_12m_3m') {
+        checklist.push(
+          'Explicitly compare top-end efforts over the last 12 months vs the last 3 months using the provided windowed queries.',
+        )
+      }
+      if (analysisKind === 'favorite_split_day') {
+        checklist.push(
+          'Define "favorite split day" as the most frequent day_tag by session count in the requested window.',
+        )
+      }
+      if (analysisKind === 'weekly_volume') {
+        checklist.push('Summarize weekly training volume over the requested window with citations.')
+      }
+      if (intentHints.intentType === 'planning' && planMeta?.targetsMuscles?.include?.length) {
+        const targetList = planMeta.targetsMuscles.include.join(', ')
+        checklist.push(`Ensure the proposed session only includes ${targetList} exercises.`)
+      }
+      if (wantsCorrectionAcknowledgement) {
+        checklist.push('Acknowledge the correction and restate the muscle-only constraint before the plan.')
+      }
       return checklist
     })()
 
-    let explanation = await explainGymResults({
-      question,
-      queries: executedQueries,
-      intentType: intentHints.intentType,
-      selectedTemplate,
-      secondaryTemplate,
-      explainChecklist,
-    })
-    const allowedIds = new Set(executedQueries.map(query => query.id))
-    let citations = explanation.citations.filter(citation => allowedIds.has(citation.queryId))
-    explanation.assistantMessage = formatStructuredAssistantMessage(explanation.assistantMessage, citations)
-    let markerSet = extractMarkers(explanation.assistantMessage)
-
-    let citationMarkersOk = citations.length && citations.every(citation => markerSet.has(citation.marker))
- 
-    let fallbackCitationsApplied = false
-    const applyFallbackCitationsIfPossible = () => {
-      const fallback = buildFallbackCitations(explanation.assistantMessage, executedQueries)
-      if (!fallback) return false
-      citations = fallback.citations.filter(citation => allowedIds.has(citation.queryId))
-      if (!citations.length) return false
-      fallbackCitationsApplied = true
-      explanation.assistantMessage = formatStructuredAssistantMessage(fallback.assistantMessage, citations)
-      markerSet = extractMarkers(explanation.assistantMessage)
-      citationMarkersOk = citations.length && citations.every(citation => markerSet.has(citation.marker))
-      return citationMarkersOk
-    }
- 
-    const hasPreviewRows = executedQueries.some(query => !query.error && query.previewRows.length > 0)
-    const canEnforceCitations = hasPreviewRows
-    const needsCitations = () =>
-      canEnforceCitations &&
-      ((hasDigits(explanation.assistantMessage) && !citations.length) || !citationMarkersOk)
- 
-    if (needsCitations()) {
-      const fallbackResolved = applyFallbackCitationsIfPossible()
-      if (!fallbackResolved && needsCitations()) {
+    try {
+      let explanation = await explainGymResults({
+        question,
+        queries: executedQueries,
+        intentType: intentHints.intentType,
+        selectedTemplate,
+        secondaryTemplate,
+        explainChecklist,
+        responseMeta,
+        queryResultMetadata,
+        planMeta: intentHints.planMeta,
+        validationNotes: comparisonNotes.length ? comparisonNotes : undefined,
+      })
+      let validationIssues = validateRankingResponse(question, explanation.assistantMessage, responseMeta)
+      if (validationIssues.length) {
         explanation = await explainGymResults({
           question,
           queries: executedQueries,
@@ -897,26 +2162,125 @@ export async function POST(req: Request) {
           selectedTemplate,
           secondaryTemplate,
           explainChecklist,
+          responseMeta,
+          queryResultMetadata,
+          planMeta: intentHints.planMeta,
+          validationNotes: [
+            ...comparisonNotes,
+            ...validationIssues.map(issue => issue.message),
+          ],
           forceCitations: true,
         })
-        citations = explanation.citations.filter(citation => allowedIds.has(citation.queryId))
-        explanation.assistantMessage = formatStructuredAssistantMessage(explanation.assistantMessage, citations)
-        markerSet = extractMarkers(explanation.assistantMessage)
-        citationMarkersOk = citations.length && citations.every(citation => markerSet.has(citation.marker))
-        if (needsCitations()) {
-          applyFallbackCitationsIfPossible()
+        validationIssues = validateRankingResponse(question, explanation.assistantMessage, responseMeta)
+        const missingCoverage = validationIssues.some(issue => issue.type === 'coverage_missing')
+        if (missingCoverage && responseMeta.isRankingQuestion) {
+          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatCoverageLine(responseMeta)}`
+        }
+        const metricMismatch = validationIssues.some(issue => issue.type === 'metric_mismatch')
+        if (metricMismatch) {
+          const metricName = responseMeta.metricName ?? 'the requested metric'
+          explanation.assistantMessage = `${explanation.assistantMessage}\n\nNote: Results are based on ${metricName}.`
         }
       }
-    }
- 
-    if (canEnforceCitations && needsCitations()) {
+      const allowedIds = new Set(executedQueries.map(query => query.id))
+      let citations = explanation.citations.filter(citation => allowedIds.has(citation.queryId))
+      explanation.assistantMessage = formatStructuredAssistantMessage(explanation.assistantMessage, citations)
+      let markerSet = extractMarkers(explanation.assistantMessage)
+
+      let citationMarkersOk = citations.length && citations.every(citation => markerSet.has(citation.marker))
+      let fallbackCitationsApplied = false
+      const applyFallbackCitationsIfPossible = () => {
+        const fallback = buildFallbackCitations(explanation.assistantMessage, executedQueries)
+        if (!fallback) return false
+        citations = fallback.citations.filter(citation => allowedIds.has(citation.queryId))
+        if (!citations.length) return false
+        fallbackCitationsApplied = true
+        explanation.assistantMessage = formatStructuredAssistantMessage(fallback.assistantMessage, citations)
+        markerSet = extractMarkers(explanation.assistantMessage)
+        citationMarkersOk = citations.length && citations.every(citation => markerSet.has(citation.marker))
+        return citationMarkersOk
+      }
+      const hasPreviewRows = executedQueries.some(query => !query.error && query.previewRows.length > 0)
+      const canEnforceCitations = hasPreviewRows
+      const needsCitations = () =>
+        canEnforceCitations &&
+        ((hasDigits(explanation.assistantMessage) && !citations.length) || !citationMarkersOk)
+      if (needsCitations()) {
+        const fallbackResolved = applyFallbackCitationsIfPossible()
+        if (!fallbackResolved && needsCitations()) {
+          explanation = await explainGymResults({
+            question,
+            queries: executedQueries,
+            intentType: intentHints.intentType,
+            selectedTemplate,
+            secondaryTemplate,
+            explainChecklist,
+            responseMeta,
+            queryResultMetadata,
+            planMeta: intentHints.planMeta,
+            forceCitations: true,
+          })
+          citations = explanation.citations.filter(citation => allowedIds.has(citation.queryId))
+          explanation.assistantMessage = formatStructuredAssistantMessage(explanation.assistantMessage, citations)
+          markerSet = extractMarkers(explanation.assistantMessage)
+          citationMarkersOk = citations.length && citations.every(citation => markerSet.has(citation.marker))
+          if (needsCitations()) {
+            applyFallbackCitationsIfPossible()
+          }
+        }
+      }
+
+      if (responseMeta.isRankingQuestion) {
+        const coverageMissing = validateRankingResponse(question, explanation.assistantMessage, responseMeta).some(
+          issue => issue.type === 'coverage_missing',
+        )
+        if (coverageMissing) {
+          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatCoverageLine(responseMeta)}`
+          if (needsCitations()) {
+            applyFallbackCitationsIfPossible()
+          }
+        }
+      }
+      if (canEnforceCitations && needsCitations()) {
+        conversationState = applyAnalysisState(conversationState, {
+          kind: analysisKind,
+          canonicalPlanId,
+          timeframe: analysisTimeframe,
+          targets: intentHints.targets,
+        })
+        conversationState = applyPlanMeta(conversationState, planMeta)
+        conversationState = applyErrorState(conversationState, { type: 'explanation', analysisKind, canonicalPlanId })
+        const response: GymChatResponse = {
+          assistantMessage: 'I could not verify the results with citations. Please rephrase your question.',
+          citations: [],
+          queries: executedQueries,
+          refusal: {
+            message: 'Missing citations.',
+          },
+        }
+        log('fallback citations applied', fallbackCitationsApplied)
+        return respond(response, undefined, {
+          ...evalMeta,
+          queryCount: executedQueries.length,
+          fallbackCitationsApplied,
+        })
+      }
+
+      const chartSpecs = explanation.chartSpecs?.filter(spec => allowedIds.has(spec.queryId))
+      const followUps = sanitizeFollowUps(buildAnalysisFollowUps(analysisKind) ?? explanation.followUps)
+      conversationState = applyAnalysisState(conversationState, {
+        kind: analysisKind,
+        canonicalPlanId,
+        timeframe: analysisTimeframe,
+        targets: intentHints.targets,
+      })
+      conversationState = applyPlanMeta(conversationState, planMeta)
       const response: GymChatResponse = {
-        assistantMessage: 'I could not verify the results with citations. Please rephrase your question.',
-        citations: [],
+        assistantMessage: explanation.assistantMessage,
+        citations,
         queries: executedQueries,
-        refusal: {
-          message: 'Missing citations.',
-        },
+        chartSpecs,
+        followUps,
       }
       log('fallback citations applied', fallbackCitationsApplied)
       return respond(response, undefined, {
@@ -924,23 +2288,52 @@ export async function POST(req: Request) {
         queryCount: executedQueries.length,
         fallbackCitationsApplied,
       })
+    } catch (error) {
+      if (isLlmRequestError(error)) {
+        log('explanation failed', { status: error.status, retryable: error.retryable, detail: error.detail })
+        const hasAnyDataOrError = executedQueries.some(
+          query => query.rowCount > 0 || query.previewRows.length > 0 || query.error,
+        )
+        const isRecoveryQuestion = /recover/i.test(question)
+        const assistantMessage = hasAnyDataOrError
+          ? buildFallbackExplanation({
+              question,
+              queries: executedQueries,
+              analysisKind,
+              responseMeta,
+              queryResultMetadata,
+            })
+          : isRecoveryQuestion
+            ? 'I tried to run queries to analyze your recovery between sessions, but they returned no usable data. This often means the time window is small or the filters are too strict. Try starting with a simpler window, like "last 8 weeks of sessions."'
+            : 'I tried to run queries to analyze this, but they returned no usable data. This often means the time window is small or the filters are too strict. Try starting with a simpler window, like "last 8 weeks of sessions."'
+        const followUps = sanitizeFollowUps(
+          buildAnalysisFollowUps(analysisKind) ??
+            (hasAnyDataOrError
+              ? ['Retry the analysis with the same question.', 'Analyze a different lift.']
+              : ['Show my sessions from the last 8 weeks.', 'Show my most recent sessions.']),
+        )
+        conversationState = applyAnalysisState(conversationState, {
+          kind: analysisKind,
+          canonicalPlanId,
+          timeframe: analysisTimeframe,
+          targets: intentHints.targets,
+        })
+        conversationState = applyPlanMeta(conversationState, planMeta)
+        conversationState = applyErrorState(conversationState, { type: 'explanation', analysisKind, canonicalPlanId })
+        const response: GymChatResponse = {
+          assistantMessage,
+          citations: [],
+          chartSpecs: [],
+          followUps,
+          explanationError: {
+            message: error.message,
+          },
+          queries: executedQueries,
+        }
+        return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+      }
+      throw error
     }
-
-    const chartSpecs = explanation.chartSpecs?.filter(spec => allowedIds.has(spec.queryId))
-
-    const response: GymChatResponse = {
-      assistantMessage: explanation.assistantMessage,
-      citations,
-      queries: executedQueries,
-      chartSpecs,
-      followUps: explanation.followUps,
-    }
-    log('fallback citations applied', fallbackCitationsApplied)
-    return respond(response, undefined, {
-      ...evalMeta,
-      queryCount: executedQueries.length,
-      fallbackCitationsApplied,
-    })
   } catch (error) {
     if (isLlmRequestError(error)) {
       const isMissingKey = error.message.startsWith('Missing OpenAI API key')
@@ -948,7 +2341,8 @@ export async function POST(req: Request) {
       const response: GymChatResponse = {
         assistantMessage: isMissingKey
           ? 'Missing OpenAI API key. Please set OPENAI_API_KEY to continue.'
-          : 'The model is temporarily unavailable. Please try again in a moment.',
+          : "I couldn't reach the model I use to plan or summarize your gym-data analysis. " +
+            "I can't safely answer this from your logs right now. You can try again soon, or ask a general training question that doesn't require your history.",
         citations: [],
         queries: [],
       }
