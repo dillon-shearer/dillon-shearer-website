@@ -198,6 +198,17 @@
   - "Which muscle groups am I undertraining or overtraining?"
   - "Which exercises are giving me the most return for effort?" -> "b"
   - "Which lifts have stalled, and for how long?"
+
+[2026-01-15T01:04:02Z] Gym Dashboard chatbot branch merge note
+- **Agent / Model**: GPT-5 (Codex)
+- **Scope**:
+  - `app/demos/gym-dashboard/README.md`
+- **Reason**:
+  - Documented that Gym Dashboard chatbot updates were merged across branches when no edits overlapped.
+- **Key Changes**:
+  - Added a changelog entry noting the merge context for chatbot updates.
+- **Related Conversation / Prompt**:
+  - "add a message about merging branches for gym dashboard chatbot to it or something"
   - "Where am I making progress despite using lighter weights?"
   - "How often am I hitting true top-end efforts?"
 
