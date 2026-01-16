@@ -13,13 +13,18 @@ type SetFilterOptions = {
   window?: string
   exercise?: string | null
   allTime?: boolean
+  sessionDate?: string
 }
 
 const buildSetsFilter = (lifts: SetsBaseCte, options?: SetFilterOptions) => {
   const conditions: string[] = []
   const params: unknown[] = []
   let paramIndex = 1
-  if (!options?.allTime) {
+  if (options?.sessionDate) {
+    params.push(options.sessionDate)
+    conditions.push(`${lifts.sessionDateExpr} = $${paramIndex}`)
+    paramIndex += 1
+  } else if (!options?.allTime) {
     const window = options?.window ?? '90 days'
     params.push(window)
     conditions.push(`${lifts.performedAtExpr} >= CURRENT_DATE - ($${paramIndex})::interval`)
@@ -30,8 +35,14 @@ const buildSetsFilter = (lifts: SetsBaseCte, options?: SetFilterOptions) => {
     conditions.push(`${lifts.alias}.exercise ILIKE $${paramIndex}`)
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  const policyHint = options?.allTime ? '/*policy:time_window=all_time*/ ' : ''
+  const policyHint = options?.allTime && !options?.sessionDate ? '/*policy:time_window=all_time*/ ' : ''
   return { whereClause, params, policyHint }
+}
+
+const formatWindowLabel = (window: string, input?: { allTime?: boolean; sessionDate?: string }) => {
+  if (input?.sessionDate) return `the session on ${input.sessionDate}`
+  if (input?.allTime) return 'all time'
+  return `the last ${window}`
 }
 
 export const buildTopWeightSetsPlan = (
@@ -68,17 +79,22 @@ export const buildExercisePrsPlan = (
     exercise?: string | null
     useEstimated1rm?: boolean
     allTime?: boolean
+    sessionDate?: string
   },
 ): CanonicalPlan => {
   const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 10
   const window = options?.window ?? '90 days'
   const useEstimated1rm = options?.useEstimated1rm ?? false
-  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const windowLabel = formatWindowLabel(window, {
+    allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
+  })
   const metricLabel = useEstimated1rm ? 'estimated 1RM' : 'weight'
   const filter = buildSetsFilter(lifts, {
     window,
     exercise: options?.exercise ?? null,
     allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
   })
   const metricExpr = useEstimated1rm ? lifts.est1rmExpr : `${lifts.alias}.weight`
   return {
@@ -115,17 +131,22 @@ export const buildBestSetsPlan = (
     exercise?: string | null
     useEstimated1rm?: boolean
     allTime?: boolean
+    sessionDate?: string
   },
 ): CanonicalPlan => {
   const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 5
   const window = options?.window ?? '90 days'
   const useEstimated1rm = options?.useEstimated1rm ?? false
-  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const windowLabel = formatWindowLabel(window, {
+    allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
+  })
   const metricLabel = useEstimated1rm ? 'estimated 1RM' : 'weight'
   const filter = buildSetsFilter(lifts, {
     window,
     exercise: options?.exercise ?? null,
     allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
   })
   const metricExpr = useEstimated1rm ? lifts.est1rmExpr : `${lifts.alias}.weight`
   return {
@@ -158,22 +179,28 @@ export const buildSetBreakdownPlan = (
     useEstimated1rm?: boolean
     allTime?: boolean
     anchorWindow?: string
+    sessionDate?: string
   },
 ): CanonicalPlan => {
   const window = options?.window ?? '90 days'
   const useEstimated1rm = options?.useEstimated1rm ?? false
   const hasExercise = Boolean(options?.exercise)
-  const useRecentAllTime = Boolean(options?.allTime) && !hasExercise
+  const useSessionDate = Boolean(options?.sessionDate)
+  const useRecentAllTime = Boolean(options?.allTime) && !hasExercise && !useSessionDate
   const filter = buildSetsFilter(lifts, {
     window,
     exercise: options?.exercise ?? null,
     allTime: useRecentAllTime,
+    sessionDate: options?.sessionDate,
   })
   const metricExpr = useEstimated1rm ? 'est_1rm' : 'weight'
   const limit = 250
   const setNumberExpr = lifts.setNumberExpr ?? 'NULL::int'
   const setNumberSelect = `${setNumberExpr} AS set_number`
-  const windowLabel = useRecentAllTime ? 'all time' : `the last ${window}`
+  const windowLabel = formatWindowLabel(window, {
+    allTime: useRecentAllTime,
+    sessionDate: options?.sessionDate,
+  })
   const baseCte =
     `base AS (` +
     `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
@@ -249,7 +276,7 @@ export const buildSetBreakdownPlan = (
       exercise: options?.exercise ?? null,
       allTime: anchorAllTime,
     })
-    const anchorLabel = anchorAllTime ? 'all time' : `the last ${anchorWindow}`
+    const anchorLabel = formatWindowLabel(anchorWindow, { allTime: anchorAllTime })
     const anchorBaseCte =
       `base AS (` +
       `SELECT ${lifts.sessionDateExpr} AS session_date, ${lifts.alias}.exercise, ` +
@@ -288,15 +315,25 @@ export const buildSetBreakdownPlan = (
 
 export const buildExerciseSummaryPlan = (
   lifts: SetsBaseCte,
-  options?: { limit?: number; window?: string; exercise?: string | null; allTime?: boolean },
+  options?: {
+    limit?: number
+    window?: string
+    exercise?: string | null
+    allTime?: boolean
+    sessionDate?: string
+  },
 ): CanonicalPlan => {
   const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 10
   const window = options?.window ?? '90 days'
-  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const windowLabel = formatWindowLabel(window, {
+    allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
+  })
   const filter = buildSetsFilter(lifts, {
     window,
     exercise: options?.exercise ?? null,
     allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
   })
   return {
     queries: [
@@ -339,16 +376,21 @@ export const buildExerciseProgressionPlan = (
     exercise?: string | null
     bucket?: 'week' | 'month'
     allTime?: boolean
+    sessionDate?: string
   },
 ): CanonicalPlan => {
   const window = options?.window ?? '12 months'
   const bucket = options?.bucket === 'month' ? 'month' : 'week'
   const bucketLabel = bucket === 'month' ? 'monthly' : 'weekly'
-  const windowLabel = options?.allTime ? 'all time' : `the last ${window}`
+  const windowLabel = formatWindowLabel(window, {
+    allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
+  })
   const filter = buildSetsFilter(lifts, {
     window,
     exercise: options?.exercise ?? null,
     allTime: options?.allTime,
+    sessionDate: options?.sessionDate,
   })
   return {
     queries: [
@@ -1110,6 +1152,134 @@ export const buildPeriodComparePlan = (
           `ORDER BY gap_end DESC ` +
           `LIMIT 6`,
         params: [w1],
+      },
+    ],
+  }
+}
+
+/**
+ * Find the exercise with the highest estimated 1RM across all exercises.
+ * Answers questions like "What's my best 1RM?" or "Which exercise has my best PR?"
+ */
+export const buildBest1rmOverallPlan = (
+  lifts: SetsBaseCte,
+  options?: { window?: string; limit?: number; allTime?: boolean },
+): CanonicalPlan => {
+  const window = options?.window ?? '12 months'
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 10
+  const filter = buildSetsFilter(lifts, {
+    window,
+    allTime: options?.allTime,
+  })
+  const windowLabel = formatWindowLabel(window, { allTime: options?.allTime })
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Find exercises with the highest estimated 1RM over ${windowLabel}.`,
+        sql:
+          `${filter.policyHint}WITH ${lifts.cte}, best_sets AS (` +
+          `SELECT ${lifts.alias}.exercise, ${lifts.alias}.weight, ${lifts.alias}.reps, ` +
+          `${lifts.est1rmExpr} AS est_1rm, ${lifts.sessionDateExpr} AS session_date, ` +
+          `ROW_NUMBER() OVER (PARTITION BY ${lifts.alias}.exercise ` +
+          `ORDER BY ${lifts.est1rmExpr} DESC NULLS LAST) AS rn ` +
+          `FROM ${lifts.alias} ` +
+          `${filter.whereClause}` +
+          ') ' +
+          'SELECT exercise, est_1rm, weight, reps, session_date ' +
+          'FROM best_sets ' +
+          'WHERE rn = 1 ' +
+          'ORDER BY est_1rm DESC NULLS LAST ' +
+          `LIMIT ${limit}`,
+        params: filter.params,
+      },
+    ],
+  }
+}
+
+/**
+ * Find exercises that haven't been performed in a given time window.
+ * Answers questions like "What exercises haven't I done in the last month?"
+ */
+export const buildInactiveExercisesPlan = (
+  lifts: SetsBaseCte,
+  options?: { window?: string; limit?: number },
+): CanonicalPlan => {
+  const window = options?.window ?? '30 days'
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 50
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Find exercises not performed in the last ${window}.`,
+        sql:
+          `/*policy:time_window=all_time*/ WITH ${lifts.cte}, ` +
+          'all_exercises AS (' +
+          `SELECT DISTINCT ${lifts.alias}.exercise FROM ${lifts.alias}` +
+          '), ' +
+          'recent_exercises AS (' +
+          `SELECT DISTINCT ${lifts.alias}.exercise FROM ${lifts.alias} ` +
+          `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval` +
+          '), ' +
+          'last_performed AS (' +
+          `SELECT ${lifts.alias}.exercise, MAX(${lifts.sessionDateExpr}) AS last_date ` +
+          `FROM ${lifts.alias} ` +
+          `GROUP BY ${lifts.alias}.exercise` +
+          ') ' +
+          'SELECT a.exercise, lp.last_date AS last_performed ' +
+          'FROM all_exercises a ' +
+          'LEFT JOIN last_performed lp ON lp.exercise = a.exercise ' +
+          'WHERE a.exercise NOT IN (SELECT exercise FROM recent_exercises) ' +
+          'ORDER BY lp.last_date DESC NULLS LAST ' +
+          `LIMIT ${limit}`,
+        params: [window],
+      },
+    ],
+  }
+}
+
+/**
+ * Analyze typical workout times (time of day distribution).
+ * Answers questions like "What time of day do I usually work out?"
+ */
+export const buildWorkoutTimingPlan = (
+  lifts: SetsBaseCte,
+  options?: { window?: string },
+): CanonicalPlan => {
+  const window = options?.window ?? '12 months'
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Analyze typical workout times over the last ${window}.`,
+        sql:
+          `WITH ${lifts.cte}, sessions AS (` +
+          `SELECT DISTINCT ${lifts.sessionDateExpr} AS session_date, ` +
+          `${lifts.performedAtExpr} AS performed_at ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+          `AND ${lifts.performedAtExpr} IS NOT NULL` +
+          '), time_buckets AS (' +
+          'SELECT session_date, ' +
+          'CASE ' +
+          "WHEN EXTRACT(HOUR FROM performed_at) < 6 THEN 'Early morning (before 6am)' " +
+          "WHEN EXTRACT(HOUR FROM performed_at) < 9 THEN 'Morning (6am-9am)' " +
+          "WHEN EXTRACT(HOUR FROM performed_at) < 12 THEN 'Late morning (9am-12pm)' " +
+          "WHEN EXTRACT(HOUR FROM performed_at) < 15 THEN 'Afternoon (12pm-3pm)' " +
+          "WHEN EXTRACT(HOUR FROM performed_at) < 18 THEN 'Late afternoon (3pm-6pm)' " +
+          "WHEN EXTRACT(HOUR FROM performed_at) < 21 THEN 'Evening (6pm-9pm)' " +
+          "ELSE 'Night (after 9pm)' " +
+          'END AS time_slot ' +
+          'FROM sessions' +
+          ') ' +
+          'SELECT time_slot, ' +
+          'COUNT(DISTINCT session_date) AS session_count, ' +
+          'ROUND(100.0 * COUNT(DISTINCT session_date) / ' +
+          'NULLIF((SELECT COUNT(DISTINCT session_date) FROM time_buckets), 0), 1) AS pct ' +
+          'FROM time_buckets ' +
+          'GROUP BY time_slot ' +
+          'ORDER BY session_count DESC',
+        params: [window],
       },
     ],
   }

@@ -436,3 +436,21 @@
   - "What cues for deadlift?"
   - "Plan a quads session with a hypertrophy focus."
   - "Do I need a deload based on my recent training volume?"
+
+[2026-01-16T00:52:48Z] Gym Chat follow-up memory and ambiguity handling
+- **Agent / Model**: GPT-5 (Codex)
+- **Scope**:
+  - `types/gym-chat.ts`
+  - `lib/gym-chat/conversation.ts`
+  - `app/api/gym-chat/route.ts`
+  - `app/demos/gym-dashboard/README.md`
+- **Reason**:
+  - Follow-ups like "last session" and "compare to before" needed to reuse the prior exercise/window/metric context, and ambiguous multi-exercise replies needed clarification.
+- **Key Changes**:
+  - Persisted last exercise/session/window/metric context and surfaced it to follow-up classification and LLM context.
+  - Reused prior windows for follow-up comparisons and canonical defaults when users omit timeframes.
+  - Added exercise-choice prompts when follow-ups referenced ambiguous multi-exercise results.
+- **Related Conversation / Prompt**:
+  - "That set was heavy. How did it compare to before?"
+  - "Last session?"
+  - "Compare to before."

@@ -88,10 +88,32 @@ export const buildSqlErrorAssistantMessage = (
         "Try something like: 'Compare my chest vs back volume over the last 12 weeks.'",
       ].join('\n')
     }
+    // Suggest specific alternatives based on query intent
+    const suggestedAlternatives: string[] = []
+    if (normalizedQuestion.includes('time') && normalizedQuestion.includes('day')) {
+      suggestedAlternatives.push("'What time of day do I usually work out?'")
+    }
+    if (normalizedQuestion.includes('haven') || normalizedQuestion.includes('not done') || normalizedQuestion.includes('missing')) {
+      suggestedAlternatives.push("'What exercises haven't I done in the last month?'")
+    }
+    if (normalizedQuestion.includes('best') && (normalizedQuestion.includes('1rm') || normalizedQuestion.includes('pr'))) {
+      suggestedAlternatives.push("'What's my best one rep max?'")
+    }
+    if (normalizedQuestion.includes('trend') || normalizedQuestion.includes('progress')) {
+      suggestedAlternatives.push("'Show my Bench Press progression over the last 12 months.'")
+    }
+    if (normalizedQuestion.includes('summary') || normalizedQuestion.includes('overview')) {
+      suggestedAlternatives.push("'Show my exercise summary for the last 90 days.'")
+    }
+
+    const alternativesText = suggestedAlternatives.length > 0
+      ? `Try one of these:\n${suggestedAlternatives.map(a => `- ${a}`).join('\n')}`
+      : 'Try re-asking with a specific lift and timeframe, e.g. "last 12 weeks of Hack Squats".'
+
     return [
       "I couldn't safely run this analysis on your logs.",
       'This usually means the filters or time window were too broad or referenced something that does not exist.',
-      'Try re-asking with a specific lift and timeframe, e.g. "last 12 weeks of Hack Squats".',
+      alternativesText,
       'If you want, I can retry with a narrower window or different filters.',
     ].join('\n')
   }

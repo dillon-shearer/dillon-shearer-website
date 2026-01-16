@@ -45,9 +45,6 @@ type ChatClientProps = {
   onClose?: () => void
 }
 
-const STORAGE_KEY = 'gym-chat-history-v1'
-const STATE_STORAGE_KEY = 'gym-chat-state-v1'
-
 const SUGGESTED_QUESTIONS = [
   'What was my weekly training volume over the last 12 months?',
   'How many sessions did I log in the last 8 weeks?',
@@ -77,6 +74,50 @@ const getStreamStatusMessage = (payload: { stage?: string; message?: string }) =
     return STREAM_STATUS_MESSAGES[payload.stage]
   }
   return 'Working...'
+}
+
+const mergeHistory = (
+  existing?: GymChatConversationState['history'],
+  incoming?: GymChatConversationState['history'],
+) => {
+  if (!incoming?.length) return existing ?? []
+  if (!existing?.length) return incoming
+  const next = [...existing]
+  const indexById = new Map(existing.map((entry, index) => [entry.id, index]))
+  for (const entry of incoming) {
+    const existingIndex = indexById.get(entry.id)
+    if (existingIndex === undefined) {
+      indexById.set(entry.id, next.length)
+      next.push(entry)
+      continue
+    }
+    const prior = next[existingIndex]
+    next[existingIndex] = {
+      ...prior,
+      ...entry,
+      scope: entry.scope ?? prior.scope,
+      analysisKind: entry.analysisKind ?? prior.analysisKind,
+      analysisTopic: entry.analysisTopic ?? prior.analysisTopic,
+      intent: entry.intent ?? prior.intent,
+    }
+  }
+  return next
+}
+
+const mergeConversationState = (
+  prev: GymChatConversationState,
+  incoming?: GymChatConversationState | null,
+) => {
+  if (!incoming) return prev
+  if (prev.sessionId && incoming.sessionId && prev.sessionId !== incoming.sessionId) {
+    return incoming
+  }
+  const merged: GymChatConversationState = { ...prev, ...incoming }
+  const mergedHistory = mergeHistory(prev.history, incoming.history)
+  if (mergedHistory.length) {
+    merged.history = mergedHistory
+  }
+  return merged
 }
 
 const readEventStream = async (
@@ -403,34 +444,6 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   const hasPrefilled = useRef(false)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const stored = window.localStorage.getItem(STORAGE_KEY)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored) as ChatMessage[]
-      if (Array.isArray(parsed)) {
-        setMessages(parsed)
-      }
-    } catch (error) {
-      console.warn('Unable to load chat history.', error)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const stored = window.localStorage.getItem(STATE_STORAGE_KEY)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored) as GymChatConversationState
-      if (parsed && typeof parsed === 'object') {
-        setConversationState(parsed)
-      }
-    } catch (error) {
-      console.warn('Unable to load chat state.', error)
-    }
-  }, [])
-
-  useEffect(() => {
     if (hasPrefilled.current) return
     const prompt = searchParams.get('prompt')
     if (prompt) {
@@ -438,16 +451,6 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
       hasPrefilled.current = true
     }
   }, [searchParams])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
-  }, [messages])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(conversationState))
-  }, [conversationState])
 
   useEffect(() => {
     inputRef.current = input
@@ -620,7 +623,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
                 retryRequestId: undefined,
               })
               if (data?.conversationState) {
-                setConversationState(data.conversationState)
+                setConversationState(prev => mergeConversationState(prev, data.conversationState))
               }
               return
             }
@@ -654,7 +657,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         }
 
         finalReceived = true
-        setConversationState(data.conversationState ?? {})
+        setConversationState(prev => mergeConversationState(prev, data.conversationState))
         updateAssistantMessage({
           content: data.assistantMessage,
           queries: data.queries,

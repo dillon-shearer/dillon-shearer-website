@@ -26,6 +26,9 @@ import {
   buildWeeklyVolumePlan,
   buildWorstDayVolumePlan,
   buildPeriodComparePlan,
+  buildBest1rmOverallPlan,
+  buildInactiveExercisesPlan,
+  buildWorkoutTimingPlan,
 } from '@/lib/gym-chat/canonical-plans'
 import { buildSetsBaseCte, type SetsBaseCte } from '@/lib/gym-chat/sql-builders'
 import {
@@ -68,6 +71,7 @@ import {
   resolvePronounReference,
   RETURN_EFFORT_CHOICE_REGEX,
 } from '@/lib/gym-chat/conversation'
+import type { TurnMode } from '@/lib/gym-chat/conversation'
 import { buildSqlErrorAssistantMessage } from '@/lib/gym-chat/sql-errors'
 import { TEMPLATES, selectTemplates } from '@/lib/gym-chat/templates'
 import {
@@ -80,6 +84,13 @@ import { buildExerciseGuidanceMessage, findExerciseEntry } from '@/lib/exercise-
 import type { GymChatTemplateName } from '@/lib/gym-chat/templates'
 import type {
   AnalysisKind,
+  AnalysisTopic,
+  ComparisonIntent,
+  ContextDimension,
+  ContextFrame,
+  ContextScope,
+  ContextSlot,
+  ContextValue,
   GymChatCitation,
   GymChatConversationState,
   GymChatMessage,
@@ -88,6 +99,7 @@ import type {
   GymChatTimeWindow,
   LastResponseContext,
   PendingClarification,
+  SessionTurnSummary,
   TargetMuscleConstraint,
   WorkoutPlanAnalysisMeta,
 } from '@/types/gym-chat'
@@ -101,6 +113,8 @@ type GymChatEvalMeta = {
   queryCount?: number
   fallbackCitationsApplied?: boolean
 }
+
+type LastResponseDataPoint = NonNullable<LastResponseContext['dataPoints']>[number]
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -167,6 +181,68 @@ const extractLatestUserQuestion = (messages: GymChatMessage[]) => {
 const hasDigits = (value: string) => /\d/.test(value)
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
+
+const DEFAULT_MEMORY_BUDGET = { maxTurns: 50, maxBytes: 16384 }
+const MAX_CONTEXT_STACK = 12
+const TOPIC_SHIFT_CONFIDENCE_THRESHOLD = 0.7
+const RESPONSE_HISTORY_MAX_BYTES = 120000
+const RESPONSE_HISTORY_FALLBACK_TURNS = 16
+
+const COMPARISON_SIGNAL_REGEX = /\b(compare|vs|versus|against)\b/i
+const TOPIC_RESET_REGEX = /\b(new question|different topic|let's look at|let us look at|start over|reset)\b/i
+const ANALYSIS_VERB_REGEX = /\b(show|analyze|analyse|trend|compare|list|summarize|breakdown|explain)\b/i
+const METRIC_NAME_REGEX = /\b(volume|sets?|reps?|1rm|one\s+rep\s+max|weight|sessions?)\b/i
+
+const buildContextValue = <T,>(
+  value: T,
+  source: ContextValue<T>['source'],
+  turnId: string,
+  timestamp: string,
+): ContextValue<T> => ({
+  value,
+  source,
+  turnId,
+  timestamp,
+})
+
+const buildEmptySlot = <T,>(): ContextSlot<T> => ({
+  active: [],
+})
+
+const buildEmptyScope = (): ContextScope => ({
+  exercises: buildEmptySlot<string>(),
+  timeWindows: buildEmptySlot<string>(),
+  metrics: buildEmptySlot<LastResponseContext['metric']>(),
+  sessionDates: buildEmptySlot<string>(),
+})
+
+const uniqueValues = <T,>(values: T[]) => {
+  const seen = new Set<string>()
+  return values.filter(value => {
+    const key = String(value)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+const normalizeMetricName = (value: string): LastResponseContext['metric'] | undefined => {
+  const normalized = value.trim().toLowerCase()
+  if (normalized.includes('volume')) return 'volume'
+  if (normalized.includes('set')) return 'sets'
+  if (normalized.includes('rep')) return 'reps'
+  if (normalized.includes('session')) return 'sessions'
+  if (normalized.includes('1rm') || normalized.includes('one rep max')) return '1rm'
+  if (normalized.includes('weight')) return 'weight'
+  return undefined
+}
+
+const extractMetricFromQuestion = (text: string) => {
+  if (!text) return null
+  const match = text.toLowerCase().match(METRIC_NAME_REGEX)
+  if (!match) return null
+  return normalizeMetricName(match[0])
+}
 
 const EXERCISE_TARGET_STOPWORDS = new Set([
   'a',
@@ -272,6 +348,7 @@ const EXERCISE_TARGET_STOPWORDS = new Set([
 ])
 
 const EXERCISE_TARGET_SPLIT_REGEX = /\b(vs|versus|and|&)\b/i
+const PHRASE_WINDOW_REGEX = /\b(this|last|past|previous)\s+(week|month|year)s?\b/gi
 
 const extractExerciseTarget = (text: string) => {
   if (!text) return null
@@ -297,11 +374,242 @@ const resolveExerciseTarget = (input: {
   if (fallbackContext?.exercises && fallbackContext.exercises.length > 1) {
     return null
   }
-  const fallbackExercise = fallbackContext?.exercise
+  const scopeExercise = input.state?.scope?.exercises?.sticky?.value ?? input.state?.scope?.exercises?.primary?.value
+  const fallbackExercise = fallbackContext?.exercise ?? input.state?.lastExercise ?? scopeExercise
   if (!fallbackExercise) return null
-  if (input.turnMode === 'analysis_followup' || containsPronounReference(input.question)) {
+  const hasStickyExercise = Boolean(input.state?.scope?.exercises?.sticky)
+  if (input.turnMode === 'analysis_followup' || containsPronounReference(input.question) || hasStickyExercise) {
     return fallbackExercise
   }
+  return null
+}
+
+const extractScopeFromQuestion = (question: string): Partial<ContextFrame['scope']> => {
+  const exercises: string[] = []
+  const exercise = extractExerciseTarget(question)
+  if (exercise) exercises.push(exercise)
+  if (!exercise && EXERCISE_TARGET_SPLIT_REGEX.test(question)) {
+    const parts = question.split(EXERCISE_TARGET_SPLIT_REGEX).map(part => part.trim()).filter(Boolean)
+    parts.forEach(part => {
+      const candidate = extractExerciseTarget(part)
+      if (candidate) exercises.push(candidate)
+    })
+  }
+  const timeWindowSet = new Set<string>()
+  const explicitWindow = extractExplicitWindow(question)
+  if (explicitWindow) timeWindowSet.add(explicitWindow)
+  extractComparisonWindows(question).forEach(window => timeWindowSet.add(window))
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  PHRASE_WINDOW_REGEX.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = PHRASE_WINDOW_REGEX.exec(normalized))) {
+    const unit = match[2] as 'week' | 'month' | 'year'
+    timeWindowSet.add(`1 ${pluralizeUnit(unit, 1)}`)
+  }
+  if (containsKeyword(question, ALL_TIME_KEYWORDS)) timeWindowSet.add('all_time')
+  const timeWindows = Array.from(timeWindowSet)
+  const metrics: LastResponseContext['metric'][] = []
+  const metric = extractMetricFromQuestion(question)
+  if (metric) metrics.push(metric)
+  const sessionDate = parseExplicitDate(question) ?? undefined
+  return {
+    exercises: exercises.length ? exercises : undefined,
+    timeWindows: timeWindows.length ? timeWindows : undefined,
+    metrics: metrics.length ? metrics : undefined,
+    sessionDate,
+  }
+}
+
+const mapAnalysisTopic = (kind: AnalysisKind): AnalysisTopic => {
+  if (
+    kind === 'exercise_prs' ||
+    kind === 'best_sets' ||
+    kind === 'top_weight_sets' ||
+    kind === 'best_1rm_overall'
+  ) {
+    return 'prs'
+  }
+  if (
+    kind === 'weekly_volume' ||
+    kind === 'volume' ||
+    kind === 'set_count' ||
+    kind === 'session_count' ||
+    kind === 'lowest_volume_day'
+  ) {
+    return 'volume'
+  }
+  if (
+    kind === 'exercise_progression' ||
+    kind === 'return_for_effort_progression' ||
+    kind === 'progressive_overload' ||
+    kind === 'lighter_weight_progress'
+  ) {
+    return 'progression'
+  }
+  if (kind === 'period_compare' || kind === 'top_end_efforts_compare_12m_3m') {
+    return 'comparison'
+  }
+  if (kind === 'exercise_summary' || kind === 'set_breakdown' || kind === 'workout_timing') {
+    return 'session_summary'
+  }
+  if (kind === 'muscle_group_balance' || kind === 'stalled_lifts' || kind === 'inactive_exercises') {
+    return 'comparison'
+  }
+  if (kind === 'other') return 'general'
+  return 'general'
+}
+
+const getActiveScopeValues = <T,>(slot?: ContextSlot<T>): T[] => {
+  if (!slot?.active?.length) return []
+  return slot.active.map(entry => entry.value).filter(Boolean)
+}
+
+const buildScopeSummary = (state: GymChatConversationState): ContextFrame['scope'] => ({
+  exercises: uniqueValues([
+    ...getActiveScopeValues(state.scope?.exercises),
+    ...(state.lastResponseContext?.exercises ?? []),
+    ...(state.lastExercise ? [state.lastExercise] : []),
+  ]),
+  timeWindows: uniqueValues([
+    ...getActiveScopeValues(state.scope?.timeWindows),
+    ...(state.lastTimeWindow ? [state.lastTimeWindow] : []),
+  ]),
+  metrics: uniqueValues([
+    ...getActiveScopeValues(state.scope?.metrics),
+    ...(state.lastMetric ? [state.lastMetric] : []),
+  ]),
+  sessionDate: state.lastSessionDate,
+})
+
+const detectComparisonIntent = (input: {
+  question: string
+  state: GymChatConversationState
+  extracted: Partial<ContextFrame['scope']>
+  turnMode: TurnMode
+}): ComparisonIntent | null => {
+  const normalized = normalizeWhitespace(input.question).toLowerCase()
+  const explicit = COMPARISON_SIGNAL_REGEX.test(normalized) || normalized.includes('compare')
+  const baseScope = buildScopeSummary(input.state)
+  const candidateScope = input.extracted
+  const dimensions: ContextDimension[] = []
+  const candidateExercises = candidateScope.exercises ?? []
+  const candidateWindows = candidateScope.timeWindows ?? []
+  const candidateMetrics = candidateScope.metrics ?? []
+  const hasNewExercise =
+    candidateExercises.length &&
+    baseScope.exercises.length &&
+    candidateExercises.some(value => !baseScope.exercises.includes(value))
+  const hasNewWindow =
+    candidateWindows.length &&
+    baseScope.timeWindows.length &&
+    candidateWindows.some(value => !baseScope.timeWindows.includes(value))
+  const hasNewMetric =
+    candidateMetrics.length &&
+    baseScope.metrics.length &&
+    candidateMetrics.some(value => !baseScope.metrics.includes(value))
+  const hasExplicitExerciseCompare = explicit && candidateExercises.length > 1
+  const hasExplicitWindowCompare = explicit && candidateWindows.length > 1
+  const hasExplicitMetricCompare = explicit && candidateMetrics.length > 1
+  if (hasNewExercise || hasExplicitExerciseCompare) dimensions.push('exercise')
+  if (hasNewWindow || hasExplicitWindowCompare) dimensions.push('timeWindow')
+  if (hasNewMetric || hasExplicitMetricCompare) dimensions.push('metric')
+  if (!dimensions.length) return null
+  const baseFrameId = input.state.contextStack?.length
+    ? input.state.contextStack[input.state.contextStack.length - 1]?.id
+    : undefined
+  const shouldClarify = !explicit && (input.turnMode === 'analysis_followup' || normalized.split(' ').length <= 8)
+  return {
+    dimensions,
+    baseFrameId,
+    baseScope,
+    candidateScope,
+    explicit,
+    status: shouldClarify ? 'clarify' : 'ready',
+  }
+}
+
+const buildComparisonClarification = (intent: ComparisonIntent) => {
+  const dims = intent.dimensions.join(', ')
+  return `Do you want to compare the new ${dims} to the current scope, or switch to it only?`
+}
+
+const resolveComparisonChoice = (message: string) => {
+  const normalized = normalizeWhitespace(message).toLowerCase()
+  if (!normalized) return null
+  if (normalized === 'yes' || normalized.includes('compare') || normalized.includes('vs') || normalized === 'a') {
+    return 'compare'
+  }
+  if (normalized === 'no' || normalized.includes('switch') || normalized.includes('only') || normalized === 'b') {
+    return 'replace'
+  }
+  return null
+}
+
+const formatScopeLabel = (scope: Partial<ContextFrame['scope']>) => {
+  const parts: string[] = []
+  if (scope.exercises?.length) parts.push(scope.exercises.join(', '))
+  if (scope.metrics?.length) parts.push(scope.metrics.join(', '))
+  if (scope.timeWindows?.length) {
+    const label = scope.timeWindows.join(', ')
+    parts.push(label)
+  }
+  return parts.length ? parts.join(' ') : 'the current scope'
+}
+
+const buildComparisonQuestion = (intent: ComparisonIntent, fallback: string) => {
+  if (!intent.baseScope || !intent.candidateScope) return `Compare ${fallback}`
+  if (!intent.baseScope.exercises?.length && intent.candidateScope.exercises?.length && intent.candidateScope.exercises.length > 1) {
+    return `Compare ${intent.candidateScope.exercises.join(' vs ')}.`
+  }
+  if (!intent.baseScope.metrics?.length && intent.candidateScope.metrics?.length && intent.candidateScope.metrics.length > 1) {
+    return `Compare ${intent.candidateScope.metrics.join(' vs ')}.`
+  }
+  if (!intent.baseScope.timeWindows?.length && intent.candidateScope.timeWindows?.length && intent.candidateScope.timeWindows.length > 1) {
+    return `Compare ${intent.candidateScope.timeWindows.join(' vs ')}.`
+  }
+  const baseLabel = formatScopeLabel(intent.baseScope)
+  const candidateLabel = formatScopeLabel(intent.candidateScope)
+  if (!candidateLabel || candidateLabel === 'the current scope') return `Compare ${fallback}`
+  return `Compare ${baseLabel} vs ${candidateLabel}.`
+}
+
+const detectTopicShift = (input: {
+  question: string
+  state: GymChatConversationState
+  nextAnalysisKind?: AnalysisKind
+  turnMode: TurnMode
+  comparison?: ComparisonIntent | null
+}) => {
+  const normalized = normalizeWhitespace(input.question).toLowerCase()
+  if (TOPIC_RESET_REGEX.test(normalized)) return true
+  if (!input.nextAnalysisKind || !input.state.lastAnalysis?.kind) return false
+  if (input.comparison?.dimensions?.length) return false
+  const lastTopic = mapAnalysisTopic(input.state.lastAnalysis.kind)
+  const nextTopic = mapAnalysisTopic(input.nextAnalysisKind)
+  if (lastTopic === nextTopic) return false
+  if (input.turnMode === 'analysis_followup' && !ANALYSIS_VERB_REGEX.test(normalized)) {
+    return false
+  }
+  return true
+}
+
+const MULTI_CONTEXT_EXERCISE_CUE_REGEX =
+  /\b(that|those|these|it|them|same|last session|last workout|previous|prior|before|earlier|compare)\b/i
+
+const shouldClarifyExerciseChoice = (input: {
+  question: string
+  state?: GymChatConversationState | null
+  turnMode?: string
+}): string[] | null => {
+  const options = input.state?.lastResponseContext?.exercises ?? []
+  if (options.length < 2) return null
+  if (extractExerciseTarget(input.question)) return null
+  const normalized = normalizeWhitespace(input.question).toLowerCase()
+  const wordCount = normalized.split(' ').filter(Boolean).length
+  const isShort = wordCount <= 10 || normalized.length <= 80
+  const hasCue = MULTI_CONTEXT_EXERCISE_CUE_REGEX.test(normalized) || containsPronounReference(input.question)
+  if (input.turnMode === 'analysis_followup' && (isShort || hasCue)) return options
+  if (hasCue && isShort) return options
   return null
 }
 
@@ -377,6 +685,14 @@ const normalizePendingClarification = (value: unknown): PendingClarification | u
       : []
     return question && options.length ? { kind, question, options } : undefined
   }
+  if (kind === 'comparison') {
+    const raw = value as { kind: string; question?: unknown }
+    const question =
+      typeof raw.question === 'string' && raw.question.trim()
+        ? raw.question.trim()
+        : undefined
+    return question ? { kind, question } : undefined
+  }
   return undefined
 }
 
@@ -415,7 +731,14 @@ const normalizeWorkoutPlanMeta = (value: unknown): WorkoutPlanAnalysisMeta | und
 }
 
 const normalizeContextMetric = (value: unknown): LastResponseContext['metric'] | undefined => {
-  if (value === 'volume' || value === 'sets' || value === 'reps' || value === '1rm' || value === 'weight') {
+  if (
+    value === 'volume' ||
+    value === 'sets' ||
+    value === 'reps' ||
+    value === '1rm' ||
+    value === 'weight' ||
+    value === 'sessions'
+  ) {
     return value
   }
   return undefined
@@ -428,13 +751,15 @@ const normalizeLastResponseContext = (value: unknown): LastResponseContext | und
   const exercises = Array.isArray(raw.exercises)
     ? raw.exercises.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
     : []
+  const timeWindow =
+    typeof raw.timeWindow === 'string' && raw.timeWindow.trim() ? raw.timeWindow.trim() : undefined
   const sessionDate = typeof raw.sessionDate === 'string' && raw.sessionDate.trim() ? raw.sessionDate.trim() : undefined
   const metric = normalizeContextMetric(raw.metric)
   const dataPoints = Array.isArray(raw.dataPoints)
     ? raw.dataPoints
         .map(entry => {
           if (!entry || typeof entry !== 'object') return null
-          const record = entry as LastResponseContext['dataPoints'][0]
+          const record = entry as LastResponseDataPoint
           if (typeof record.exercise !== 'string' || !record.exercise.trim()) return null
           const toNumber = (value: unknown) => {
             if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -449,25 +774,158 @@ const normalizeLastResponseContext = (value: unknown): LastResponseContext | und
           const volume = toNumber(record.volume)
           const e1rm = toNumber(record.e1rm)
           const date = typeof record.date === 'string' && record.date.trim() ? record.date.trim() : undefined
-          return {
+          const dataPoint: LastResponseDataPoint = {
             exercise: record.exercise.trim(),
-            weight: weight ?? undefined,
-            reps: reps ?? undefined,
-            volume: volume ?? undefined,
-            e1rm: e1rm ?? undefined,
-            date,
+            ...(weight != null ? { weight } : {}),
+            ...(reps != null ? { reps } : {}),
+            ...(volume != null ? { volume } : {}),
+            ...(e1rm != null ? { e1rm } : {}),
+            ...(date ? { date } : {}),
           }
+          return dataPoint
         })
-        .filter((entry): entry is LastResponseContext['dataPoints'][0] => Boolean(entry))
+        .filter((entry): entry is LastResponseDataPoint => Boolean(entry))
     : []
-  if (!exercise && !exercises.length && !sessionDate && !metric && !dataPoints.length) return undefined
+  if (!exercise && !exercises.length && !sessionDate && !metric && !dataPoints.length && !timeWindow) return undefined
   return {
     exercise,
     exercises: exercises.length ? exercises : undefined,
+    timeWindow,
     sessionDate,
     metric,
     dataPoints: dataPoints.length ? dataPoints : undefined,
   }
+}
+
+const normalizeContextValue = <T,>(
+  value: unknown,
+  isValid: (value: unknown) => value is T,
+): ContextValue<T> | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as ContextValue<T>
+  if (!isValid(raw.value)) return undefined
+  const source =
+    raw.source === 'explicit' ||
+    raw.source === 'implicit' ||
+    raw.source === 'resolved' ||
+    raw.source === 'sticky' ||
+    raw.source === 'history'
+      ? raw.source
+      : 'implicit'
+  return {
+    value: raw.value,
+    source,
+    turnId: typeof raw.turnId === 'string' ? raw.turnId : '',
+    timestamp: typeof raw.timestamp === 'string' ? raw.timestamp : '',
+  }
+}
+
+const normalizeContextSlot = <T,>(
+  value: unknown,
+  isValid: (value: unknown) => value is T,
+): ContextSlot<T> => {
+  const slot = value as ContextSlot<T>
+  const active = Array.isArray(slot?.active)
+    ? slot.active.map(entry => normalizeContextValue(entry, isValid)).filter(Boolean) as ContextValue<T>[]
+    : []
+  const sticky = normalizeContextValue(slot?.sticky, isValid)
+  const lastExplicit = normalizeContextValue(slot?.lastExplicit, isValid)
+  const primary = normalizeContextValue(slot?.primary, isValid)
+  return {
+    active,
+    sticky,
+    lastExplicit,
+    primary,
+  }
+}
+
+const normalizeContextScope = (value: unknown): ContextScope => {
+  const isString = (entry: unknown): entry is string => typeof entry === 'string' && entry.trim().length > 0
+  const isMetric = (entry: unknown): entry is LastResponseContext['metric'] => normalizeContextMetric(entry) !== undefined
+  const raw = value as ContextScope
+  return {
+    exercises: normalizeContextSlot(raw?.exercises, isString),
+    timeWindows: normalizeContextSlot(raw?.timeWindows, isString),
+    metrics: normalizeContextSlot(raw?.metrics, isMetric),
+    sessionDates: normalizeContextSlot(raw?.sessionDates, isString),
+  }
+}
+
+const normalizeComparisonIntent = (value: unknown): ComparisonIntent | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as ComparisonIntent
+  const dimensions = Array.isArray(raw.dimensions)
+    ? raw.dimensions.filter(
+        entry => entry === 'exercise' || entry === 'timeWindow' || entry === 'metric' || entry === 'sessionDate',
+      )
+    : []
+  if (!dimensions.length) return undefined
+  const status = raw.status === 'pending' || raw.status === 'ready' || raw.status === 'clarify' ? raw.status : 'pending'
+  return {
+    dimensions,
+    baseFrameId: typeof raw.baseFrameId === 'string' ? raw.baseFrameId : undefined,
+    baseScope: raw.baseScope ?? {},
+    candidateScope: raw.candidateScope ?? {},
+    explicit: Boolean(raw.explicit),
+    status,
+    clarificationQuestion:
+      typeof raw.clarificationQuestion === 'string' && raw.clarificationQuestion.trim()
+        ? raw.clarificationQuestion.trim()
+        : undefined,
+  }
+}
+
+const normalizeContextFrame = (value: unknown): ContextFrame | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as ContextFrame
+  const analysisKind = normalizeAnalysisKind(raw.analysisKind)
+  if (!analysisKind) return undefined
+  const analysisTopic = raw.analysisTopic ?? mapAnalysisTopic(analysisKind)
+  const scope = raw.scope ?? { exercises: [], timeWindows: [], metrics: [] }
+  return {
+    id: typeof raw.id === 'string' ? raw.id : randomUUID(),
+    analysisKind,
+    analysisTopic,
+    scope: {
+      exercises: Array.isArray(scope.exercises) ? scope.exercises.filter(Boolean) : [],
+      timeWindows: Array.isArray(scope.timeWindows) ? scope.timeWindows.filter(Boolean) : [],
+      metrics: Array.isArray(scope.metrics)
+        ? scope.metrics.map(entry => normalizeContextMetric(entry)).filter(Boolean) as LastResponseContext['metric'][]
+        : [],
+      sessionDate: typeof scope.sessionDate === 'string' ? scope.sessionDate : undefined,
+    },
+    response: raw.response ?? {},
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
+    sourceTurnId: typeof raw.sourceTurnId === 'string' ? raw.sourceTurnId : '',
+  }
+}
+
+const normalizeHistory = (value: unknown): SessionTurnSummary[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(entry => {
+      if (!entry || typeof entry !== 'object') return null
+      const raw = entry as SessionTurnSummary
+      if (typeof raw.text !== 'string') return null
+      const analysisKind = normalizeAnalysisKind(raw.analysisKind)
+      const analysisTopic = raw.analysisTopic ?? (analysisKind ? mapAnalysisTopic(analysisKind) : undefined)
+      const normalized: SessionTurnSummary = {
+        id: typeof raw.id === 'string' ? raw.id : '',
+        role: raw.role === 'assistant' ? 'assistant' : 'user',
+        text: raw.text,
+        timestamp: typeof raw.timestamp === 'string' ? raw.timestamp : '',
+      }
+      if (analysisKind) normalized.analysisKind = analysisKind
+      if (analysisTopic) normalized.analysisTopic = analysisTopic
+      if (raw.scope && typeof raw.scope === 'object') {
+        normalized.scope = raw.scope
+      }
+      if (raw.intent === 'question' || raw.intent === 'followup' || raw.intent === 'clarification') {
+        normalized.intent = raw.intent
+      }
+      return normalized
+    })
+    .filter((entry): entry is SessionTurnSummary => Boolean(entry))
 }
 
 const normalizeConversationState = (value: unknown): GymChatConversationState => {
@@ -477,6 +935,30 @@ const normalizeConversationState = (value: unknown): GymChatConversationState =>
   const lastErrorKind = normalizeAnalysisKind(state.lastError?.analysisKind)
   const lastPlanMeta = normalizeWorkoutPlanMeta(state.lastPlanMeta)
   const lastAnalysisTargets = normalizeAnalysisTargets(state.lastAnalysis?.targets)
+  const lastResponseContext = normalizeLastResponseContext(state.lastResponseContext)
+  const scope = normalizeContextScope(state.scope)
+  const contextStack = Array.isArray(state.contextStack)
+    ? state.contextStack.map(entry => normalizeContextFrame(entry)).filter(Boolean) as ContextFrame[]
+    : []
+  const pendingComparison = normalizeComparisonIntent(state.pendingComparison)
+  const history = normalizeHistory(state.history)
+  const memoryBudget = state.memoryBudget && typeof state.memoryBudget === 'object'
+    ? {
+        maxTurns: Number.isFinite(state.memoryBudget.maxTurns) ? state.memoryBudget.maxTurns : DEFAULT_MEMORY_BUDGET.maxTurns,
+        maxBytes: Number.isFinite(state.memoryBudget.maxBytes) ? state.memoryBudget.maxBytes : DEFAULT_MEMORY_BUDGET.maxBytes,
+      }
+    : undefined
+  const lastExercise =
+    typeof state.lastExercise === 'string' && state.lastExercise.trim() ? state.lastExercise.trim() : undefined
+  const lastSessionDate =
+    typeof state.lastSessionDate === 'string' && state.lastSessionDate.trim()
+      ? state.lastSessionDate.trim()
+      : undefined
+  const lastTimeWindow =
+    typeof state.lastTimeWindow === 'string' && state.lastTimeWindow.trim()
+      ? state.lastTimeWindow.trim()
+      : undefined
+  const lastMetric = normalizeContextMetric(state.lastMetric)
   const errorType =
     state.lastError?.type === 'sql' || state.lastError?.type === 'explanation' || state.lastError?.type === 'policy'
       ? state.lastError.type
@@ -499,7 +981,18 @@ const normalizeConversationState = (value: unknown): GymChatConversationState =>
           canonicalPlanId: state.lastError?.canonicalPlanId,
         }
       : undefined,
-    lastResponseContext: normalizeLastResponseContext(state.lastResponseContext),
+    sessionId: typeof state.sessionId === 'string' && state.sessionId.trim() ? state.sessionId.trim() : undefined,
+    turnIndex: Number.isFinite(state.turnIndex) ? state.turnIndex : undefined,
+    scope,
+    contextStack: contextStack.length ? contextStack : undefined,
+    pendingComparison: pendingComparison ?? null,
+    history: history.length ? history : undefined,
+    memoryBudget,
+    lastResponseContext,
+    lastExercise: lastExercise ?? lastResponseContext?.exercise,
+    lastSessionDate: lastSessionDate ?? lastResponseContext?.sessionDate,
+    lastTimeWindow: lastTimeWindow ?? lastResponseContext?.timeWindow ?? state.lastAnalysis?.timeframe,
+    lastMetric: lastMetric ?? lastResponseContext?.metric,
   }
 }
 
@@ -668,7 +1161,7 @@ const resolveExerciseChoice = (
 
 const appendPronounContext = (
   question: string,
-  resolved: { exercise?: string; dataPoint?: LastResponseContext['dataPoints'][0] },
+  resolved: { exercise?: string; dataPoint?: LastResponseDataPoint },
 ) => {
   if (!resolved.exercise) return question
   const parts: string[] = [resolved.exercise]
@@ -833,6 +1326,331 @@ const buildTopEndComparisonNotes = (queries: GymChatQuery[]) => {
   return notes
 }
 
+const appendHistoryEntry = (
+  history: SessionTurnSummary[] | undefined,
+  entry: SessionTurnSummary,
+  budget: GymChatConversationState['memoryBudget'],
+) => {
+  const next = [...(history ?? []), entry]
+  if (!budget) return next
+  const maxTurns = budget.maxTurns
+  const maxBytes = budget.maxBytes
+  let trimmed = next
+  if (trimmed.length > maxTurns) {
+    trimmed = trimmed.slice(trimmed.length - maxTurns)
+  }
+  const byteSize = (entries: SessionTurnSummary[]) => JSON.stringify(entries).length
+  while (byteSize(trimmed) > maxBytes && trimmed.length > 1) {
+    trimmed = trimmed.slice(1)
+  }
+  return trimmed
+}
+
+const upsertHistoryEntry = (
+  history: SessionTurnSummary[] | undefined,
+  entry: SessionTurnSummary,
+  budget: GymChatConversationState['memoryBudget'],
+) => {
+  const existing = history ?? []
+  const index = existing.findIndex(item => item.id === entry.id)
+  if (index === -1) {
+    return appendHistoryEntry(existing, entry, budget)
+  }
+  const prior = existing[index]
+  const merged: SessionTurnSummary = {
+    ...prior,
+    ...entry,
+    scope: entry.scope ?? prior.scope,
+    analysisKind: entry.analysisKind ?? prior.analysisKind,
+    analysisTopic: entry.analysisTopic ?? prior.analysisTopic,
+    intent: entry.intent ?? prior.intent,
+  }
+  const next = [...existing.slice(0, index), merged, ...existing.slice(index + 1)]
+  if (!budget) return next
+  if (next.length > budget.maxTurns) {
+    return next.slice(next.length - budget.maxTurns)
+  }
+  return next
+}
+
+const resetScopeToSticky = (scope?: ContextScope): ContextScope => {
+  const ensureSlot = <T,>(slot?: ContextSlot<T>) => {
+    const sticky = slot?.sticky
+    const active = sticky ? [sticky] : []
+    return {
+      active,
+      primary: sticky,
+      sticky,
+      lastExplicit: slot?.lastExplicit ?? sticky,
+    }
+  }
+  return {
+    exercises: ensureSlot(scope?.exercises),
+    timeWindows: ensureSlot(scope?.timeWindows),
+    metrics: ensureSlot(scope?.metrics),
+    sessionDates: ensureSlot(scope?.sessionDates),
+  }
+}
+
+const resetConversationForTopicShift = (state: GymChatConversationState) => ({
+  ...state,
+  lastAnalysis: undefined,
+  lastResponseContext: undefined,
+  pendingComparison: null,
+  pendingClarification: null,
+  contextStack: [],
+  lastError: undefined,
+  scope: resetScopeToSticky(state.scope),
+})
+
+const inferTopicFromIntent = (intent?: IntentType): AnalysisTopic | null => {
+  if (!intent) return null
+  if (intent === 'planning') return 'planning'
+  if (intent === 'comparison') return 'comparison'
+  if (intent === 'trend') return 'progression'
+  if (intent === 'diagnostic') return 'comparison'
+  return 'general'
+}
+
+const detectTopicShiftByTopic = (input: {
+  question: string
+  state: GymChatConversationState
+  nextTopic?: AnalysisTopic | null
+  turnMode: TurnMode
+  comparison?: ComparisonIntent | null
+  confidence?: number
+}) => {
+  const normalized = normalizeWhitespace(input.question).toLowerCase()
+  if (TOPIC_RESET_REGEX.test(normalized)) return true
+  const confidence = Number.isFinite(input.confidence) ? input.confidence : undefined
+  if (confidence != null && confidence < TOPIC_SHIFT_CONFIDENCE_THRESHOLD) return false
+  if (!input.nextTopic || !input.state.lastAnalysis?.kind) return false
+  if (input.comparison?.dimensions?.length) return false
+  const lastTopic = mapAnalysisTopic(input.state.lastAnalysis.kind)
+  if (lastTopic === input.nextTopic) return false
+  if (input.turnMode === 'analysis_followup' && !ANALYSIS_VERB_REGEX.test(normalized)) {
+    return false
+  }
+  return true
+}
+
+const recordUserTurn = (input: {
+  state: GymChatConversationState
+  question: string
+  turnId: string
+  timestamp: string
+  turnMode: TurnMode
+  scope?: ContextScope
+}) => {
+  const scope = input.scope ?? input.state.scope
+  const entry: SessionTurnSummary = {
+    id: input.turnId,
+    role: 'user',
+    text: input.question,
+    intent:
+      input.turnMode === 'analysis_followup'
+        ? 'followup'
+        : input.turnMode === 'clarification_answer'
+          ? 'clarification'
+          : 'question',
+    scope: scope
+      ? {
+          exercises: getActiveScopeValues(scope.exercises),
+          timeWindows: getActiveScopeValues(scope.timeWindows),
+          metrics: getActiveScopeValues(scope.metrics),
+          sessionDate: scope.sessionDates.primary?.value,
+        }
+      : undefined,
+    timestamp: input.timestamp,
+  }
+  return {
+    ...input.state,
+    history: upsertHistoryEntry(input.state.history, entry, input.state.memoryBudget),
+  }
+}
+
+const recordAssistantTurn = (input: {
+  state: GymChatConversationState
+  message: string
+  turnId?: string
+  timestamp?: string
+  scope?: ContextScope
+}) => {
+  if (!input.message || !input.turnId) return input.state
+  const scope = input.scope ?? input.state.scope
+  const analysisKind = input.state.lastAnalysis?.kind
+  const entry: SessionTurnSummary = {
+    id: `${input.turnId}-assistant`,
+    role: 'assistant',
+    text: input.message,
+    analysisKind,
+    analysisTopic: analysisKind ? mapAnalysisTopic(analysisKind) : undefined,
+    scope: scope
+      ? {
+          exercises: getActiveScopeValues(scope.exercises),
+          timeWindows: getActiveScopeValues(scope.timeWindows),
+          metrics: getActiveScopeValues(scope.metrics),
+          sessionDate: scope.sessionDates.primary?.value,
+        }
+      : undefined,
+    timestamp: input.timestamp ?? new Date().toISOString(),
+  }
+  return {
+    ...input.state,
+    history: upsertHistoryEntry(input.state.history, entry, input.state.memoryBudget),
+  }
+}
+
+const updateScopeFromQuestion = (input: {
+  scope?: ContextScope
+  extracted: Partial<ContextFrame['scope']>
+  resolved?: Partial<ContextFrame['scope']>
+  comparison?: ComparisonIntent | null
+  turnId: string
+  timestamp: string
+}) => {
+  const scope = input.scope ?? buildEmptyScope()
+  const applySlot = <T,>(slot: ContextSlot<T>, values: T[] | undefined, source: ContextValue<T>['source']) => {
+    if (!values?.length) return slot
+    const mapped = values.map(value => buildContextValue(value, source, input.turnId, input.timestamp))
+    return {
+      ...slot,
+      active: mapped,
+      primary: mapped[0],
+    }
+  }
+  const updateSticky = <T,>(slot: ContextSlot<T>, values: T[] | undefined) => {
+    if (!values?.length) return slot
+    const sticky = buildContextValue(values[0], 'explicit', input.turnId, input.timestamp)
+    return {
+      ...slot,
+      sticky,
+      lastExplicit: sticky,
+    }
+  }
+  const comparisonValues = <T,>(dimension: ContextDimension, values: T[] | undefined) => {
+    if (!input.comparison?.dimensions.includes(dimension)) return values
+    const baseValues =
+      dimension === 'timeWindow'
+        ? (input.comparison.baseScope.timeWindows as T[] | undefined)
+        : dimension === 'sessionDate'
+          ? (input.comparison.baseScope.sessionDate ? [input.comparison.baseScope.sessionDate as T] : undefined)
+          : (input.comparison.baseScope[`${dimension}s` as keyof ContextFrame['scope']] as T[] | undefined)
+    const candidateValues =
+      dimension === 'timeWindow'
+        ? (input.comparison.candidateScope.timeWindows as T[] | undefined)
+        : dimension === 'sessionDate'
+          ? (input.comparison.candidateScope.sessionDate ? [input.comparison.candidateScope.sessionDate as T] : undefined)
+          : (input.comparison.candidateScope[`${dimension}s` as keyof ContextFrame['scope']] as T[] | undefined)
+    return uniqueValues([...(baseValues ?? []), ...(candidateValues ?? []), ...(values ?? [])])
+  }
+  const nextExercises = comparisonValues('exercise', input.extracted.exercises ?? input.resolved?.exercises)
+  const nextTimeWindows = comparisonValues('timeWindow', input.extracted.timeWindows ?? input.resolved?.timeWindows)
+  const nextMetrics = comparisonValues('metric', input.extracted.metrics ?? input.resolved?.metrics)
+  const explicitSessionDate = input.extracted.sessionDate ? [input.extracted.sessionDate] : undefined
+  const nextSessionDates = comparisonValues(
+    'sessionDate',
+    input.resolved?.sessionDate ? [input.resolved.sessionDate] : explicitSessionDate,
+  )
+  const exerciseSource: ContextValue<string>['source'] =
+    input.extracted.exercises?.length ? 'explicit' : input.resolved?.exercises?.length ? 'resolved' : 'sticky'
+  const timeWindowSource: ContextValue<string>['source'] =
+    input.extracted.timeWindows?.length ? 'explicit' : input.resolved?.timeWindows?.length ? 'resolved' : 'sticky'
+  const metricSource: ContextValue<LastResponseContext['metric']>['source'] =
+    input.extracted.metrics?.length ? 'explicit' : input.resolved?.metrics?.length ? 'resolved' : 'sticky'
+  const exercises = applySlot(updateSticky(scope.exercises, input.extracted.exercises), nextExercises, exerciseSource)
+  const timeWindows = applySlot(
+    updateSticky(scope.timeWindows, input.extracted.timeWindows),
+    nextTimeWindows,
+    timeWindowSource,
+  )
+  const metrics = applySlot(updateSticky(scope.metrics, input.extracted.metrics), nextMetrics, metricSource)
+  const sessionDates = applySlot(
+    updateSticky(scope.sessionDates, explicitSessionDate),
+    nextSessionDates,
+    explicitSessionDate ? 'explicit' : 'resolved',
+  )
+  return {
+    exercises: exercises.active.length ? exercises : scope.exercises,
+    timeWindows: timeWindows.active.length ? timeWindows : scope.timeWindows,
+    metrics: metrics.active.length ? metrics : scope.metrics,
+    sessionDates: sessionDates.active.length ? sessionDates : scope.sessionDates,
+  }
+}
+
+const updateScopeFromResponseContext = (input: {
+  scope?: ContextScope
+  context?: LastResponseContext
+  turnId: string
+  timestamp: string
+}) => {
+  if (!input.context) return input.scope ?? buildEmptyScope()
+  const scope = input.scope ?? buildEmptyScope()
+  const exercises = input.context.exercises ?? (input.context.exercise ? [input.context.exercise] : [])
+  const timeWindows = input.context.timeWindow ? [input.context.timeWindow] : []
+  const metrics = input.context.metric ? [input.context.metric] : []
+  const sessionDates = input.context.sessionDate ? [input.context.sessionDate] : []
+  const applySlot = <T,>(slot: ContextSlot<T>, values: T[] | undefined) => {
+    if (!values?.length) return slot
+    const mapped = values.map(value => buildContextValue(value, 'implicit', input.turnId, input.timestamp))
+    const merged = [...(slot.active ?? []), ...mapped]
+    const seen = new Set<string>()
+    const deduped = merged.filter(entry => {
+      const key = String(entry.value)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    return {
+      ...slot,
+      active: deduped,
+      primary: slot.primary ?? mapped[0],
+    }
+  }
+  return {
+    exercises: applySlot(scope.exercises, exercises),
+    timeWindows: applySlot(scope.timeWindows, timeWindows),
+    metrics: applySlot(scope.metrics, metrics),
+    sessionDates: applySlot(scope.sessionDates, sessionDates),
+  }
+}
+
+const pushContextFrame = (input: {
+  stack?: ContextFrame[]
+  analysisKind: AnalysisKind
+  scope: ContextScope | undefined
+  context?: LastResponseContext
+  turnId: string
+  timestamp: string
+  topicShifted?: boolean
+}) => {
+  const existing = input.topicShifted ? [] : (input.stack ?? [])
+  const exercises = input.context?.exercises ?? (input.context?.exercise ? [input.context.exercise] : [])
+  const timeWindows = input.context?.timeWindow ? [input.context.timeWindow] : []
+  const metrics = input.context?.metric ? [input.context.metric] : []
+  const frame: ContextFrame = {
+    id: randomUUID(),
+    analysisKind: input.analysisKind,
+    analysisTopic: mapAnalysisTopic(input.analysisKind),
+    scope: {
+      exercises: exercises.length ? exercises : getActiveScopeValues(input.scope?.exercises),
+      timeWindows: timeWindows.length ? timeWindows : getActiveScopeValues(input.scope?.timeWindows),
+      metrics: metrics.length ? metrics : getActiveScopeValues(input.scope?.metrics),
+      sessionDate: input.context?.sessionDate ?? undefined,
+    },
+    response: {
+      dataPoints: input.context?.dataPoints,
+    },
+    createdAt: input.timestamp,
+    sourceTurnId: input.turnId,
+  }
+  const next = [...existing, frame]
+  if (next.length > MAX_CONTEXT_STACK) {
+    return next.slice(next.length - MAX_CONTEXT_STACK)
+  }
+  return next
+}
+
 const applyAnalysisState = (
   state: GymChatConversationState,
   input: {
@@ -874,11 +1692,76 @@ const applyPlanMeta = (state: GymChatConversationState, planMeta?: WorkoutPlanAn
   }
 }
 
-const applyResponseContext = (state: GymChatConversationState, context?: LastResponseContext) => {
+const applyResponseContext = (
+  state: GymChatConversationState,
+  context: LastResponseContext | undefined,
+  meta?: {
+    analysisKind?: AnalysisKind
+    question?: string
+    turnId?: string
+    timestamp?: string
+    turnMode?: TurnMode
+    topicShifted?: boolean
+  },
+) => {
   if (!context) return state
+  const turnId = meta?.turnId ?? `t${state.turnIndex ?? 0}`
+  const timestamp = meta?.timestamp ?? new Date().toISOString()
+  const nextScope = updateScopeFromResponseContext({
+    scope: state.scope,
+    context,
+    turnId,
+    timestamp,
+  })
+  const nextStack =
+    meta?.analysisKind
+      ? pushContextFrame({
+          stack: state.contextStack,
+          analysisKind: meta.analysisKind,
+          scope: nextScope,
+          context,
+          turnId,
+          timestamp,
+          topicShifted: meta?.topicShifted,
+        })
+      : state.contextStack
+  const historyEntry: SessionTurnSummary | null =
+    meta?.analysisKind && meta.question
+      ? {
+          id: turnId,
+          role: 'user',
+          text: meta.question,
+          analysisKind: meta.analysisKind,
+          analysisTopic: mapAnalysisTopic(meta.analysisKind),
+          scope: {
+            exercises: nextScope.exercises.active.map(entry => entry.value),
+            timeWindows: nextScope.timeWindows.active.map(entry => entry.value),
+            metrics: nextScope.metrics.active.map(entry => entry.value),
+            sessionDate: nextScope.sessionDates.primary?.value,
+          },
+          intent:
+            meta.turnMode === 'analysis_followup'
+              ? 'followup'
+              : meta.turnMode === 'clarification_answer'
+                ? 'clarification'
+                : 'question',
+          timestamp,
+        }
+      : null
+  const nextHistory = historyEntry
+    ? upsertHistoryEntry(state.history, historyEntry, state.memoryBudget)
+    : state.history
   return {
     ...state,
     lastResponseContext: context,
+    lastExercise: context.exercise ?? state.lastExercise,
+    lastSessionDate: context.sessionDate ?? state.lastSessionDate,
+    lastTimeWindow: context.timeWindow ?? state.lastTimeWindow,
+    lastMetric: context.metric ?? state.lastMetric,
+    scope: nextScope,
+    contextStack: nextStack,
+    pendingComparison: null,
+    history: nextHistory,
   }
 }
 
@@ -1070,9 +1953,10 @@ const inferContextMetric = (
   if (metricName.includes('volume')) return 'volume'
   if (metricName.includes('sets')) return 'sets'
   if (metricName.includes('reps')) return 'reps'
-  if (metricName.includes('session')) return 'sets'
+  if (metricName.includes('session')) return 'sessions'
   if (analysisKind === 'return_for_effort_volume' || analysisKind === 'volume') return 'volume'
   if (analysisKind === 'set_count') return 'sets'
+  if (analysisKind === 'session_count') return 'sessions'
   if (analysisKind === 'exercise_prs' || analysisKind === 'best_sets' || analysisKind === 'top_weight_sets') {
     return rows.some(row => row.est_1rm != null || row.avg_est_1rm != null) ? '1rm' : 'weight'
   }
@@ -1096,6 +1980,7 @@ const buildLastResponseContext = (input: {
   queries: GymChatQuery[]
   responseMeta?: ResponseMeta
   exerciseTarget?: string | null
+  timeWindow?: string | null
 }): LastResponseContext | undefined => {
   const primary = selectContextQuery(input.queries)
   if (!primary) return undefined
@@ -1127,17 +2012,24 @@ const buildLastResponseContext = (input: {
   const exercise = exercisesList[0] ?? input.exerciseTarget ?? undefined
   const sessionDate = rows.length ? extractRowDate(rows[0] as Record<string, unknown>) ?? undefined : undefined
   const metric = inferContextMetric(input.analysisKind, rows as Record<string, unknown>[], input.responseMeta)
-  if (!exercise && !exercisesList.length && !dataPoints.length && !sessionDate && !metric) return undefined
+  const timeWindow = input.timeWindow ?? input.responseMeta?.timeWindowLabel ?? undefined
+  if (!exercise && !exercisesList.length && !dataPoints.length && !sessionDate && !metric && !timeWindow) {
+    return undefined
+  }
   return {
     exercise,
     exercises: exercisesList.length ? exercisesList : undefined,
     dataPoints: dataPoints.length ? dataPoints : undefined,
+    timeWindow,
     sessionDate,
     metric,
   }
 }
 
-const buildPlanResponseContext = (query: GymChatQuery | null | undefined): LastResponseContext | undefined => {
+const buildPlanResponseContext = (
+  query: GymChatQuery | null | undefined,
+  timeWindow?: string,
+): LastResponseContext | undefined => {
   if (!query || query.error) return undefined
   const rows = query.previewRows ?? []
   if (!rows.length) return undefined
@@ -1151,6 +2043,7 @@ const buildPlanResponseContext = (query: GymChatQuery | null | undefined): LastR
   return {
     exercise: exercisesList[0],
     exercises: exercisesList,
+    timeWindow,
   }
 }
 
@@ -1277,11 +2170,87 @@ const extractExplicitWindow = (text: string) => {
   if (!text) return null
   const normalized = text.toLowerCase()
   const match = normalized.match(/(\d+)\s*(day|week|month|year)s?\b/)
-  if (!match?.[1] || !match[2]) return null
-  const value = Number(match[1])
-  if (!Number.isFinite(value) || value <= 0) return null
-  const unit = match[2] as 'day' | 'week' | 'month' | 'year'
-  return `${value} ${pluralizeUnit(unit, value)}`
+  if (match?.[1] && match[2]) {
+    const value = Number(match[1])
+    if (!Number.isFinite(value) || value <= 0) return null
+    const unit = match[2] as 'day' | 'week' | 'month' | 'year'
+    return `${value} ${pluralizeUnit(unit, value)}`
+  }
+  if (/\b(today|yesterday)\b/.test(normalized)) {
+    return '1 day'
+  }
+  const phraseMatch = normalized.match(/\b(this|last|past|previous)\s+(week|month|year)s?\b/)
+  if (phraseMatch?.[2]) {
+    const unit = phraseMatch[2] as 'week' | 'month' | 'year'
+    return `1 ${pluralizeUnit(unit, 1)}`
+  }
+  return null
+}
+
+const isAllTimeWindow = (value?: string | null) => {
+  if (!value) return false
+  const normalized = normalizeWhitespace(value).toLowerCase()
+  return normalized === 'all_time' || normalized.includes('all time') || normalized.includes('lifetime')
+}
+
+const normalizeContextWindow = (value?: string | null) => {
+  if (!value) return null
+  if (isAllTimeWindow(value)) return 'all_time'
+  return extractExplicitWindow(value)
+}
+
+/**
+ * Parse an explicit date from the question (e.g., "January 14, 2026" -> "2026-01-14").
+ */
+const parseExplicitDate = (text: string): string | null => {
+  const match = text.match(EXPLICIT_DATE_REGEX)
+  if (!match) return null
+  const dateStr = match[0]
+  // Parse month name (supports full and abbreviated forms)
+  const monthNames: Record<string, number> = {
+    jan: 1, january: 1,
+    feb: 2, february: 2,
+    mar: 3, march: 3,
+    apr: 4, april: 4,
+    may: 5,
+    jun: 6, june: 6,
+    jul: 7, july: 7,
+    aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12,
+  }
+  const parts = dateStr.toLowerCase().match(/([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})/)
+  if (!parts) return null
+  const month = monthNames[parts[1]]
+  const day = parseInt(parts[2], 10)
+  const year = parseInt(parts[3], 10)
+  if (!month || !day || !year) return null
+  // Validate and format as ISO date
+  const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  // Basic validation: check if the date is valid
+  const parsed = new Date(isoDate)
+  if (Number.isNaN(parsed.getTime())) return null
+  return isoDate
+}
+
+const resolveSessionDateFilter = (input: {
+  question: string
+  state?: GymChatConversationState | null
+}) => {
+  // First check for explicit dates in the question (e.g., "January 14, 2026")
+  const explicitDate = parseExplicitDate(input.question)
+  if (explicitDate) return explicitDate
+
+  // Fall back to session phrase resolution from context
+  const sessionPhrase = extractSessionWindowPhrase(input.question)
+  if (!sessionPhrase) return null
+  const sessionDate =
+    input.state?.lastSessionDate ??
+    input.state?.lastResponseContext?.sessionDate
+  if (!sessionDate) return null
+  return sessionDate
 }
 
 const windowToDays = (window: string | null | undefined) => {
@@ -1320,6 +2289,7 @@ const TIMEFRAME_PHRASE_REGEX =
 const TIMEFRAME_EXPLICIT_REGEX = /\b(\d+)\s*(day|week|month|year)s?\b/i
 const TIMEFRAME_AMBIGUOUS_REGEX = /\b(recent|lately|last|past|previous|current)\b/i
 const LOG_CONTEXT_CUE_REGEX = /\b(my|mine|me|our|last|recent|latest|previous|past)\b/i
+const SESSION_WINDOW_REGEX = /\b(most recent|latest|last)\s+(session|workout)\b/i
 
 const hasExplicitTimeWindow = (text: string) => {
   if (!text) return false
@@ -1328,6 +2298,13 @@ const hasExplicitTimeWindow = (text: string) => {
   if (TIMEFRAME_PHRASE_REGEX.test(normalized)) return true
   if (/\bsince\s+\S+/.test(normalized)) return true
   return false
+}
+
+const extractSessionWindowPhrase = (text: string) => {
+  if (!text) return null
+  const normalized = normalizeWhitespace(text).toLowerCase()
+  const match = normalized.match(SESSION_WINDOW_REGEX)
+  return match?.[0] ?? null
 }
 
 const parseTimeframeAnswer = (answer: string): { timeframe?: string } => {
@@ -1552,6 +2529,16 @@ const STALLED_LIFTS_REGEX = /stalled|stalling|stall\b|plateau|stagnat/i
 const LIGHTER_WEIGHTS_REGEX = /lighter weights?|using lighter|lighter weight/i
 const RETURN_EFFORT_VOLUME_QUESTION = 'Show total volume per exercise over the last 90 days.'
 const RETURN_EFFORT_PROGRESSION_QUESTION = 'Show my progression over time for each exercise.'
+
+// New detection patterns for fixes 3, 4, 6
+const BEST_1RM_OVERALL_REGEX =
+  /\b(best|highest|top)\s+(one\s*rep\s*max|1rm|1\s*rep\s*max|e1rm)\b|\bwhich\s+exercise\s+has\s+my\s+best\s+pr\b|\bmy\s+best\s+pr\b|\btop\s+pr\b/i
+const INACTIVE_EXERCISES_REGEX =
+  /\b(haven'?t|have\s+not|not)\s+(done|performed|trained|worked|hit)\b|\b(skipped|missing|inactive|neglected)\s+(exercises?|lifts?)\b|\bexercises?\s+i\s+(haven'?t|have\s+not|am\s+not)\b/i
+const WORKOUT_TIMING_REGEX =
+  /\b(what\s+)?time\s+of\s+day\b|\bwhen\s+do\s+i\s+(usually|typically|normally)?\s*(work\s*out|train|lift|exercise)\b|\bworkout\s+time\b|\btraining\s+time\b|\busual\s+time\b/i
+const EXPLICIT_DATE_REGEX =
+  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}\b/i
 const PLAN_CORRECTION_REGEX =
   /\b(you gave me|you suggested|you included|that's wrong|that is wrong|i asked for|ensure your suggestions|only)\b/i
 const TECHNIQUE_KEYWORDS = [
@@ -1813,6 +2800,12 @@ const isVolumeRankingQuestion = (text: string) => VOLUME_RANKING_REGEX.test(text
 const isSessionCountQuestion = (text: string) =>
   SESSION_COUNT_REGEX.test(text || '') && !SESSION_TREND_REGEX.test(text || '')
 
+const isBest1rmOverallQuestion = (text: string) => BEST_1RM_OVERALL_REGEX.test(text || '')
+
+const isInactiveExercisesQuestion = (text: string) => INACTIVE_EXERCISES_REGEX.test(text || '')
+
+const isWorkoutTimingQuestion = (text: string) => WORKOUT_TIMING_REGEX.test(text || '')
+
 const isPeriodCompareQuestion = (text: string) => {
   if (!text) return false
   const normalized = text.toLowerCase()
@@ -1926,6 +2919,8 @@ export async function POST(req: Request) {
   const wantsStream =
     req.headers.get('accept')?.includes('text/event-stream') || req.headers.get('x-stream') === '1'
   let conversationState: GymChatConversationState = {}
+  let turnId: string | undefined
+  let turnTimestamp: string | undefined
   const log = (...args: unknown[]) => {
     console.info(`[gym-chat:${requestId}]`, ...args)
   }
@@ -1978,14 +2973,33 @@ export async function POST(req: Request) {
     minRetryWindowMs: MIN_LLM_RETRY_WINDOW_MS,
   }
   const llmOptions = { budget: llmRetryBudget }
+  const buildConversationStateResponse = (state: GymChatConversationState) => {
+    if (!state.history?.length) return state
+    const fullPayload = { ...state }
+    if (JSON.stringify(fullPayload).length <= RESPONSE_HISTORY_MAX_BYTES) {
+      return fullPayload
+    }
+    return {
+      ...state,
+      history: state.history.slice(-RESPONSE_HISTORY_FALLBACK_TURNS),
+    }
+  }
   const respond = (
     body: GymChatResponse | { error: string },
     init?: { status?: number },
     meta?: GymChatEvalMeta,
   ) => {
+    if ('assistantMessage' in body && turnId) {
+      conversationState = recordAssistantTurn({
+        state: conversationState,
+        message: body.assistantMessage,
+        turnId,
+        timestamp: turnTimestamp,
+      })
+    }
     const payload =
       'assistantMessage' in body
-        ? { ...body, conversationState }
+        ? { ...body, conversationState: buildConversationStateResponse(conversationState) }
         : body
     if (wantsStream) {
       const status = init?.status
@@ -2038,12 +3052,36 @@ export async function POST(req: Request) {
 
     const timezone = payload.client?.timezone ?? 'UTC'
 
+    turnTimestamp = new Date().toISOString()
+    const nextTurnIndex = (conversationState.turnIndex ?? 0) + 1
+    turnId = `t${nextTurnIndex}`
+    conversationState = {
+      ...conversationState,
+      sessionId: conversationState.sessionId ?? randomUUID(),
+      turnIndex: nextTurnIndex,
+      scope: conversationState.scope ?? buildEmptyScope(),
+      contextStack: conversationState.contextStack ?? [],
+      history: conversationState.history ?? [],
+      memoryBudget: conversationState.memoryBudget,
+    }
+
     let turnMode = classifyTurnMode({ message: question, state: conversationState })
     let analysisKindOverride: AnalysisKind | undefined
+    let resolvedPronoun: ReturnType<typeof resolvePronounReference> | null = null
+    let pendingComparison: ComparisonIntent | null = null
+    let topicShifted = false
     const correctionDetected = isCorrection(question)
     if (correctionDetected && turnMode === 'analysis_followup') {
       turnMode = 'new_question'
     }
+
+    conversationState = recordUserTurn({
+      state: conversationState,
+      question,
+      turnId,
+      timestamp: turnTimestamp,
+      turnMode,
+    })
 
     if (conversationState.pendingClarification && turnMode !== 'clarification_answer') {
       conversationState = { ...conversationState, pendingClarification: null }
@@ -2162,10 +3200,63 @@ export async function POST(req: Request) {
         messages = updated
         question = rewritten
         conversationState = { ...conversationState, pendingClarification: null }
+      } else if (pending?.kind === 'comparison') {
+        const choice = resolveComparisonChoice(question)
+        if (!choice) {
+          const response: GymChatResponse = {
+            assistantMessage: pending.question,
+            citations: [],
+            queries: [],
+          }
+          return respond(response)
+        }
+        if (choice === 'compare' && conversationState.pendingComparison) {
+          const compareQuestion = buildComparisonQuestion(conversationState.pendingComparison, question)
+          const updated = [...messages]
+          for (let i = updated.length - 1; i >= 0; i -= 1) {
+            if (updated[i].role === 'user') {
+              updated[i] = { ...updated[i], content: compareQuestion }
+              break
+            }
+          }
+          messages = updated
+          question = compareQuestion
+          conversationState = {
+            ...conversationState,
+            pendingClarification: null,
+            pendingComparison: {
+              ...conversationState.pendingComparison,
+              status: 'ready',
+              explicit: true,
+            },
+          }
+        } else {
+          const candidateLabel = conversationState.pendingComparison
+            ? formatScopeLabel(conversationState.pendingComparison.candidateScope)
+            : null
+          const nextQuestion = candidateLabel && candidateLabel !== 'the current scope'
+            ? `Show ${candidateLabel}.`
+            : question
+          const updated = [...messages]
+          for (let i = updated.length - 1; i >= 0; i -= 1) {
+            if (updated[i].role === 'user') {
+              updated[i] = { ...updated[i], content: nextQuestion }
+              break
+            }
+          }
+          messages = updated
+          question = nextQuestion
+          conversationState = {
+            ...conversationState,
+            pendingClarification: null,
+            pendingComparison: null,
+          }
+        }
       }
     }
     if (conversationState.lastResponseContext && containsPronounReference(question)) {
       const resolved = resolvePronounReference(question, conversationState.lastResponseContext)
+      resolvedPronoun = resolved
       if (resolved.ambiguous && resolved.options?.length) {
         conversationState = {
           ...conversationState,
@@ -2185,11 +3276,72 @@ export async function POST(req: Request) {
       }
       if (resolved.resolved) {
         question = appendPronounContext(question, resolved)
+        if (resolved.newIndex != null && conversationState.lastResponseContext) {
+          conversationState = {
+            ...conversationState,
+            lastResponseContext: {
+              ...conversationState.lastResponseContext,
+              currentIndex: resolved.newIndex,
+            },
+          }
+        }
         if (turnMode === 'new_question') {
           turnMode = 'analysis_followup'
         }
       }
     }
+    const exerciseClarificationOptions = shouldClarifyExerciseChoice({
+      question,
+      state: conversationState,
+      turnMode,
+    })
+    if (exerciseClarificationOptions?.length) {
+      conversationState = {
+        ...conversationState,
+        pendingClarification: {
+          kind: 'exercise_choice',
+          question,
+          options: exerciseClarificationOptions,
+        },
+      }
+      const response: GymChatResponse = {
+        assistantMessage: buildExerciseChoicePrompt(exerciseClarificationOptions),
+        citations: [],
+        queries: [],
+        followUps: sanitizeFollowUps(exerciseClarificationOptions.map(option => `Use ${option}.`)),
+      }
+      return respond(response)
+    }
+    const extractedScope = extractScopeFromQuestion(question)
+    const resolvedScope: Partial<ContextFrame['scope']> = {}
+    if (resolvedPronoun?.exercise) {
+      resolvedScope.exercises = [resolvedPronoun.exercise]
+    }
+    if (resolvedPronoun?.dataPoint?.date) {
+      resolvedScope.sessionDate = resolvedPronoun.dataPoint.date
+    }
+    const comparisonIntent = detectComparisonIntent({
+      question,
+      state: conversationState,
+      extracted: extractedScope,
+      turnMode,
+    })
+    if (comparisonIntent?.status === 'clarify') {
+      const clarificationQuestion = buildComparisonClarification(comparisonIntent)
+      conversationState = {
+        ...conversationState,
+        pendingClarification: { kind: 'comparison', question: clarificationQuestion },
+        pendingComparison: comparisonIntent,
+      }
+      const response: GymChatResponse = {
+        assistantMessage: clarificationQuestion,
+        citations: [],
+        queries: [],
+      }
+      return respond(response)
+    }
+    pendingComparison =
+      comparisonIntent ?? (turnMode === 'analysis_followup' ? conversationState.pendingComparison ?? null : null)
     if (isTopEndEffortsComparisonQuestion(question)) {
       analysisKindOverride = 'top_end_efforts_compare_12m_3m'
     }
@@ -2235,9 +3387,65 @@ export async function POST(req: Request) {
     if (!analysisKindOverride && isSessionCountQuestion(question)) {
       analysisKindOverride = 'session_count'
     }
+    if (!analysisKindOverride && isBest1rmOverallQuestion(question)) {
+      analysisKindOverride = 'best_1rm_overall'
+    }
+    if (!analysisKindOverride && isInactiveExercisesQuestion(question)) {
+      analysisKindOverride = 'inactive_exercises'
+    }
+    if (!analysisKindOverride && isWorkoutTimingQuestion(question)) {
+      analysisKindOverride = 'workout_timing'
+    }
     if (turnMode === 'analysis_followup' && !analysisKindOverride && conversationState.lastAnalysis?.kind) {
       analysisKindOverride = conversationState.lastAnalysis.kind
     }
+
+    topicShifted = detectTopicShift({
+      question,
+      state: conversationState,
+      nextAnalysisKind: analysisKindOverride ?? conversationState.lastAnalysis?.kind,
+      turnMode,
+      comparison: pendingComparison,
+    })
+    if (topicShifted) {
+      conversationState = resetConversationForTopicShift(conversationState)
+      pendingComparison = null
+      turnMode = 'new_question'
+    }
+
+    if (pendingComparison?.status === 'ready' && !COMPARISON_SIGNAL_REGEX.test(question)) {
+      const compareQuestion = buildComparisonQuestion(pendingComparison, question)
+      const updated = [...messages]
+      for (let i = updated.length - 1; i >= 0; i -= 1) {
+        if (updated[i].role === 'user') {
+          updated[i] = { ...updated[i], content: compareQuestion }
+          break
+        }
+      }
+      messages = updated
+      question = compareQuestion
+    }
+
+    conversationState = {
+      ...conversationState,
+      pendingComparison,
+      scope: updateScopeFromQuestion({
+        scope: conversationState.scope,
+        extracted: extractedScope,
+        resolved: resolvedScope,
+        comparison: pendingComparison,
+        turnId,
+        timestamp: turnTimestamp,
+      }),
+    }
+    conversationState = recordUserTurn({
+      state: conversationState,
+      question,
+      turnId,
+      timestamp: turnTimestamp,
+      turnMode,
+      scope: conversationState.scope,
+    })
 
     if (isTechniqueQuestion(question)) {
       const entry = findExerciseEntry(question)
@@ -2365,6 +3573,23 @@ export async function POST(req: Request) {
     if (!classification.intentType) {
       classification.intentType = 'descriptive'
     }
+    if (!topicShifted) {
+      const inferredTopic = inferTopicFromIntent(classification.intentType)
+      const topicShiftFromIntent = detectTopicShiftByTopic({
+        question,
+        state: conversationState,
+        nextTopic: inferredTopic,
+        turnMode,
+        comparison: pendingComparison,
+        confidence: classification.confidence,
+      })
+      if (topicShiftFromIntent) {
+        topicShifted = true
+        conversationState = resetConversationForTopicShift(conversationState)
+        pendingComparison = null
+        turnMode = 'new_question'
+      }
+    }
     const intentHints = {
       intentType: classification.intentType,
       primaryGrain: classification.primaryGrain,
@@ -2489,13 +3714,38 @@ export async function POST(req: Request) {
 
     const useBodyParts = hasBodyPartsMapping()
     const setsBase = buildSetsBaseCte()
-    const wantsAllTimeWindow = containsKeyword(question, ALL_TIME_KEYWORDS)
-    const explicitWindow = wantsAllTimeWindow ? null : extractExplicitWindow(question)
-    const comparisonWindows = extractComparisonWindows(question)
+    const hasExplicitWindow = hasExplicitTimeWindow(question)
+    const sessionDateFilter = resolveSessionDateFilter({ question, state: conversationState })
+    const scopeWindow =
+      conversationState.scope?.timeWindows?.sticky?.value ?? conversationState.scope?.timeWindows?.primary?.value
+    const contextWindow = normalizeContextWindow(
+      conversationState.lastTimeWindow ?? conversationState.lastResponseContext?.timeWindow ?? scopeWindow,
+    )
+    let wantsAllTimeWindow = containsKeyword(question, ALL_TIME_KEYWORDS)
+    if (
+      turnMode === 'analysis_followup' &&
+      !hasExplicitWindow &&
+      !wantsAllTimeWindow &&
+      contextWindow === 'all_time'
+    ) {
+      wantsAllTimeWindow = true
+    }
+    let explicitWindow = wantsAllTimeWindow ? null : extractExplicitWindow(question)
+    if (!hasExplicitWindow && !explicitWindow && contextWindow && contextWindow !== 'all_time') {
+      explicitWindow = contextWindow
+    }
+    let comparisonWindows = extractComparisonWindows(question)
+    const comparisonWindowFromContext =
+      !hasExplicitWindow &&
+      comparisonWindows.length === 0 &&
+      Boolean(contextWindow && contextWindow !== 'all_time')
+    if (comparisonWindowFromContext && contextWindow) {
+      comparisonWindows = [contextWindow]
+    }
     const defaultCompareWindow = '4 weeks'
     const compareWindow = comparisonWindows[0] ?? defaultCompareWindow
     const comparePriorWindow = comparisonWindows[1] ?? compareWindow
-    const compareDefaultsUsed = comparisonWindows.length === 0
+    const compareDefaultsUsed = comparisonWindows.length === 0 && !comparisonWindowFromContext
     const comparePriorInferred = comparisonWindows.length === 1
     const requestedTopN = extractRequestedTopN(question)
     const topWeightLimit = requestedTopN ?? 5
@@ -2577,6 +3827,7 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           useEstimated1rm,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (analysisKindOverride === 'best_sets') {
@@ -2587,6 +3838,7 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           useEstimated1rm,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (analysisKindOverride === 'set_breakdown') {
@@ -2597,6 +3849,7 @@ export async function POST(req: Request) {
           useEstimated1rm,
           allTime: setBreakdownAllTime,
           anchorWindow: setBreakdownAnchorWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (analysisKindOverride === 'exercise_summary') {
@@ -2606,6 +3859,7 @@ export async function POST(req: Request) {
           window: summaryWindow,
           exercise: exerciseTarget,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (analysisKindOverride === 'exercise_progression') {
@@ -2615,6 +3869,7 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           bucket: progressionBucket,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (analysisKindOverride === 'lighter_weight_progress') {
@@ -2653,6 +3908,27 @@ export async function POST(req: Request) {
         canonicalAnalysisKind = 'muscle_group_balance'
         return buildMuscleGroupComparisonPlan(useBodyParts, setsBase)
       }
+      if (analysisKindOverride === 'best_1rm_overall') {
+        canonicalAnalysisKind = 'best_1rm_overall'
+        return buildBest1rmOverallPlan(setsBase, {
+          window: summaryWindow,
+          limit: rankingLimit,
+          allTime: wantsAllTimeWindow,
+        })
+      }
+      if (analysisKindOverride === 'inactive_exercises') {
+        canonicalAnalysisKind = 'inactive_exercises'
+        return buildInactiveExercisesPlan(setsBase, {
+          window: explicitWindow ?? '30 days',
+          limit: rankingLimit,
+        })
+      }
+      if (analysisKindOverride === 'workout_timing') {
+        canonicalAnalysisKind = 'workout_timing'
+        return buildWorkoutTimingPlan(setsBase, {
+          window: explicitWindow ?? '12 months',
+        })
+      }
       if (isPrQuestion(question)) {
         canonicalAnalysisKind = 'exercise_prs'
         return buildExercisePrsPlan(setsBase, {
@@ -2661,6 +3937,7 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           useEstimated1rm,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (isBestSetsQuestion(question)) {
@@ -2671,6 +3948,7 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           useEstimated1rm,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (isSetBreakdownQuestion(question)) {
@@ -2681,6 +3959,7 @@ export async function POST(req: Request) {
           useEstimated1rm,
           allTime: setBreakdownAllTime,
           anchorWindow: setBreakdownAnchorWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (isExerciseSummaryQuestion(question)) {
@@ -2690,6 +3969,7 @@ export async function POST(req: Request) {
           window: summaryWindow,
           exercise: exerciseTarget,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (isExerciseProgressionQuestion(question)) {
@@ -2699,6 +3979,7 @@ export async function POST(req: Request) {
           exercise: exerciseTarget,
           bucket: progressionBucket,
           allTime: wantsAllTimeWindow,
+          sessionDate: sessionDateFilter ?? undefined,
         })
       }
       if (PROGRESSIVE_OVERLOAD_REGEX.test(combinedUserText)) {
@@ -3283,7 +4564,11 @@ export async function POST(req: Request) {
     if (isWorkoutPlan) {
       const planQuery = executedQueries.find(query => query.id === 'q1')
       const deloadQuery = executedQueries.find(query => query.id === 'q2')
-      const planResponseContext = buildPlanResponseContext(planQuery)
+      const planTimeframe =
+        typeof planQuery?.params?.[0] === 'string'
+          ? String(planQuery.params[0])
+          : planQuery?.policy?.appliedTimeWindow ?? undefined
+      const planResponseContext = buildPlanResponseContext(planQuery, planTimeframe)
       const deloadRecommendation = buildDeloadRecommendation(deloadQuery)
       const hasPlanRows =
         planQuery && !planQuery.error && (planQuery.rowCount > 0 || planQuery.previewRows.length > 0)
@@ -3342,10 +4627,6 @@ export async function POST(req: Request) {
               ]
             : ['Show my most recent sessions.', 'Plan another focused session.'],
         )
-        const planTimeframe =
-          typeof planQuery?.params?.[0] === 'string'
-            ? String(planQuery.params[0])
-            : planQuery?.policy?.appliedTimeWindow ?? undefined
         const planAnalysisKind = analysisKindOverride ?? canonicalAnalysisKind ?? 'other'
         conversationState = applyAnalysisState(conversationState, {
           kind: planAnalysisKind,
@@ -3354,7 +4635,14 @@ export async function POST(req: Request) {
           targets: intentHints.targets,
         })
         conversationState = applyPlanMeta(conversationState, planMeta)
-        conversationState = applyResponseContext(conversationState, planResponseContext)
+        conversationState = applyResponseContext(conversationState, planResponseContext, {
+          analysisKind: planAnalysisKind,
+          question,
+          turnId,
+          timestamp: turnTimestamp,
+          turnMode,
+          topicShifted,
+        })
         const response: GymChatResponse = {
           assistantMessage,
           citations,
@@ -3397,6 +4685,11 @@ export async function POST(req: Request) {
       queries: executedQueries,
       responseMeta,
       exerciseTarget,
+      timeWindow: sessionDateFilter
+        ? `session ${sessionDateFilter}`
+        : analysisKind === 'period_compare'
+          ? compareWindow
+          : responseMeta.timeWindowLabel ?? undefined,
     })
 
     if (isSparseProgressionResult(analysisKind, executedQueries)) {
@@ -3459,7 +4752,14 @@ export async function POST(req: Request) {
         targets: intentHints.targets,
       })
       conversationState = applyPlanMeta(conversationState, planMeta)
-      conversationState = applyResponseContext(conversationState, responseContext)
+      conversationState = applyResponseContext(conversationState, responseContext, {
+        analysisKind,
+        question,
+        turnId,
+        timestamp: turnTimestamp,
+        turnMode,
+        topicShifted,
+      })
       const response: GymChatResponse = {
         assistantMessage,
         citations: [],
@@ -3689,7 +4989,14 @@ export async function POST(req: Request) {
         targets: intentHints.targets,
       })
       conversationState = applyPlanMeta(conversationState, planMeta)
-      conversationState = applyResponseContext(conversationState, responseContext)
+      conversationState = applyResponseContext(conversationState, responseContext, {
+        analysisKind,
+        question,
+        turnId,
+        timestamp: turnTimestamp,
+        turnMode,
+        topicShifted,
+      })
       log('explain completed', { durationMs: Date.now() - explainStartedAt })
       const response: GymChatResponse = {
         assistantMessage,
@@ -3737,7 +5044,14 @@ export async function POST(req: Request) {
           targets: intentHints.targets,
         })
         conversationState = applyPlanMeta(conversationState, planMeta)
-        conversationState = applyResponseContext(conversationState, responseContext)
+        conversationState = applyResponseContext(conversationState, responseContext, {
+          analysisKind,
+          question,
+          turnId,
+          timestamp: turnTimestamp,
+          turnMode,
+          topicShifted,
+        })
         conversationState = applyErrorState(conversationState, { type: 'explanation', analysisKind, canonicalPlanId })
         const response: GymChatResponse = {
           assistantMessage: correctedMessage,
