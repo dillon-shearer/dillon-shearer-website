@@ -20,6 +20,7 @@ const DATA_SCOPE = `Data scope and limitations:
 - There is no direct tracking of RPE, rest times, heart rate, subjective fatigue, injuries, or future plans.
 - The agent may discuss goals and programming in general when logs are not required.
 - When logs are absent for a claim, the agent must say so and use general best practices.
+- The assistant can provide general form cues for common exercises from a local knowledge base.
 - The agent must state when a requested attribute does not exist and pivot to measurable proxies (sets, sessions, volume, rep ranges, body_parts, trends).
 - For log-backed analysis, reasoning must stay within historical data; planning/future suggestions should be grounded in observed patterns.
 `

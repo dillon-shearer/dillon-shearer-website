@@ -5,6 +5,11 @@ const STRICT_KEYWORDS = /\b(only|just|solely|nothing but|purely|exclusively)\b/i
 const EXCLUDE_KEYWORDS = ['no', 'not', 'without', 'exclude', 'skip']
 const HISTORY_KEYWORDS =
   /\b(use|using|based on|from)\s+(my|our)?\s*(previous|past|last|recent|logged)?\s*(lifts|workouts|sets|logs|history)\b/i
+const GOAL_KEYWORDS = {
+  strength: ['strength', 'power', 'max strength', 'heavy'],
+  hypertrophy: ['hypertrophy', 'muscle', 'size', 'mass', 'gain muscle'],
+  endurance: ['endurance', 'conditioning', 'stamina', 'work capacity'],
+}
 
 const MUSCLE_ALIASES: Record<string, string[]> = {
   quads: ['quad', 'quads', 'quadricep', 'quadriceps'],
@@ -165,12 +170,23 @@ export const parseTargetMuscleConstraint = (text: string): TargetMuscleConstrain
 
 export const detectHistoricalLiftRequest = (text: string): boolean => HISTORY_KEYWORDS.test(text || '')
 
+const detectGoal = (text: string): WorkoutPlanAnalysisMeta['goal'] | undefined => {
+  if (!text) return undefined
+  const normalized = text.toLowerCase()
+  if (GOAL_KEYWORDS.strength.some(keyword => normalized.includes(keyword))) return 'strength'
+  if (GOAL_KEYWORDS.hypertrophy.some(keyword => normalized.includes(keyword))) return 'hypertrophy'
+  if (GOAL_KEYWORDS.endurance.some(keyword => normalized.includes(keyword))) return 'endurance'
+  return undefined
+}
+
 export const parseWorkoutPlanMeta = (text: string): WorkoutPlanAnalysisMeta => {
   const targetsMuscles = parseTargetMuscleConstraint(text) ?? undefined
   const usesHistoricalLifts = detectHistoricalLiftRequest(text) ? true : undefined
+  const goal = detectGoal(text)
   return {
     targetsMuscles,
     usesHistoricalLifts,
+    goal,
   }
 }
 
@@ -183,10 +199,12 @@ export const mergeWorkoutPlanMeta = (
   const nextTargets = next?.targetsMuscles
   const targetsMuscles = nextTargets?.include?.length ? nextTargets : baseTargets
   const usesHistoricalLifts = Boolean(next?.usesHistoricalLifts || base?.usesHistoricalLifts)
-  if (!targetsMuscles && !usesHistoricalLifts) return undefined
+  const goal = next?.goal ?? base?.goal
+  if (!targetsMuscles && !usesHistoricalLifts && !goal) return undefined
   return {
     targetsMuscles,
     usesHistoricalLifts: usesHistoricalLifts ? true : undefined,
+    goal,
   }
 }
 
@@ -260,6 +278,7 @@ export const buildWorkoutPlanQueries = (input: {
   maxExercises?: number
 }): WorkoutPlanQueryPlan => {
   const window = input.window ?? '12 months'
+  const deloadWindow = '12 weeks'
   const maxExercises = input.maxExercises && input.maxExercises > 0 ? Math.floor(input.maxExercises) : 6
   const { include, exclude } = buildExerciseNameFilters(input.constraint ?? undefined)
   const filterApplied = include.length > 0
@@ -320,6 +339,18 @@ export const buildWorkoutPlanQueries = (input: {
     `WHERE r.rn <= ${maxExercises} ` +
     'ORDER BY r.total_volume DESC NULLS LAST'
 
+  const deloadSql =
+    `WITH ${input.lifts.cte}, weekly AS (` +
+    `SELECT DATE_TRUNC('week', ${input.lifts.performedAtExpr})::date AS week_start, ` +
+    `SUM(${input.lifts.volumeExpr}) AS total_volume ` +
+    `FROM ${input.lifts.alias} ` +
+    `WHERE ${input.lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+    'GROUP BY week_start' +
+    ') ' +
+    'SELECT COUNT(*) AS week_count, AVG(total_volume) AS avg_volume, ' +
+    'MIN(total_volume) AS min_volume, MAX(total_volume) AS max_volume ' +
+    'FROM weekly'
+
   return {
     filterApplied,
     queries: [
@@ -328,6 +359,12 @@ export const buildWorkoutPlanQueries = (input: {
         purpose,
         sql,
         params,
+      },
+      {
+        id: 'q2',
+        purpose: `Summarize weekly training volume over the last ${deloadWindow} for deload checks.`,
+        sql: deloadSql,
+        params: [deloadWindow],
       },
     ],
   }

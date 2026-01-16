@@ -1,5 +1,5 @@
-import type { AnalysisKind, GymChatChartSpec, GymChatQuery, TargetMuscleConstraint } from '@/types/gym-chat'
-import { selectExercisesForMuscles } from './workout-planner'
+import type { AnalysisKind, GymChatChartSpec, GymChatQuery, TargetMuscleConstraint, WorkoutPlanAnalysisMeta } from '@/types/gym-chat'
+import { resolveExercisePrimaryMuscle, selectExercisesForMuscles } from './workout-planner'
 
 export type MetricInfo = {
   name: string
@@ -57,6 +57,27 @@ const VOLUME_MISMATCH_KEYWORDS = ['total volume', 'tonnage', 'lb-reps', 'lb reps
 const normalizeText = (value: string) => value.toLowerCase()
 
 const WORKOUT_EXERCISE_LIBRARY: WorkoutTemplateExercise[] = [
+  { name: 'Bench Press', primaryMuscle: 'chest', sets: '3-4', reps: '5-8' },
+  { name: 'Incline Dumbbell Press', primaryMuscle: 'chest', sets: '3', reps: '8-12' },
+  { name: 'Chest Fly', primaryMuscle: 'chest', sets: '3', reps: '10-15' },
+  { name: 'Push-Up', primaryMuscle: 'chest', sets: '3', reps: '8-15' },
+  { name: 'Pull-Up', primaryMuscle: 'back', sets: '3', reps: '6-10' },
+  { name: 'Lat Pulldown', primaryMuscle: 'back', sets: '3', reps: '8-12' },
+  { name: 'Barbell Row', primaryMuscle: 'back', sets: '3-4', reps: '6-10' },
+  { name: 'Seated Cable Row', primaryMuscle: 'back', sets: '3', reps: '8-12' },
+  { name: 'Overhead Press', primaryMuscle: 'shoulders', sets: '3', reps: '5-8' },
+  { name: 'Dumbbell Shoulder Press', primaryMuscle: 'shoulders', sets: '3', reps: '8-12' },
+  { name: 'Lateral Raise', primaryMuscle: 'shoulders', sets: '3', reps: '12-15' },
+  { name: 'Face Pull', primaryMuscle: 'shoulders', sets: '3', reps: '12-15' },
+  { name: 'Barbell Curl', primaryMuscle: 'biceps', sets: '3', reps: '8-12' },
+  { name: 'Dumbbell Curl', primaryMuscle: 'biceps', sets: '3', reps: '10-12' },
+  { name: 'Triceps Pushdown', primaryMuscle: 'triceps', sets: '3', reps: '10-12' },
+  { name: 'Skullcrusher', primaryMuscle: 'triceps', sets: '3', reps: '8-12' },
+  { name: 'Dip', primaryMuscle: 'triceps', sets: '3', reps: '6-10' },
+  { name: 'Plank', primaryMuscle: 'core', sets: '3', reps: '30-60s', notes: 'seconds' },
+  { name: 'Hanging Leg Raise', primaryMuscle: 'core', sets: '3', reps: '8-12' },
+  { name: 'Cable Crunch', primaryMuscle: 'core', sets: '3', reps: '10-15' },
+  { name: 'Wrist Curl', primaryMuscle: 'forearms', sets: '3', reps: '12-15' },
   { name: 'Leg Extension', primaryMuscle: 'quads', sets: '3-4', reps: '10-15' },
   { name: 'Hack Squat', primaryMuscle: 'quads', sets: '3-4', reps: '6-10' },
   { name: 'Leg Press', primaryMuscle: 'quads', sets: '3', reps: '8-12' },
@@ -71,6 +92,8 @@ const WORKOUT_EXERCISE_LIBRARY: WorkoutTemplateExercise[] = [
   { name: 'Hip Abduction', primaryMuscle: 'hips', sets: '3', reps: '12-15' },
   { name: 'Hip Adduction', primaryMuscle: 'hips', sets: '3', reps: '12-15' },
 ]
+
+const normalizeExerciseText = (value: string) => value.trim().toLowerCase()
 
 const mapWindowDays = (window: string | null | undefined) => {
   if (!window) return null
@@ -291,6 +314,17 @@ const inferSetTarget = (value: unknown) => {
   return 3
 }
 
+const resolveGoalDefaults = (goal?: WorkoutPlanAnalysisMeta['goal']) => {
+  if (!goal) return null
+  if (goal === 'strength') {
+    return { reps: '3-6', sets: 4, note: 'Rest 2-3 minutes between sets.' }
+  }
+  if (goal === 'hypertrophy') {
+    return { reps: '8-12', sets: 3, note: 'Rest 60-90 seconds between sets.' }
+  }
+  return { reps: '12-20', sets: 3, note: 'Rest 45-75 seconds between sets.' }
+}
+
 export const buildPlanCorrectionAcknowledgement = (constraint?: TargetMuscleConstraint) => {
   const targetList = constraint?.include?.length ? formatMuscleList(constraint.include) : 'your requested focus'
   const focusLabel = constraint?.strict ? `${targetList} only` : targetList
@@ -303,11 +337,13 @@ export const buildWorkoutPlanFromHistory = (input: {
   usesHistoricalLifts?: boolean
   acknowledgement?: string
   maxExercises?: number
+  goal?: WorkoutPlanAnalysisMeta['goal']
 }) => {
   const query = input.query
   const rows = query?.previewRows ?? []
   if (!rows.length) return null
   const maxExercises = input.maxExercises && input.maxExercises > 0 ? Math.floor(input.maxExercises) : 5
+  const goalDefaults = resolveGoalDefaults(input.goal)
   const exercises = rows
     .map(row => ({
       row,
@@ -349,8 +385,8 @@ export const buildWorkoutPlanFromHistory = (input: {
           ? 'top set'
           : null
 
-    const sets = inferSetTarget(row.total_sets)
-    const reps = inferRepTarget(anchorReps)
+    const sets = goalDefaults?.sets ?? inferSetTarget(row.total_sets)
+    const reps = goalDefaults?.reps ?? inferRepTarget(anchorReps)
     if (!anchorWeight) hadMissingWeights = true
 
     const weightLabel = anchorWeight ? `@ ${anchorWeight}` : '@ challenging load'
@@ -364,8 +400,9 @@ export const buildWorkoutPlanFromHistory = (input: {
   const trainingLine = input.constraint?.strict
     ? `Keep the session strictly ${targetList} only; skip accessories for other muscle groups.`
     : `Keep the session focused on ${targetList} while staying within the requested emphasis.`
+  const goalLine = input.goal && goalDefaults ? `Goal focus: ${input.goal}. ${goalDefaults.note}` : null
   const loadingLine = input.usesHistoricalLifts
-    ? 'Aim to match your last working set; if it felt smooth, add a small plate jump next time.'
+    ? 'Aim to match your last working set; if it felt smooth, add 2.5-5 lb next time.'
     : 'Use the historical set weights as starting anchors and adjust slightly based on fatigue.'
   const limitationLine = hadMissingWeights
     ? 'Some exercises lacked recent working weights, so use a challenging but repeatable load as your starting point.'
@@ -377,25 +414,32 @@ export const buildWorkoutPlanFromHistory = (input: {
     sessionLines.join('\n'),
     '**Training implications**',
     `- ${trainingLine}`,
+    goalLine ? `- ${goalLine}` : null,
     `- ${loadingLine}`,
     '**Limitations**',
     `- ${limitationLine}`,
-  ].join('\n\n')
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 export const buildWorkoutPlanFallbackMessage = (input: {
   constraint?: TargetMuscleConstraint
   usesHistoricalLifts?: boolean
   acknowledgement?: string
+  goal?: WorkoutPlanAnalysisMeta['goal']
 }) => {
+  const goalDefaults = resolveGoalDefaults(input.goal)
   const exercises = buildGenericWorkoutPlan(input.constraint, 6)
   const targetList = input.constraint?.include?.length ? formatMuscleList(input.constraint.include) : 'targeted'
   const focusLabel = input.constraint?.strict ? `${targetList}-only` : `${targetList}-focused`
   const opening = `${input.acknowledgement ? `${input.acknowledgement} ` : ''}Here is a ${focusLabel} session.`
   const sessionLines = exercises.length
     ? exercises.map(entry => {
+        const sets = goalDefaults?.sets ? String(goalDefaults.sets) : entry.sets
+        const reps = goalDefaults?.reps ?? entry.reps
         const note = entry.notes ? ` (${entry.notes})` : ''
-        return `- ${entry.name}: ${entry.sets} sets x ${entry.reps} reps${note}`
+        return `- ${entry.name}: ${sets} sets x ${reps} reps${note}`
       })
     : ['- No default exercises are available for this focus yet.']
   const limitationLine = input.usesHistoricalLifts
@@ -404,15 +448,19 @@ export const buildWorkoutPlanFallbackMessage = (input: {
   const trainingLine = input.constraint?.strict
     ? `Keep the session strictly ${targetList} only; skip accessories for other muscle groups.`
     : `Keep the session focused on ${targetList} while staying within the requested emphasis.`
+  const goalLine = input.goal && goalDefaults ? `Goal focus: ${input.goal}. ${goalDefaults.note}` : null
   return [
     opening,
     '**Proposed session**',
     sessionLines.join('\n'),
     '**Training implications**',
     `- ${trainingLine}`,
+    goalLine ? `- ${goalLine}` : null,
     '**Limitations**',
     `- ${limitationLine}`,
-  ].join('\n\n')
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 export const extractRequestedTopN = (question: string) => {
@@ -429,6 +477,26 @@ export const isRankingQuestion = (question: string) => {
   const normalized = normalizeText(question)
   if (PR_RANKING_REGEX.test(normalized)) return true
   return RANKING_KEYWORDS.some(keyword => normalized.includes(keyword))
+}
+
+export const suggestExerciseNames = (input: string, maxResults = 3) => {
+  if (!input) return []
+  const normalized = normalizeExerciseText(input)
+  if (!normalized) return []
+  const exactMatches = WORKOUT_EXERCISE_LIBRARY.filter(
+    entry => normalizeExerciseText(entry.name) === normalized,
+  ).map(entry => entry.name)
+  if (exactMatches.length) return exactMatches.slice(0, maxResults)
+  const partialMatches = WORKOUT_EXERCISE_LIBRARY.filter(entry => {
+    const candidate = normalizeExerciseText(entry.name)
+    return candidate.includes(normalized) || normalized.includes(candidate)
+  }).map(entry => entry.name)
+  if (partialMatches.length) return partialMatches.slice(0, maxResults)
+  const primaryMuscle = resolveExercisePrimaryMuscle(input)
+  if (!primaryMuscle) return []
+  const muscleMatches = WORKOUT_EXERCISE_LIBRARY.filter(entry => entry.primaryMuscle === primaryMuscle)
+    .map(entry => entry.name)
+  return muscleMatches.filter(name => normalizeExerciseText(name) !== normalized).slice(0, maxResults)
 }
 
 export const detectRequestedMetric = (question: string): MetricInfo | null => {
@@ -493,28 +561,43 @@ export const buildResponseMeta = (question: string, queries: GymChatQuery[]): Re
   }
 }
 
-export const formatCoverageLine = (meta: ResponseMeta) => {
-  const windowLabel = meta.timeWindowLabel ?? 'unknown window'
-  const rowsReturned = meta.rowsReturned ?? 'unknown'
-  const rowsDisplayed = meta.rowsDisplayed ?? 'unknown'
-  const limitApplied = meta.limitApplied ?? 'none'
-  const topRequested = meta.requestedTopN ? `top ${meta.requestedTopN} requested` : 'top N not specified'
-  const tieHandling = meta.tieHandling ?? 'tie handling unknown'
-  return `Coverage/Limitations: window=${windowLabel}, rows returned=${rowsReturned}, rows shown=${rowsDisplayed}, limit=${limitApplied} (${topRequested}), tie handling=${tieHandling}.`
+export const formatCoverageLine = (meta: ResponseMeta, options?: { debug?: boolean }) => {
+  const windowLabel = meta.timeWindowLabel ?? 'requested window'
+  const rowsReturned = meta.rowsReturned ?? 0
+  const rowsDisplayed = meta.rowsDisplayed ?? 0
+  if (options?.debug) {
+    const limitApplied = meta.limitApplied ?? 'none'
+    const topRequested = meta.requestedTopN ? `top ${meta.requestedTopN} requested` : 'top N not specified'
+    const tieHandling = meta.tieHandling ?? 'tie handling unknown'
+    return `Coverage/Limitations: window=${windowLabel}, rows returned=${rowsReturned}, rows shown=${rowsDisplayed}, limit=${limitApplied} (${topRequested}), tie handling=${tieHandling}.`
+  }
+  const windowPhrase = windowLabel === 'all_time' ? 'all-time data' : `the last ${windowLabel}`
+  return `Coverage: Using ${windowPhrase}. Showing ${rowsDisplayed} of ${rowsReturned} results.`
 }
 
-export const formatPeriodCompareCoverageLine = (input: {
-  windowRecent: string
-  windowPrior: string
-  defaultsUsed: boolean
-  priorInferred?: boolean
-}) => {
+export const formatPeriodCompareCoverageLine = (
+  input: {
+    windowRecent: string
+    windowPrior: string
+    defaultsUsed: boolean
+    priorInferred?: boolean
+  },
+  options?: { debug?: boolean },
+) => {
+  if (options?.debug) {
+    const defaultsNote = input.defaultsUsed
+      ? 'true (no window specified; defaulted to recent/prior)'
+      : input.priorInferred
+        ? 'partial (prior window inferred to match recent)'
+        : 'false'
+    return `Coverage/Limitations: window_recent=${input.windowRecent}, window_prior=${input.windowPrior}, defaults_used=${defaultsNote}.`
+  }
   const defaultsNote = input.defaultsUsed
-    ? 'true (no window specified; defaulted to recent/prior)'
+    ? 'Defaults used because no windows were specified.'
     : input.priorInferred
-      ? 'partial (prior window inferred to match recent)'
-      : 'false'
-  return `Coverage/Limitations: window_recent=${input.windowRecent}, window_prior=${input.windowPrior}, defaults_used=${defaultsNote}.`
+      ? 'Prior window inferred to match the recent window.'
+      : 'Custom windows used.'
+  return `Coverage: Comparing the last ${input.windowRecent} vs the prior ${input.windowPrior}. ${defaultsNote}`
 }
 
 export const validateRankingResponse = (
@@ -534,12 +617,13 @@ export const validateRankingResponse = (
     }
   }
   if (meta.isRankingQuestion) {
-    const hasCoverage = normalized.includes('coverage/limitations') || /showing\s+\d+\s+of\s+\d+/.test(normalized)
+    const hasCoverage =
+      normalized.includes('coverage') || /showing\s+\d+\s+of\s+\d+/.test(normalized)
     if (!hasCoverage) {
       issues.push({
         type: 'coverage_missing',
         message:
-          'Add a Coverage/Limitations line stating time window, rows returned, rows shown, applied limit, and tie handling.',
+          'Add a Coverage line stating time window and how many results are shown vs available.',
       })
     }
     if (meta.requestedTopN && meta.rowsDisplayed && meta.rowsDisplayed < meta.requestedTopN) {

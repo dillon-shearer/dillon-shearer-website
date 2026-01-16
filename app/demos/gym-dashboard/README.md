@@ -229,6 +229,9 @@
 - **Top-end efforts**: Counts top-3 heaviest sets per exercise and the sessions containing those sets over the last 12 months.
 - **Top-end efforts (12m vs 3m)**: Compares top-end set frequency and session coverage across the last 12 months versus the most recent 3 months.
 - **Targeted-muscle planning**: Builds a muscle-specific session (e.g., quads) using recent exercise history when available, otherwise falls back to a generic template.
+- **Goal-based planning**: Adjusts sets/reps/rest for strength, hypertrophy, or endurance focus.
+- **Deload checks**: Flags large weekly volume swings and suggests a deload when needed.
+- **Exercise technique guidance**: Provides general form cues, common mistakes, and variations from a local exercise library.
 
 ## First-class Gym Chat Questions
 - **Sessions**: "How many sessions did I log in the last 8 weeks?" (window: explicit or 12 weeks; metric: distinct session days).
@@ -246,6 +249,9 @@
 - **Weekly volume**: "What was my weekly training volume over the last 12 months?" (window: explicit or 12 months).
 - **Muscle balance**: "Which muscle groups am I undertraining or overtraining?" (window: 24 weeks split into recent vs prior 12 weeks).
 - **Targeted planning**: "Help me plan my sets for quads using my previous lifts." (window: 12 months; weights anchored to recent working sets).
+- **Goal-based planning**: "Plan a quads session with a hypertrophy focus." (goal: hypertrophy; reps/sets adjusted).
+- **Deload check**: "Do I need a deload based on my recent training volume?" (window: 12 weeks; compares weekly volume swings).
+- **Technique guidance**: "What cues for deadlift?" (general form cues; not log-backed).
 
 ## Notes & Limitations
 - These analyses require enough logged sessions to produce stable trends; sparse data can yield empty results.
@@ -407,3 +413,26 @@
 - **Related Conversation / Prompt**:
   - "Break down my last session sets for squats."
   - "Do my last sets drop off on bench days?"
+
+[2026-01-15T19:25:00Z] Gym Chat technique guidance, planning goals, and coverage clarity
+- **Agent / Model**: GPT-5 (Codex)
+- **Scope**:
+  - `app/api/gym-chat/route.ts`
+  - `lib/exercise-library.ts`
+  - `lib/gym-chat/workout-planner.ts`
+  - `lib/gym-chat/response-utils.ts`
+  - `lib/gym-chat/capabilities.ts`
+  - `types/gym-chat.ts`
+  - `eval/gym-chat-questions.json`
+  - `app/demos/gym-dashboard/README.md`
+  - `README.md`
+- **Reason**:
+  - Add exercise technique guidance, goal-based programming, and deload messaging while simplifying coverage language for non-technical users.
+- **Key Changes**:
+  - Added a local exercise library with form cues and linked it into technique responses.
+  - Added goal parsing for strength/hypertrophy/endurance and applied goal-based sets/reps/rest to planning.
+  - Introduced deload recommendations from weekly volume variability and simplified coverage lines with a debug toggle.
+- **Related Conversation / Prompt**:
+  - "What cues for deadlift?"
+  - "Plan a quads session with a hypertrophy focus."
+  - "Do I need a deload based on my recent training volume?"

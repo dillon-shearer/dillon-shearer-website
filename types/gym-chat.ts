@@ -38,11 +38,38 @@ export type TargetMuscleConstraint = {
 export type WorkoutPlanAnalysisMeta = {
   targetsMuscles?: TargetMuscleConstraint
   usesHistoricalLifts?: boolean
+  goal?: 'strength' | 'hypertrophy' | 'endurance'
 }
 
 export type PendingClarification =
   | { kind: 'return_for_effort_metric' }
   | { kind: 'timeframe'; question?: string }
+  | { kind: 'exercise_choice'; question: string; options: string[] }
+  | { kind: 'terse_input'; input: string; suggestions: string[] }
+
+/**
+ * Context from the last query response for multi-turn pronoun resolution.
+ * Stores specific data points that can be referenced in follow-ups.
+ */
+export type LastResponseContext = {
+  /** Primary exercise from the last response */
+  exercise?: string
+  /** All exercises mentioned in the last response */
+  exercises?: string[]
+  /** Specific data points (sets, weights, dates) for pronoun resolution */
+  dataPoints?: Array<{
+    exercise: string
+    weight?: number
+    reps?: number
+    date?: string
+    volume?: number
+    e1rm?: number
+  }>
+  /** The session date if a specific session was referenced */
+  sessionDate?: string
+  /** The metric type used in the last analysis */
+  metric?: 'volume' | 'sets' | 'reps' | '1rm' | 'weight'
+}
 
 export type GymChatConversationState = {
   lastAnalysis?: {
@@ -58,6 +85,8 @@ export type GymChatConversationState = {
     analysisKind?: AnalysisKind
     canonicalPlanId?: string
   }
+  /** Context from the last response for multi-turn pronoun resolution */
+  lastResponseContext?: LastResponseContext
 }
 
 export type GymChatRequest = {

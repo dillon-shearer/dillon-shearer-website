@@ -1,6 +1,33 @@
-import type { GymChatConversationState, GymChatMessage, PendingClarification } from '@/types/gym-chat'
+import type { GymChatConversationState, GymChatMessage, LastResponseContext, PendingClarification } from '@/types/gym-chat'
+import { TERSE_INPUT_CLARIFICATION } from './templates'
 
 export type TurnMode = 'clarification_answer' | 'analysis_followup' | 'new_question'
+
+/** Pronouns and phrases that reference prior context */
+const PRONOUN_HINTS = [
+  'that set',
+  'the set',
+  'that one',
+  'the one',
+  'the previous',
+  'before that',
+  'the one before',
+  'prior set',
+  'last one',
+  'same exercise',
+  'same lift',
+  'that exercise',
+  'the exercise',
+]
+
+/** Patterns that indicate a correction or clarification from the user */
+const CORRECTION_PATTERNS = [
+  /^no[,.]?\s+i\s+(meant|was asking|asked)/i,
+  /^actually[,.]?\s+i\s+(meant|want)/i,
+  /^i\s+meant\s+/i,
+  /^not\s+that[,.]?\s+/i,
+  /^what\s+i\s+meant/i,
+]
 
 const FOLLOW_UP_HINTS = [
   'drill into',
@@ -77,7 +104,128 @@ export const isClarificationAnswer = (pending: PendingClarification | null | und
     if (isShort && !looksLikeStandaloneQuestion(normalized)) return true
     return false
   }
+  if (pending.kind === 'terse_input') {
+    // User is responding to a "what would you like to know about X?" clarification
+    // Accept any short response that clarifies intent
+    if (!normalized) return false
+    if (isShort) return true
+    return false
+  }
+  if (pending.kind === 'exercise_choice') {
+    if (!normalized) return false
+    if (isShort) return true
+    return false
+  }
   return false
+}
+
+/**
+ * Detects if the input is too terse (1-2 words) and needs clarification.
+ * Returns the detected exercise name if found, otherwise null.
+ */
+export const detectTerseInput = (message: string): { isTerse: boolean; potentialExercise: string | null } => {
+  const normalized = normalizeWhitespace(message).toLowerCase()
+  const words = normalized.split(' ').filter(Boolean)
+
+  // Not terse if more than 2 words or contains question words
+  if (words.length > 2) return { isTerse: false, potentialExercise: null }
+  if (looksLikeStandaloneQuestion(normalized)) return { isTerse: false, potentialExercise: null }
+
+  // Single word or two-word input that's not a question
+  if (words.length <= 2 && !normalized.includes('?')) {
+    return { isTerse: true, potentialExercise: message.trim() }
+  }
+
+  return { isTerse: false, potentialExercise: null }
+}
+
+/**
+ * Builds a clarification prompt for terse inputs.
+ */
+export const buildTerseClarificationPrompt = (input: string): string => {
+  const suggestions = TERSE_INPUT_CLARIFICATION.options
+  return [
+    TERSE_INPUT_CLARIFICATION.title.replace('{exercise}', input),
+    '',
+    ...suggestions.map((s, i) => `${i + 1}. ${s}`),
+  ].join('\n')
+}
+
+/**
+ * Detects if the message contains pronouns that need resolution from prior context.
+ */
+export const containsPronounReference = (message: string): boolean => {
+  const normalized = normalizeWhitespace(message).toLowerCase()
+  return PRONOUN_HINTS.some(hint => normalized.includes(hint))
+}
+
+/**
+ * Detects if the message is a correction of a previous misunderstanding.
+ */
+export const isCorrection = (message: string): boolean => {
+  const normalized = normalizeWhitespace(message).toLowerCase()
+  return CORRECTION_PATTERNS.some(pattern => pattern.test(normalized))
+}
+
+/**
+ * Attempts to resolve pronoun references using the last response context.
+ * Returns the resolved exercise name or null if unable to resolve.
+ */
+export const resolvePronounReference = (
+  message: string,
+  context: LastResponseContext | undefined
+): {
+  resolved: boolean
+  exercise?: string
+  dataPoint?: LastResponseContext['dataPoints'][0]
+  ambiguous?: boolean
+  options?: string[]
+} => {
+  if (!context) return { resolved: false }
+
+  const normalized = normalizeWhitespace(message).toLowerCase()
+  const options = context.exercises && context.exercises.length ? context.exercises : undefined
+  const isAmbiguous = options ? options.length > 1 : false
+
+  // Check for "the set before that" or "previous set" type references
+  if (normalized.includes('before that') || normalized.includes('previous') || normalized.includes('prior')) {
+    if (context.dataPoints && context.dataPoints.length > 1) {
+      // Return the second-to-last data point
+      const dataPoint = context.dataPoints[context.dataPoints.length - 2]
+      return { resolved: true, exercise: dataPoint.exercise, dataPoint }
+    }
+  }
+
+  // Check for "that set" or "the set" references
+  if (normalized.includes('that set') || normalized.includes('the set') || normalized.includes('that one')) {
+    if (context.dataPoints && context.dataPoints.length > 0) {
+      const dataPoint = context.dataPoints[context.dataPoints.length - 1]
+      return { resolved: true, exercise: dataPoint.exercise, dataPoint }
+    }
+  }
+
+  // Check for "that exercise" or "same exercise" references
+  if (normalized.includes('that exercise') || normalized.includes('same exercise') ||
+      normalized.includes('same lift') || normalized.includes('that lift')) {
+    if (isAmbiguous) {
+      return { resolved: false, ambiguous: true, options }
+    }
+    if (context.exercise) {
+      return { resolved: true, exercise: context.exercise }
+    }
+  }
+
+  // Generic pronoun resolution - use primary exercise from context
+  if ((normalized.includes('that') || normalized.includes('it') || normalized.includes('this'))) {
+    if (isAmbiguous) {
+      return { resolved: false, ambiguous: true, options }
+    }
+    if (context.exercise) {
+      return { resolved: true, exercise: context.exercise }
+    }
+  }
+
+  return { resolved: false }
 }
 
 const isShortMessage = (message: string) => {
@@ -88,6 +236,7 @@ const isShortMessage = (message: string) => {
 const looksLikeFollowUp = (message: string) => {
   const normalized = normalizeWhitespace(message).toLowerCase()
   if (!normalized) return false
+  if (containsPronounReference(message)) return true
   const isFollowUpPhrase = FOLLOW_UP_HINTS.some(hint => normalized.includes(hint))
   if (isFollowUpPhrase) return true
   if (normalized.startsWith('and ') || normalized.startsWith('also ')) return true
@@ -136,6 +285,36 @@ export const buildLlmContext = (input: {
       content: `Context from prior analysis: ${parts.join(', ')}.`,
     })
   }
+  // Add last response context for pronoun resolution
+  if (state?.lastResponseContext && input.mode === 'analysis_followup') {
+    const ctx = state.lastResponseContext
+    const parts: string[] = []
+    if (ctx.exercise) {
+      parts.push(`exercise=${ctx.exercise}`)
+    }
+    if (ctx.sessionDate) {
+      parts.push(`session_date=${ctx.sessionDate}`)
+    }
+    if (ctx.metric) {
+      parts.push(`metric=${ctx.metric}`)
+    }
+    if (ctx.dataPoints?.length) {
+      const summary = ctx.dataPoints.slice(-3).map(dp => {
+        const bits: string[] = [dp.exercise]
+        if (dp.weight) bits.push(`${dp.weight}lb`)
+        if (dp.reps) bits.push(`x${dp.reps}`)
+        if (dp.date) bits.push(`on ${dp.date}`)
+        return bits.join(' ')
+      }).join('; ')
+      parts.push(`recent_data=[${summary}]`)
+    }
+    if (parts.length) {
+      messages.push({
+        role: 'assistant' as const,
+        content: `Last response context: ${parts.join(', ')}.`,
+      })
+    }
+  }
   if (state?.lastPlanMeta) {
     const parts: string[] = []
     if (state.lastPlanMeta.targetsMuscles?.include?.length) {
@@ -148,6 +327,9 @@ export const buildLlmContext = (input: {
     }
     if (state.lastPlanMeta.usesHistoricalLifts) {
       parts.push('uses_historical_lifts=true')
+    }
+    if (state.lastPlanMeta.goal) {
+      parts.push(`goal=${state.lastPlanMeta.goal}`)
     }
     if (parts.length) {
       messages.push({

@@ -8,6 +8,16 @@ export type GymChatTemplateName =
   | 'body_part_balance'
   | 'period_compare'
 
+export const TERSE_INPUT_CLARIFICATION = {
+  title: 'You mentioned "{exercise}". What would you like to know?',
+  options: [
+    'Last session data',
+    'Progression over time',
+    'Volume/set totals',
+    'Best sets or PRs',
+  ],
+}
+
 export type GymChatTemplate = {
   name: GymChatTemplateName
   description: string

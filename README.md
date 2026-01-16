@@ -11,6 +11,12 @@ A Next.js 15 app router project that powers my personal marketing site, long-for
 - **Back-office Utilities** – Postgres-backed status logging, reminder notes, and helper scripts (`pnpm sql`) for running migrations/seeding.
 - **Production Tooling** – Tailwind CSS v4, TypeScript, ESLint defaults from Next.js, Vercel analytics/speed insights, and automatic OG image rendering.
 
+## Gym Chatbot
+
+- **Log-backed analysis**: Session counts, set/volume rankings, progression trends, period comparisons, and within-session drop-off.
+- **Planning support**: Targeted muscle plans with goal-based sets/reps/rest plus deload recommendations when volume swings.
+- **Technique guidance**: General form cues and common mistakes from a local exercise library (clearly labeled as non-log-backed).
+
 ## Tech Stack
 
 - **Framework:** Next.js 15 (App Router) + React 19

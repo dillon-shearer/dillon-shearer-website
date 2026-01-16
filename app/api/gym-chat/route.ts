@@ -27,7 +27,7 @@ import {
   buildWorstDayVolumePlan,
   buildPeriodComparePlan,
 } from '@/lib/gym-chat/canonical-plans'
-import { buildSetsBaseCte } from '@/lib/gym-chat/sql-builders'
+import { buildSetsBaseCte, type SetsBaseCte } from '@/lib/gym-chat/sql-builders'
 import {
   classifyQuestion,
   planGymSql,
@@ -51,12 +51,23 @@ import {
   buildResponseMeta,
   buildWorkoutPlanFromHistory,
   buildWorkoutPlanFallbackMessage,
+  suggestExerciseNames,
   extractRequestedTopN,
   formatCoverageLine,
   formatPeriodCompareCoverageLine,
   validateRankingResponse,
+  type ResponseMeta,
 } from '@/lib/gym-chat/response-utils'
-import { buildLlmContext, classifyTurnMode, RETURN_EFFORT_CHOICE_REGEX } from '@/lib/gym-chat/conversation'
+import {
+  buildLlmContext,
+  buildTerseClarificationPrompt,
+  classifyTurnMode,
+  containsPronounReference,
+  detectTerseInput,
+  isCorrection,
+  resolvePronounReference,
+  RETURN_EFFORT_CHOICE_REGEX,
+} from '@/lib/gym-chat/conversation'
 import { buildSqlErrorAssistantMessage } from '@/lib/gym-chat/sql-errors'
 import { TEMPLATES, selectTemplates } from '@/lib/gym-chat/templates'
 import {
@@ -65,6 +76,7 @@ import {
   normalizeMuscleName,
   parseWorkoutPlanMeta,
 } from '@/lib/gym-chat/workout-planner'
+import { buildExerciseGuidanceMessage, findExerciseEntry } from '@/lib/exercise-library'
 import type { GymChatTemplateName } from '@/lib/gym-chat/templates'
 import type {
   AnalysisKind,
@@ -74,6 +86,7 @@ import type {
   GymChatQuery,
   GymChatResponse,
   GymChatTimeWindow,
+  LastResponseContext,
   PendingClarification,
   TargetMuscleConstraint,
   WorkoutPlanAnalysisMeta,
@@ -211,7 +224,19 @@ const EXERCISE_TARGET_STOPWORDS = new Set([
   'summary',
   'summaries',
   'the',
+  'that',
+  'those',
+  'these',
   'this',
+  'it',
+  'its',
+  'them',
+  'their',
+  'one',
+  'ones',
+  'previous',
+  'prior',
+  'before',
   'time',
   'top',
   'trend',
@@ -259,6 +284,25 @@ const extractExerciseTarget = (text: string) => {
   const candidate = filtered.slice(0, 4).join(' ').trim()
   if (!candidate || candidate.length < 3) return null
   return candidate
+}
+
+const resolveExerciseTarget = (input: {
+  question: string
+  state?: GymChatConversationState | null
+  turnMode?: string
+}) => {
+  const extracted = extractExerciseTarget(input.question)
+  if (extracted) return extracted
+  const fallbackContext = input.state?.lastResponseContext
+  if (fallbackContext?.exercises && fallbackContext.exercises.length > 1) {
+    return null
+  }
+  const fallbackExercise = fallbackContext?.exercise
+  if (!fallbackExercise) return null
+  if (input.turnMode === 'analysis_followup' || containsPronounReference(input.question)) {
+    return fallbackExercise
+  }
+  return null
 }
 
 const ANALYSIS_KINDS: AnalysisKind[] = [
@@ -311,6 +355,28 @@ const normalizePendingClarification = (value: unknown): PendingClarification | u
         : undefined
     return question ? { kind, question } : { kind }
   }
+  if (kind === 'terse_input') {
+    const raw = value as { kind: string; input?: string; suggestions?: unknown }
+    const input =
+      typeof raw.input === 'string' && raw.input.trim()
+        ? raw.input.trim()
+        : undefined
+    const suggestions = Array.isArray(raw.suggestions)
+      ? raw.suggestions.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+      : []
+    return input ? { kind, input, suggestions } : undefined
+  }
+  if (kind === 'exercise_choice') {
+    const raw = value as { kind: string; question?: unknown; options?: unknown }
+    const question =
+      typeof raw.question === 'string' && raw.question.trim()
+        ? raw.question.trim()
+        : undefined
+    const options = Array.isArray(raw.options)
+      ? raw.options.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+      : []
+    return question && options.length ? { kind, question, options } : undefined
+  }
   return undefined
 }
 
@@ -338,10 +404,69 @@ const normalizeWorkoutPlanMeta = (value: unknown): WorkoutPlanAnalysisMeta | und
   const raw = value as WorkoutPlanAnalysisMeta
   const targetsMuscles = normalizeTargetMuscleConstraint(raw.targetsMuscles)
   const usesHistoricalLifts = raw.usesHistoricalLifts ? true : undefined
-  if (!targetsMuscles && !usesHistoricalLifts) return undefined
+  const goal =
+    raw.goal === 'strength' || raw.goal === 'hypertrophy' || raw.goal === 'endurance' ? raw.goal : undefined
+  if (!targetsMuscles && !usesHistoricalLifts && !goal) return undefined
   return {
     targetsMuscles,
     usesHistoricalLifts,
+    goal,
+  }
+}
+
+const normalizeContextMetric = (value: unknown): LastResponseContext['metric'] | undefined => {
+  if (value === 'volume' || value === 'sets' || value === 'reps' || value === '1rm' || value === 'weight') {
+    return value
+  }
+  return undefined
+}
+
+const normalizeLastResponseContext = (value: unknown): LastResponseContext | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as LastResponseContext
+  const exercise = typeof raw.exercise === 'string' && raw.exercise.trim() ? raw.exercise.trim() : undefined
+  const exercises = Array.isArray(raw.exercises)
+    ? raw.exercises.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+    : []
+  const sessionDate = typeof raw.sessionDate === 'string' && raw.sessionDate.trim() ? raw.sessionDate.trim() : undefined
+  const metric = normalizeContextMetric(raw.metric)
+  const dataPoints = Array.isArray(raw.dataPoints)
+    ? raw.dataPoints
+        .map(entry => {
+          if (!entry || typeof entry !== 'object') return null
+          const record = entry as LastResponseContext['dataPoints'][0]
+          if (typeof record.exercise !== 'string' || !record.exercise.trim()) return null
+          const toNumber = (value: unknown) => {
+            if (typeof value === 'number' && Number.isFinite(value)) return value
+            if (typeof value === 'string' && value.trim()) {
+              const parsed = Number(value)
+              return Number.isFinite(parsed) ? parsed : null
+            }
+            return null
+          }
+          const weight = toNumber(record.weight)
+          const reps = toNumber(record.reps)
+          const volume = toNumber(record.volume)
+          const e1rm = toNumber(record.e1rm)
+          const date = typeof record.date === 'string' && record.date.trim() ? record.date.trim() : undefined
+          return {
+            exercise: record.exercise.trim(),
+            weight: weight ?? undefined,
+            reps: reps ?? undefined,
+            volume: volume ?? undefined,
+            e1rm: e1rm ?? undefined,
+            date,
+          }
+        })
+        .filter((entry): entry is LastResponseContext['dataPoints'][0] => Boolean(entry))
+    : []
+  if (!exercise && !exercises.length && !sessionDate && !metric && !dataPoints.length) return undefined
+  return {
+    exercise,
+    exercises: exercises.length ? exercises : undefined,
+    sessionDate,
+    metric,
+    dataPoints: dataPoints.length ? dataPoints : undefined,
   }
 }
 
@@ -374,6 +499,7 @@ const normalizeConversationState = (value: unknown): GymChatConversationState =>
           canonicalPlanId: state.lastError?.canonicalPlanId,
         }
       : undefined,
+    lastResponseContext: normalizeLastResponseContext(state.lastResponseContext),
   }
 }
 
@@ -446,6 +572,116 @@ const resolveReturnEffortChoice = (
   }
   const analysisKind: AnalysisKind = isVolume ? 'return_for_effort_volume' : 'return_for_effort_progression'
   return { messages: updated, question: rewritten, didResolve: true, clearPending: true, analysisKind }
+}
+
+const buildTerseClarificationFollowUps = (exercise: string) => [
+  `Show my most recent ${exercise} session.`,
+  `Show ${exercise} progression over time.`,
+  `Show total volume and sets for ${exercise} over the last 90 days.`,
+  `Show best sets or PRs for ${exercise}.`,
+]
+
+const resolveTerseClarification = (
+  question: string,
+  pendingClarification?: PendingClarification,
+): { question: string; didResolve: boolean } => {
+  if (!pendingClarification || pendingClarification.kind !== 'terse_input') {
+    return { question, didResolve: false }
+  }
+  const exercise = pendingClarification.input
+  if (!exercise) return { question, didResolve: false }
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  const match = normalized.match(/^([1-4])(?:[\s\).,:-]|$)/)
+  if (match?.[1] === '1' || normalized.includes('last') || normalized.includes('recent') || normalized.includes('session')) {
+    return { question: `Show my most recent ${exercise} session.`, didResolve: true }
+  }
+  if (match?.[1] === '2' || normalized.includes('progress')) {
+    return { question: `Show ${exercise} progression over time.`, didResolve: true }
+  }
+  if (match?.[1] === '3' || normalized.includes('volume') || normalized.includes('sets')) {
+    return { question: `Show total volume and sets for ${exercise} over the last 90 days.`, didResolve: true }
+  }
+  if (match?.[1] === '4' || normalized.includes('best') || normalized.includes('pr')) {
+    return { question: `Show best sets or PRs for ${exercise}.`, didResolve: true }
+  }
+  const containsExercise = normalized.includes(exercise.toLowerCase())
+  const rewritten = containsExercise ? question : `${question} for ${exercise}`
+  return { question: rewritten, didResolve: true }
+}
+
+const buildExerciseChoicePrompt = (options: string[]) => {
+  const list = options.slice(0, 4)
+  const lines = list.map((option, index) => `${index + 1}. ${option}`)
+  const more = 'Pick a number or type the exercise name.'
+  return [
+    'Which exercise did you mean from the last result?',
+    '',
+    ...lines,
+    more,
+  ].join('\n')
+}
+
+const buildCorrectionAcknowledgement = (exerciseTarget?: string | null) => {
+  if (exerciseTarget) {
+    return `Got it - focusing on ${exerciseTarget} instead.`
+  }
+  return 'Got it - focusing on the corrected request instead.'
+}
+
+const applyCorrectionAcknowledgement = (message: string, acknowledgement?: string | null) => {
+  if (!acknowledgement) return message
+  return `${acknowledgement}\n\n${message}`
+}
+
+const resolveExerciseChoice = (
+  question: string,
+  pendingClarification?: PendingClarification,
+): { question: string; didResolve: boolean; chosen?: string } => {
+  if (!pendingClarification || pendingClarification.kind !== 'exercise_choice') {
+    return { question, didResolve: false }
+  }
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  const options = pendingClarification.options ?? []
+  let chosen: string | null = null
+  const indexMatch = normalized.match(/^([1-9]\d?)(?:[\s\).,:-]|$)/)
+  if (indexMatch?.[1]) {
+    const index = Number(indexMatch[1]) - 1
+    if (index >= 0 && index < options.length) {
+      chosen = options[index]
+    }
+  }
+  if (!chosen) {
+    chosen = options.find(option => normalized.includes(option.toLowerCase())) ?? null
+  }
+  if (!chosen && options.length === 1) {
+    chosen = options[0]
+  }
+  if (!chosen) {
+    return { question, didResolve: false }
+  }
+  const baseQuestion = pendingClarification.question
+  const rewritten = baseQuestion.toLowerCase().includes(chosen.toLowerCase())
+    ? baseQuestion
+    : `${baseQuestion} for ${chosen}`
+  return { question: rewritten, didResolve: true, chosen }
+}
+
+const appendPronounContext = (
+  question: string,
+  resolved: { exercise?: string; dataPoint?: LastResponseContext['dataPoints'][0] },
+) => {
+  if (!resolved.exercise) return question
+  const parts: string[] = [resolved.exercise]
+  if (resolved.dataPoint) {
+    const details: string[] = []
+    if (typeof resolved.dataPoint.weight === 'number') details.push(`${resolved.dataPoint.weight}lb`)
+    if (typeof resolved.dataPoint.reps === 'number') details.push(`x${resolved.dataPoint.reps}`)
+    if (resolved.dataPoint.date) details.push(`on ${resolved.dataPoint.date}`)
+    if (details.length) {
+      parts.push(details.join(' '))
+    }
+  }
+  return `${question} (for ${parts.join(', ')})`
 }
 
 const extractMarkers = (message: string) => {
@@ -638,6 +874,14 @@ const applyPlanMeta = (state: GymChatConversationState, planMeta?: WorkoutPlanAn
   }
 }
 
+const applyResponseContext = (state: GymChatConversationState, context?: LastResponseContext) => {
+  if (!context) return state
+  return {
+    ...state,
+    lastResponseContext: context,
+  }
+}
+
 const formatStructuredAssistantMessage = (
   message: string,
   citations?: Pick<GymChatCitation, 'marker'>[],
@@ -774,6 +1018,229 @@ const buildFallbackCitations = (assistantMessage: string, queries: GymChatQuery[
   return {
     assistantMessage: nextMessage,
     citations: fallbackCitations,
+  }
+}
+
+const selectContextQuery = (queries: GymChatQuery[]) => {
+  const candidates = queries.filter(query => !query.error)
+  if (!candidates.length) return null
+  return candidates.reduce((best, query) => {
+    if (!best) return query
+    if (query.rowCount !== best.rowCount) return query.rowCount > best.rowCount ? query : best
+    if (query.previewRows.length !== best.previewRows.length) {
+      return query.previewRows.length > best.previewRows.length ? query : best
+    }
+    return best
+  }, candidates[0])
+}
+
+const coerceNumberValue = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+const extractRowExercise = (row: Record<string, unknown>) => {
+  const exercise = row.exercise ?? (row as { exercise_name?: unknown }).exercise_name ?? row.name
+  return typeof exercise === 'string' && exercise.trim() ? exercise.trim() : null
+}
+
+const extractRowDate = (row: Record<string, unknown>) => {
+  const candidate =
+    row.session_date ??
+    row.performed_at ??
+    row.date ??
+    row.period_start ??
+    row.week_start ??
+    row.month_start
+  if (candidate instanceof Date) return candidate.toISOString().slice(0, 10)
+  if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+  return null
+}
+
+const inferContextMetric = (
+  analysisKind: AnalysisKind,
+  rows: Record<string, unknown>[],
+  responseMeta?: ResponseMeta,
+): LastResponseContext['metric'] | undefined => {
+  const metricName = responseMeta?.metricName?.toLowerCase() ?? ''
+  if (metricName.includes('volume')) return 'volume'
+  if (metricName.includes('sets')) return 'sets'
+  if (metricName.includes('reps')) return 'reps'
+  if (metricName.includes('session')) return 'sets'
+  if (analysisKind === 'return_for_effort_volume' || analysisKind === 'volume') return 'volume'
+  if (analysisKind === 'set_count') return 'sets'
+  if (analysisKind === 'exercise_prs' || analysisKind === 'best_sets' || analysisKind === 'top_weight_sets') {
+    return rows.some(row => row.est_1rm != null || row.avg_est_1rm != null) ? '1rm' : 'weight'
+  }
+  if (
+    analysisKind === 'exercise_progression' ||
+    analysisKind === 'return_for_effort_progression' ||
+    analysisKind === 'progressive_overload'
+  ) {
+    return '1rm'
+  }
+  if (rows.some(row => row.est_1rm != null || row.avg_est_1rm != null)) return '1rm'
+  if (rows.some(row => row.weight != null || row.avg_weight != null)) return 'weight'
+  if (rows.some(row => row.total_volume != null || row.volume != null)) return 'volume'
+  if (rows.some(row => row.total_sets != null || row.set_count != null)) return 'sets'
+  return undefined
+}
+
+const buildLastResponseContext = (input: {
+  question: string
+  analysisKind: AnalysisKind
+  queries: GymChatQuery[]
+  responseMeta?: ResponseMeta
+  exerciseTarget?: string | null
+}): LastResponseContext | undefined => {
+  const primary = selectContextQuery(input.queries)
+  if (!primary) return undefined
+  const rows = primary.previewRows ?? []
+  if (!rows.length && !input.exerciseTarget) return undefined
+  const exercises = new Set<string>()
+  const dataPoints: LastResponseContext['dataPoints'] = []
+  rows.slice(0, 6).forEach(row => {
+    const exercise = extractRowExercise(row as Record<string, unknown>)
+    if (exercise) {
+      exercises.add(exercise)
+    }
+    if (!exercise) return
+    const weight = coerceNumberValue((row as Record<string, unknown>).weight ?? (row as any).avg_weight)
+    const reps = coerceNumberValue((row as Record<string, unknown>).reps)
+    const volume = coerceNumberValue((row as Record<string, unknown>).total_volume ?? (row as any).volume)
+    const e1rm = coerceNumberValue((row as Record<string, unknown>).est_1rm ?? (row as any).avg_est_1rm)
+    const date = extractRowDate(row as Record<string, unknown>)
+    dataPoints.push({
+      exercise,
+      weight: weight ?? undefined,
+      reps: reps ?? undefined,
+      volume: volume ?? undefined,
+      e1rm: e1rm ?? undefined,
+      date: date ?? undefined,
+    })
+  })
+  const exercisesList = Array.from(exercises)
+  const exercise = exercisesList[0] ?? input.exerciseTarget ?? undefined
+  const sessionDate = rows.length ? extractRowDate(rows[0] as Record<string, unknown>) ?? undefined : undefined
+  const metric = inferContextMetric(input.analysisKind, rows as Record<string, unknown>[], input.responseMeta)
+  if (!exercise && !exercisesList.length && !dataPoints.length && !sessionDate && !metric) return undefined
+  return {
+    exercise,
+    exercises: exercisesList.length ? exercisesList : undefined,
+    dataPoints: dataPoints.length ? dataPoints : undefined,
+    sessionDate,
+    metric,
+  }
+}
+
+const buildPlanResponseContext = (query: GymChatQuery | null | undefined): LastResponseContext | undefined => {
+  if (!query || query.error) return undefined
+  const rows = query.previewRows ?? []
+  if (!rows.length) return undefined
+  const exercises = new Set<string>()
+  rows.forEach(row => {
+    const exercise = extractRowExercise(row as Record<string, unknown>)
+    if (exercise) exercises.add(exercise)
+  })
+  const exercisesList = Array.from(exercises)
+  if (!exercisesList.length) return undefined
+  return {
+    exercise: exercisesList[0],
+    exercises: exercisesList,
+  }
+}
+
+const buildDeloadRecommendation = (query: GymChatQuery | null | undefined) => {
+  if (!query || query.error) return null
+  const row = query.previewRows?.[0] as Record<string, unknown> | undefined
+  if (!row) return null
+  const weekCount = coerceNumberValue(row.week_count) ?? 0
+  if (weekCount < 4) return null
+  const avg = coerceNumberValue(row.avg_volume)
+  const min = coerceNumberValue(row.min_volume)
+  const max = coerceNumberValue(row.max_volume)
+  if (!avg || !min || !max || avg <= 0) return null
+  const highSpike = max >= avg * 1.5
+  const deepDrop = min <= avg * 0.6
+  if (!highSpike && !deepDrop) return null
+  const avgLabel = Math.round(avg)
+  const minLabel = Math.round(min)
+  const maxLabel = Math.round(max)
+  return `Recent weekly volume swings (avg ${avgLabel}, min ${minLabel}, max ${maxLabel}). Consider a 1-week deload: reduce volume 30-40% while keeping intensity moderate.`
+}
+
+const getProgressionStats = (analysisKind: AnalysisKind, queries: GymChatQuery[]) => {
+  if (analysisKind !== 'exercise_progression' && analysisKind !== 'return_for_effort_progression') return null
+  const primary = selectContextQuery(queries)
+  const rows = primary?.previewRows ?? []
+  if (!rows.length) return { rows: 0, periods: 0 }
+  const sample = rows[0] as Record<string, unknown>
+  const periodKey =
+    sample.period_start != null
+      ? 'period_start'
+      : sample.session_date != null
+        ? 'session_date'
+        : sample.week_start != null
+          ? 'week_start'
+          : sample.month_start != null
+            ? 'month_start'
+            : null
+  if (!periodKey) return { rows: rows.length, periods: rows.length }
+  const uniquePeriods = new Set(rows.map(row => String((row as Record<string, unknown>)[periodKey] ?? ''))).size
+  return { rows: rows.length, periods: uniquePeriods }
+}
+
+const isSparseProgressionResult = (analysisKind: AnalysisKind, queries: GymChatQuery[]) => {
+  const stats = getProgressionStats(analysisKind, queries)
+  if (!stats) return false
+  return stats.rows < 3 || stats.periods < 3
+}
+
+const buildProgressionFallbackWindows = (explicitWindow: string | null, analysisKind: AnalysisKind) => {
+  const candidates: string[] = []
+  if (explicitWindow) {
+    const normalized = explicitWindow.toLowerCase()
+    if (normalized.includes('day') || normalized.includes('week')) {
+      candidates.push('12 weeks', '6 months', '12 months')
+    } else if (normalized.includes('month')) {
+      candidates.push('12 months', '24 months')
+    } else if (normalized.includes('year')) {
+      candidates.push('24 months')
+    } else {
+      candidates.push('12 months')
+    }
+  } else {
+    candidates.push('12 months')
+  }
+  if (analysisKind === 'exercise_progression') {
+    candidates.push('all_time')
+  }
+  const seen = new Set<string>()
+  const filtered = candidates.filter(window => {
+    const key = window.toLowerCase()
+    if (explicitWindow && explicitWindow.toLowerCase() === key) return false
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  return filtered
+}
+
+const buildReturnEffortProgressionPlanWithWindow = (lifts: SetsBaseCte, window: string) => {
+  const basePlan = buildReturnEffortProgressionPlan(lifts)
+  const query = basePlan.queries[0]
+  return {
+    queries: [
+      {
+        ...query,
+        purpose: `Track estimated 1RM progression by exercise (weekly) over the last ${window}.`,
+        params: [window],
+      },
+    ],
   }
 }
 
@@ -962,6 +1429,48 @@ const coerceIntervalParams = (sql: string, params: unknown[], hints: IntervalHin
   return nextParams
 }
 
+const buildExecutableQueries = (
+  queries: Array<{ id: string; purpose: string; sql: string; params: unknown[] }>,
+  intervalHints: IntervalHints,
+) => {
+  const prepared: GymChatQuery[] = []
+  for (const query of queries) {
+    const normalizedParams = coerceIntervalParams(query.sql, query.params ?? [], intervalHints)
+    try {
+      const policy = validateAndRewriteSql(query.sql, normalizedParams)
+      prepared.push({
+        id: query.id,
+        purpose: query.purpose,
+        sql: policy.sql,
+        params: normalizedParams,
+        rowCount: 0,
+        durationMs: 0,
+        previewRows: [],
+        error: null,
+        policy: {
+          appliedLimit: policy.appliedLimit,
+          appliedTimeWindow: policy.appliedTimeWindow,
+        },
+      })
+    } catch (error) {
+      prepared.push({
+        id: query.id,
+        purpose: query.purpose,
+        sql: query.sql,
+        params: normalizedParams,
+        rowCount: 0,
+        durationMs: 0,
+        previewRows: [],
+        error: error instanceof Error ? error.message : 'SQL policy violation.',
+      })
+    }
+  }
+  return {
+    prepared,
+    hasPolicyErrors: prepared.some(query => query.error),
+  }
+}
+
 const GYM_INTENT_KEYWORDS = [
   'gym',
   'workout',
@@ -1045,6 +1554,21 @@ const RETURN_EFFORT_VOLUME_QUESTION = 'Show total volume per exercise over the l
 const RETURN_EFFORT_PROGRESSION_QUESTION = 'Show my progression over time for each exercise.'
 const PLAN_CORRECTION_REGEX =
   /\b(you gave me|you suggested|you included|that's wrong|that is wrong|i asked for|ensure your suggestions|only)\b/i
+const TECHNIQUE_KEYWORDS = [
+  'form',
+  'technique',
+  'cue',
+  'cues',
+  'setup',
+  'how to',
+  'tips',
+  'mistake',
+  'mistakes',
+  'depth',
+  'grip',
+  'stance',
+  'bar path',
+]
 
 const hasBodyPartsMapping = () => {
   const tables = getCatalogTables()
@@ -1224,6 +1748,12 @@ const looksLikePlanningIntent = (text: string) => {
   if (!text) return false
   const normalized = text.toLowerCase()
   return PLANNING_KEYWORDS.some(keyword => normalized.includes(keyword))
+}
+
+const isTechniqueQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = text.toLowerCase()
+  return TECHNIQUE_KEYWORDS.some(keyword => normalized.includes(keyword))
 }
 
 const containsKeyword = (text: string, keywords: string[]) => {
@@ -1510,12 +2040,45 @@ export async function POST(req: Request) {
 
     let turnMode = classifyTurnMode({ message: question, state: conversationState })
     let analysisKindOverride: AnalysisKind | undefined
+    const correctionDetected = isCorrection(question)
+    if (correctionDetected && turnMode === 'analysis_followup') {
+      turnMode = 'new_question'
+    }
 
     if (conversationState.pendingClarification && turnMode !== 'clarification_answer') {
       conversationState = { ...conversationState, pendingClarification: null }
     }
     if (turnMode === 'new_question' && conversationState.lastError) {
       conversationState = { ...conversationState, lastError: undefined }
+    }
+    if (turnMode === 'new_question') {
+      const terseInput = detectTerseInput(question)
+      const exerciseTarget = extractExerciseTarget(question)
+      if (terseInput.isTerse && exerciseTarget) {
+        const nameSuggestions = suggestExerciseNames(exerciseTarget, 3)
+        const canonicalExercise =
+          nameSuggestions.length === 1 ? nameSuggestions[0] : exerciseTarget
+        const followUps = buildTerseClarificationFollowUps(canonicalExercise)
+        conversationState = {
+          ...conversationState,
+          pendingClarification: {
+            kind: 'terse_input',
+            input: canonicalExercise,
+            suggestions: followUps,
+          },
+        }
+        const matchNote =
+          nameSuggestions.length > 1
+            ? `\n\nPossible matches: ${nameSuggestions.join(', ')}.`
+            : ''
+        const response: GymChatResponse = {
+          assistantMessage: `${buildTerseClarificationPrompt(canonicalExercise)}${matchNote}`,
+          citations: [],
+          queries: [],
+          followUps: sanitizeFollowUps(followUps),
+        }
+        return respond(response)
+      }
     }
 
     const parsedPlanMeta = parseWorkoutPlanMeta(question)
@@ -1542,6 +2105,30 @@ export async function POST(req: Request) {
           turnMode = 'new_question'
           messages = [{ role: 'user', content: question }]
         }
+      } else if (pending?.kind === 'terse_input') {
+        const resolved = resolveTerseClarification(question, pending)
+        question = resolved.question
+        conversationState = { ...conversationState, pendingClarification: null }
+      } else if (pending?.kind === 'exercise_choice') {
+        const resolved = resolveExerciseChoice(question, pending)
+        if (!resolved.didResolve) {
+          const response: GymChatResponse = {
+            assistantMessage: buildExerciseChoicePrompt(pending.options),
+            citations: [],
+            queries: [],
+          }
+          return respond(response)
+        }
+        const updated = [...messages]
+        for (let i = updated.length - 1; i >= 0; i -= 1) {
+          if (updated[i].role === 'user') {
+            updated[i] = { ...updated[i], content: resolved.question }
+            break
+          }
+        }
+        messages = updated
+        question = resolved.question
+        conversationState = { ...conversationState, pendingClarification: null }
       } else if (pending?.kind === 'timeframe') {
         const baseQuestion = (pending.question ?? extractPriorUserQuestion(messages)).trim()
         if (!pending.question && baseQuestion) {
@@ -1575,6 +2162,32 @@ export async function POST(req: Request) {
         messages = updated
         question = rewritten
         conversationState = { ...conversationState, pendingClarification: null }
+      }
+    }
+    if (conversationState.lastResponseContext && containsPronounReference(question)) {
+      const resolved = resolvePronounReference(question, conversationState.lastResponseContext)
+      if (resolved.ambiguous && resolved.options?.length) {
+        conversationState = {
+          ...conversationState,
+          pendingClarification: {
+            kind: 'exercise_choice',
+            question,
+            options: resolved.options,
+          },
+        }
+        const response: GymChatResponse = {
+          assistantMessage: buildExerciseChoicePrompt(resolved.options),
+          citations: [],
+          queries: [],
+          followUps: sanitizeFollowUps(resolved.options.map(option => `Use ${option}.`)),
+        }
+        return respond(response)
+      }
+      if (resolved.resolved) {
+        question = appendPronounContext(question, resolved)
+        if (turnMode === 'new_question') {
+          turnMode = 'analysis_followup'
+        }
       }
     }
     if (isTopEndEffortsComparisonQuestion(question)) {
@@ -1624,6 +2237,25 @@ export async function POST(req: Request) {
     }
     if (turnMode === 'analysis_followup' && !analysisKindOverride && conversationState.lastAnalysis?.kind) {
       analysisKindOverride = conversationState.lastAnalysis.kind
+    }
+
+    if (isTechniqueQuestion(question)) {
+      const entry = findExerciseEntry(question)
+      if (entry) {
+        const followUps = sanitizeFollowUps([
+          `Show my ${entry.name} progression over time.`,
+          `Show my best sets for ${entry.name}.`,
+          `Show my most recent ${entry.name} session.`,
+        ])
+        conversationState = applyPlanMeta(conversationState, planMeta)
+        const response: GymChatResponse = {
+          assistantMessage: buildExerciseGuidanceMessage(entry),
+          citations: [],
+          queries: [],
+          followUps,
+        }
+        return respond(response)
+      }
     }
 
     const llmMessages = buildLlmContext({ question, state: conversationState, mode: turnMode })
@@ -1874,7 +2506,8 @@ export async function POST(req: Request) {
     const weeklyVolumeWindow = explicitWindow ?? '12 months'
     const planningWindow = explicitWindow ?? '12 months'
     const sessionCountWindow = explicitWindow ?? '12 weeks'
-    const exerciseTarget = extractExerciseTarget(question)
+    const exerciseTarget = resolveExerciseTarget({ question, state: conversationState, turnMode })
+    const correctionAcknowledgement = correctionDetected ? buildCorrectionAcknowledgement(exerciseTarget) : null
     const useEstimated1rm = wantsEstimated1rm(question)
     const progressionBucket = MONTHLY_TREND_REGEX.test(question) ? 'month' : 'week'
     const summaryWindow = explicitWindow ?? '90 days'
@@ -2589,6 +3222,43 @@ export async function POST(req: Request) {
         )
       }
     }
+    let progressionWindowOverride: string | null = null
+    if (!allErrors && !isWorkoutPlan) {
+      const progressionAnalysisKind =
+        analysisKindOverride ?? canonicalAnalysisKind ?? resolveReturnEffortAnalysisKind(question) ?? 'other'
+      if (
+        progressionAnalysisKind === 'exercise_progression' ||
+        progressionAnalysisKind === 'return_for_effort_progression'
+      ) {
+        const primary = selectContextQuery(executedQueries)
+        const hasRows = Boolean(primary && (primary.rowCount > 0 || primary.previewRows.length > 0))
+        if (!hasRows) {
+          const fallbackWindows = buildProgressionFallbackWindows(explicitWindow, progressionAnalysisKind)
+          for (const window of fallbackWindows) {
+            const fallbackPlan =
+              progressionAnalysisKind === 'exercise_progression'
+                ? buildExerciseProgressionPlan(setsBase, {
+                    window: window === 'all_time' ? undefined : window,
+                    exercise: exerciseTarget,
+                    bucket: progressionBucket,
+                    allTime: window === 'all_time',
+                  })
+                : buildReturnEffortProgressionPlanWithWindow(setsBase, window)
+            const { prepared, hasPolicyErrors } = buildExecutableQueries(fallbackPlan.queries, intervalHints)
+            if (hasPolicyErrors) continue
+            await runQueries(prepared)
+            executedQueries = prepared
+            allErrors = executedQueries.every(query => query.error)
+            const hasFallbackRows = prepared.some(
+              query => !query.error && (query.rowCount > 0 || query.previewRows.length > 0),
+            )
+            progressionWindowOverride = window
+            log('progression fallback window', { window, hasFallbackRows })
+            if (hasFallbackRows) break
+          }
+        }
+      }
+    }
     if (allErrors) {
       const errorAnalysisKind =
         analysisKindOverride ?? canonicalAnalysisKind ?? resolveReturnEffortAnalysisKind(question) ?? 'other'
@@ -2612,17 +3282,24 @@ export async function POST(req: Request) {
 
     if (isWorkoutPlan) {
       const planQuery = executedQueries.find(query => query.id === 'q1')
+      const deloadQuery = executedQueries.find(query => query.id === 'q2')
+      const planResponseContext = buildPlanResponseContext(planQuery)
+      const deloadRecommendation = buildDeloadRecommendation(deloadQuery)
       const hasPlanRows =
         planQuery && !planQuery.error && (planQuery.rowCount > 0 || planQuery.previewRows.length > 0)
       if (!hasPlanRows) {
         const acknowledgement = wantsCorrectionAcknowledgement
           ? buildPlanCorrectionAcknowledgement(planMeta?.targetsMuscles)
           : undefined
-        const assistantMessage = buildWorkoutPlanFallbackMessage({
+        let assistantMessage = buildWorkoutPlanFallbackMessage({
           constraint: planMeta?.targetsMuscles,
           usesHistoricalLifts: planMeta?.usesHistoricalLifts,
           acknowledgement,
+          goal: planMeta?.goal,
         })
+        if (deloadRecommendation) {
+          assistantMessage = `${assistantMessage}\n\n**Deload suggestion**\n- ${deloadRecommendation}`
+        }
         conversationState = applyPlanMeta(conversationState, planMeta)
         const response: GymChatResponse = {
           assistantMessage,
@@ -2641,9 +3318,13 @@ export async function POST(req: Request) {
         usesHistoricalLifts: planMeta?.usesHistoricalLifts,
         acknowledgement,
         maxExercises: 5,
+        goal: planMeta?.goal,
       })
       if (historicalPlan) {
         let assistantMessage = historicalPlan
+        if (deloadRecommendation) {
+          assistantMessage = `${assistantMessage}\n\n**Deload suggestion**\n- ${deloadRecommendation}`
+        }
         let citations: GymChatCitation[] = []
         const fallback = buildFallbackCitations(assistantMessage, executedQueries)
         if (fallback) {
@@ -2673,6 +3354,7 @@ export async function POST(req: Request) {
           targets: intentHints.targets,
         })
         conversationState = applyPlanMeta(conversationState, planMeta)
+        conversationState = applyResponseContext(conversationState, planResponseContext)
         const response: GymChatResponse = {
           assistantMessage,
           citations,
@@ -2709,6 +3391,83 @@ export async function POST(req: Request) {
         : undefined
     const comparisonNotes =
       analysisKind === 'top_end_efforts_compare_12m_3m' ? buildTopEndComparisonNotes(executedQueries) : []
+    const responseContext = buildLastResponseContext({
+      question,
+      analysisKind,
+      queries: executedQueries,
+      responseMeta,
+      exerciseTarget,
+    })
+
+    if (isSparseProgressionResult(analysisKind, executedQueries)) {
+      const targetLabel = exerciseTarget ? `for ${exerciseTarget}` : 'across your exercises'
+      const stats = getProgressionStats(analysisKind, executedQueries)
+      const count = stats?.periods ?? stats?.rows ?? 0
+      const countLine = count
+        ? `You have ${count} data point${count === 1 ? '' : 's'} in this window; I need at least 3.`
+        : 'I could not find any logged data points in this window.'
+      const expansionLine = progressionWindowOverride
+        ? `I expanded the window to ${progressionWindowOverride} and still found too little data.`
+        : null
+      let availabilityLine: string | null = null
+      if (exerciseTarget) {
+        const availabilityWindow = progressionWindowOverride ?? explicitWindow ?? '12 months'
+        const availabilityPlan = buildExerciseSummaryPlan(setsBase, {
+          limit: 5,
+          window: availabilityWindow === 'all_time' ? '12 months' : availabilityWindow,
+          allTime: availabilityWindow === 'all_time',
+        })
+        const { prepared, hasPolicyErrors } = buildExecutableQueries(availabilityPlan.queries, intervalHints)
+        if (!hasPolicyErrors) {
+          await runQueries(prepared)
+          const availabilityQuery = prepared.find(query => !query.error)
+          const availableExercises = Array.from(
+            new Set(
+              (availabilityQuery?.previewRows ?? [])
+                .map(row => extractRowExercise(row as Record<string, unknown>))
+                .filter((exercise): exercise is string => Boolean(exercise)),
+            ),
+          ).slice(0, 5)
+          if (availableExercises.length) {
+            const availabilityLabel =
+              availabilityWindow === 'all_time' ? 'all time' : `the last ${availabilityWindow}`
+            availabilityLine = `Exercises with recent data in ${availabilityLabel}: ${availableExercises.join(', ')}.`
+          }
+          executedQueries = [...executedQueries, ...prepared]
+        }
+      }
+      const suggestions = exerciseTarget
+        ? suggestExerciseNames(exerciseTarget, 3).filter(name => name.toLowerCase() !== exerciseTarget.toLowerCase())
+        : []
+      const suggestionLine = suggestions.length
+        ? `Similar lifts with data may include: ${suggestions.join(', ')}.`
+        : null
+      let assistantMessage =
+        `I do not have enough logged sessions to show a progression trend ${targetLabel}. ` +
+        'Try a longer time window (for example, last 12 months) or ask for best sets or PRs instead.\n\n' +
+        [countLine, expansionLine, availabilityLine, suggestionLine].filter(Boolean).join('\n')
+      assistantMessage = applyCorrectionAcknowledgement(assistantMessage, correctionAcknowledgement)
+      const followUps = sanitizeFollowUps([
+        exerciseTarget ? `Show best sets or PRs for ${exerciseTarget}.` : 'Show my best sets or PRs.',
+        exerciseTarget ? `Show my most recent ${exerciseTarget} session.` : 'Show my most recent sessions.',
+        'Expand the window to the last 12 months.',
+      ])
+      conversationState = applyAnalysisState(conversationState, {
+        kind: analysisKind,
+        canonicalPlanId,
+        timeframe: analysisTimeframe,
+        targets: intentHints.targets,
+      })
+      conversationState = applyPlanMeta(conversationState, planMeta)
+      conversationState = applyResponseContext(conversationState, responseContext)
+      const response: GymChatResponse = {
+        assistantMessage,
+        citations: [],
+        queries: executedQueries,
+        followUps,
+      }
+      return respond(response, undefined, { ...evalMeta, queryCount: executedQueries.length })
+    }
 
     const explainChecklist = (() => {
       const checklist: string[] = []
@@ -2749,12 +3508,18 @@ export async function POST(req: Request) {
       if (analysisKind === 'weekly_volume') {
         checklist.push('Summarize weekly training volume over the requested window with citations.')
       }
+      if (progressionWindowOverride) {
+        checklist.push(`No data in the requested window; expanded to ${progressionWindowOverride}.`)
+      }
       if (intentHints.intentType === 'planning' && planMeta?.targetsMuscles?.include?.length) {
         const targetList = planMeta.targetsMuscles.include.join(', ')
         checklist.push(`Ensure the proposed session only includes ${targetList} exercises.`)
       }
       if (wantsCorrectionAcknowledgement) {
         checklist.push('Acknowledge the correction and restate the muscle-only constraint before the plan.')
+      }
+      if (correctionDetected) {
+        checklist.push('Acknowledge the correction and restate the corrected focus before the analysis.')
       }
       return checklist
     })()
@@ -2801,7 +3566,9 @@ export async function POST(req: Request) {
         validationIssues = validateRankingResponse(question, explanation.assistantMessage, responseMeta)
         const missingCoverage = validationIssues.some(issue => issue.type === 'coverage_missing')
         if (missingCoverage && responseMeta.isRankingQuestion) {
-          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatCoverageLine(responseMeta)}`
+          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatCoverageLine(responseMeta, {
+            debug: wantsDebugSql,
+          })}`
         }
         const metricMismatch = validationIssues.some(issue => issue.type === 'metric_mismatch')
         if (metricMismatch) {
@@ -2865,17 +3632,20 @@ export async function POST(req: Request) {
           issue => issue.type === 'coverage_missing',
         )
         if (coverageMissing) {
-          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatCoverageLine(responseMeta)}`
+          explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatCoverageLine(responseMeta, {
+            debug: wantsDebugSql,
+          })}`
           if (needsCitations()) {
             applyFallbackCitationsIfPossible()
           }
         }
       }
       if (periodCompareCoverage) {
-        const hasCompareCoverage = /window_recent=|window_prior=/i.test(explanation.assistantMessage)
+        const hasCompareCoverage = /coverage/i.test(explanation.assistantMessage)
         if (!hasCompareCoverage) {
           explanation.assistantMessage = `${explanation.assistantMessage}\n\n${formatPeriodCompareCoverageLine(
             periodCompareCoverage,
+            { debug: wantsDebugSql },
           )}`
         }
       }
@@ -2911,6 +3681,7 @@ export async function POST(req: Request) {
           : undefined
       const chartSpecs = initialChartSpecs && initialChartSpecs.length ? initialChartSpecs : fallbackChartSpecs
       const followUps = sanitizeFollowUps(buildAnalysisFollowUps(analysisKind) ?? explanation.followUps)
+      const assistantMessage = applyCorrectionAcknowledgement(explanation.assistantMessage, correctionAcknowledgement)
       conversationState = applyAnalysisState(conversationState, {
         kind: analysisKind,
         canonicalPlanId,
@@ -2918,9 +3689,10 @@ export async function POST(req: Request) {
         targets: intentHints.targets,
       })
       conversationState = applyPlanMeta(conversationState, planMeta)
+      conversationState = applyResponseContext(conversationState, responseContext)
       log('explain completed', { durationMs: Date.now() - explainStartedAt })
       const response: GymChatResponse = {
-        assistantMessage: explanation.assistantMessage,
+        assistantMessage,
         citations,
         queries: executedQueries,
         chartSpecs,
@@ -2951,6 +3723,7 @@ export async function POST(req: Request) {
           : isRecoveryQuestion
             ? 'I tried to run queries to analyze your recovery between sessions, but they returned no usable data. This often means the time window is small or the filters are too strict. Try starting with a simpler window, like "last 8 weeks of sessions."'
             : 'I tried to run queries to analyze this, but they returned no usable data. This often means the time window is small or the filters are too strict. Try starting with a simpler window, like "last 8 weeks of sessions."'
+        const correctedMessage = applyCorrectionAcknowledgement(assistantMessage, correctionAcknowledgement)
         const followUps = sanitizeFollowUps(
           buildAnalysisFollowUps(analysisKind) ??
             (hasAnyDataOrError
@@ -2964,9 +3737,10 @@ export async function POST(req: Request) {
           targets: intentHints.targets,
         })
         conversationState = applyPlanMeta(conversationState, planMeta)
+        conversationState = applyResponseContext(conversationState, responseContext)
         conversationState = applyErrorState(conversationState, { type: 'explanation', analysisKind, canonicalPlanId })
         const response: GymChatResponse = {
-          assistantMessage,
+          assistantMessage: correctedMessage,
           citations: [],
           chartSpecs: [],
           followUps,
