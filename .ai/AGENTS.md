@@ -35,6 +35,7 @@ After doing any meaningful work:
 - You MUST append a new Status Log entry  
 - No task is complete until the log is updated  
 - This applies to small, non-code, and advisory requests  
+ - Before creating any new file, confirm the path is under `.ai/outputs/`
 
 ## Append-Only Rules
 - Never delete or rewrite prior entries  
@@ -44,6 +45,7 @@ After doing any meaningful work:
 ## Output Handling
 - All created files go under .ai/outputs/*  
 - All outputs must be listed in the handoff log  
+ - Never place outputs outside `.ai/outputs/`; if one is created elsewhere, move it immediately and update the handoff log  
 
 ## Failure Handling
 If file writing is not possible:

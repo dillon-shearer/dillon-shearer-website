@@ -6,6 +6,7 @@ import { createClient, createPool } from '@vercel/postgres'
 import { getCatalogTables, loadGymCatalog } from '@/lib/gym-chat/catalog'
 import {
   buildFavoriteSplitDayPlan,
+  buildBodyPartDaySplitPlan,
   buildBestSetsPlan,
   buildExercisePrsPlan,
   buildExerciseProgressionPlan,
@@ -189,6 +190,9 @@ const RESPONSE_HISTORY_MAX_BYTES = 120000
 const RESPONSE_HISTORY_FALLBACK_TURNS = 16
 
 const COMPARISON_SIGNAL_REGEX = /\b(compare|vs|versus|against)\b/i
+const ZOOM_IN_REGEX = /\b(zoom in|drill into|drill in|focus on|narrow to|shift to|switch to)\b/i
+const RETRY_CUE_REGEX = /\b(retry|re-?run|rerun|redo|try again|run that again)\b/i
+const LONG_PROMPT_FORMAT_REGEX = /\b(bullets?|format|table|csv|json|markdown|strict|exact|verbatim|headings?)\b/i
 const TOPIC_RESET_REGEX = /\b(new question|different topic|let's look at|let us look at|start over|reset)\b/i
 const ANALYSIS_VERB_REGEX = /\b(show|analyze|analyse|trend|compare|list|summarize|breakdown|explain)\b/i
 const METRIC_NAME_REGEX = /\b(volume|sets?|reps?|1rm|one\s+rep\s+max|weight|sessions?)\b/i
@@ -348,7 +352,7 @@ const EXERCISE_TARGET_STOPWORDS = new Set([
 ])
 
 const EXERCISE_TARGET_SPLIT_REGEX = /\b(vs|versus|and|&)\b/i
-const PHRASE_WINDOW_REGEX = /\b(this|last|past|previous)\s+(week|month|year)s?\b/gi
+const PHRASE_WINDOW_REGEX = /\b(this|last|past|previous)[-\s]+(week|month|year)s?\b/gi
 
 const extractExerciseTarget = (text: string) => {
   if (!text) return null
@@ -452,7 +456,12 @@ const mapAnalysisTopic = (kind: AnalysisKind): AnalysisTopic => {
   if (kind === 'exercise_summary' || kind === 'set_breakdown' || kind === 'workout_timing') {
     return 'session_summary'
   }
-  if (kind === 'muscle_group_balance' || kind === 'stalled_lifts' || kind === 'inactive_exercises') {
+  if (
+    kind === 'muscle_group_balance' ||
+    kind === 'body_part_day_split' ||
+    kind === 'stalled_lifts' ||
+    kind === 'inactive_exercises'
+  ) {
     return 'comparison'
   }
   if (kind === 'other') return 'general'
@@ -489,6 +498,8 @@ const detectComparisonIntent = (input: {
 }): ComparisonIntent | null => {
   const normalized = normalizeWhitespace(input.question).toLowerCase()
   const explicit = COMPARISON_SIGNAL_REGEX.test(normalized) || normalized.includes('compare')
+  const zoomIn = input.turnMode === 'analysis_followup' && ZOOM_IN_REGEX.test(normalized)
+  const retry = input.turnMode === 'analysis_followup' && RETRY_CUE_REGEX.test(normalized)
   const baseScope = buildScopeSummary(input.state)
   const candidateScope = input.extracted
   const dimensions: ContextDimension[] = []
@@ -517,6 +528,17 @@ const detectComparisonIntent = (input: {
   const baseFrameId = input.state.contextStack?.length
     ? input.state.contextStack[input.state.contextStack.length - 1]?.id
     : undefined
+  if ((zoomIn || retry) && hasNewWindow && dimensions.length === 1 && dimensions[0] === 'timeWindow') {
+    return {
+      dimensions,
+      baseFrameId,
+      baseScope,
+      candidateScope,
+      explicit: true,
+      status: 'ready',
+      mode: 'replace',
+    }
+  }
   const shouldClarify = !explicit && (input.turnMode === 'analysis_followup' || normalized.split(' ').length <= 8)
   return {
     dimensions,
@@ -525,21 +547,38 @@ const detectComparisonIntent = (input: {
     candidateScope,
     explicit,
     status: shouldClarify ? 'clarify' : 'ready',
+    mode: 'compare',
   }
 }
 
 const buildComparisonClarification = (intent: ComparisonIntent) => {
   const dims = intent.dimensions.join(', ')
-  return `Do you want to compare the new ${dims} to the current scope, or switch to it only?`
+  return `Do you want to compare the new ${dims} to the current scope, or switch to it only? Reply (a or 1) compare, (b or 2) switch.`
 }
 
 const resolveComparisonChoice = (message: string) => {
   const normalized = normalizeWhitespace(message).toLowerCase()
   if (!normalized) return null
-  if (normalized === 'yes' || normalized.includes('compare') || normalized.includes('vs') || normalized === 'a') {
+  const choiceMatch = normalized.match(/^(?:option|choice)?\s*([ab12])(?:[\s\).,:-]|$)/i)
+  if (choiceMatch?.[1]) {
+    return choiceMatch[1].toLowerCase() === 'a' || choiceMatch[1] === '1' ? 'compare' : 'replace'
+  }
+  if (
+    normalized === 'yes' ||
+    normalized.includes('compare') ||
+    normalized.includes('vs') ||
+    normalized === 'a' ||
+    normalized === '1'
+  ) {
     return 'compare'
   }
-  if (normalized === 'no' || normalized.includes('switch') || normalized.includes('only') || normalized === 'b') {
+  if (
+    normalized === 'no' ||
+    normalized.includes('switch') ||
+    normalized.includes('only') ||
+    normalized === 'b' ||
+    normalized === '2'
+  ) {
     return 'replace'
   }
   return null
@@ -595,6 +634,10 @@ const detectTopicShift = (input: {
 
 const MULTI_CONTEXT_EXERCISE_CUE_REGEX =
   /\b(that|those|these|it|them|same|last session|last workout|previous|prior|before|earlier|compare)\b/i
+const EXERCISE_OVERVIEW_CUE_REGEX =
+  /\b(which|what|top|most|all)\s+exercises?\b|\bexercises?\s+(overview|summary|breakdown)\b/i
+const EXERCISE_BREAKDOWN_CUE_REGEX =
+  /\b(breakdown|over time|trend|per\s+week|per\s+month|by\s+week|by\s+month)\b/i
 
 const shouldClarifyExerciseChoice = (input: {
   question: string
@@ -605,6 +648,9 @@ const shouldClarifyExerciseChoice = (input: {
   if (options.length < 2) return null
   if (extractExerciseTarget(input.question)) return null
   const normalized = normalizeWhitespace(input.question).toLowerCase()
+  if (DAY_OF_WEEK_CUE_REGEX.test(normalized)) return null
+  if (RETRY_CUE_REGEX.test(normalized)) return null
+  if (EXERCISE_OVERVIEW_CUE_REGEX.test(normalized) || EXERCISE_BREAKDOWN_CUE_REGEX.test(normalized)) return null
   const wordCount = normalized.split(' ').filter(Boolean).length
   const isShort = wordCount <= 10 || normalized.length <= 80
   const hasCue = MULTI_CONTEXT_EXERCISE_CUE_REGEX.test(normalized) || containsPronounReference(input.question)
@@ -627,6 +673,7 @@ const ANALYSIS_KINDS: AnalysisKind[] = [
   'top_weight_sets',
   'lowest_volume_day',
   'favorite_split_day',
+  'body_part_day_split',
   'weekly_volume',
   'period_compare',
   'top_end_efforts',
@@ -861,6 +908,7 @@ const normalizeComparisonIntent = (value: unknown): ComparisonIntent | undefined
     : []
   if (!dimensions.length) return undefined
   const status = raw.status === 'pending' || raw.status === 'ready' || raw.status === 'clarify' ? raw.status : 'pending'
+  const mode = raw.mode === 'replace' || raw.mode === 'compare' ? raw.mode : undefined
   return {
     dimensions,
     baseFrameId: typeof raw.baseFrameId === 'string' ? raw.baseFrameId : undefined,
@@ -868,6 +916,7 @@ const normalizeComparisonIntent = (value: unknown): ComparisonIntent | undefined
     candidateScope: raw.candidateScope ?? {},
     explicit: Boolean(raw.explicit),
     status,
+    mode,
     clarificationQuestion:
       typeof raw.clarificationQuestion === 'string' && raw.clarificationQuestion.trim()
         ? raw.clarificationQuestion.trim()
@@ -1054,7 +1103,12 @@ const resolveReturnEffortChoice = (
   if (!match?.[1]) {
     return { messages, question, didResolve: false, clearPending: true, analysisKind: undefined }
   }
-  const isVolume = match[1].toLowerCase() === 'a'
+  const choice = match[1].toLowerCase()
+  const isVolume = choice === 'a' || choice === '1'
+  const isProgression = choice === 'b' || choice === '2'
+  if (!isVolume && !isProgression) {
+    return { messages, question, didResolve: false, clearPending: true, analysisKind: undefined }
+  }
   const rewritten = isVolume ? RETURN_EFFORT_VOLUME_QUESTION : RETURN_EFFORT_PROGRESSION_QUESTION
   const updated = [...messages]
   for (let i = updated.length - 1; i >= 0; i -= 1) {
@@ -1529,7 +1583,7 @@ const updateScopeFromQuestion = (input: {
     }
   }
   const comparisonValues = <T,>(dimension: ContextDimension, values: T[] | undefined) => {
-    if (!input.comparison?.dimensions.includes(dimension)) return values
+    if (!input.comparison?.dimensions.includes(dimension) || input.comparison?.mode === 'replace') return values
     const baseValues =
       dimension === 'timeWindow'
         ? (input.comparison.baseScope.timeWindows as T[] | undefined)
@@ -2137,7 +2191,7 @@ const buildReturnEffortProgressionPlanWithWindow = (lifts: SetsBaseCte, window: 
   }
 }
 
-const RELATIVE_WINDOW_REGEX = /(\d+)[-\s]+(day|week|month|year)s?\b/gi
+const RELATIVE_WINDOW_REGEX = /(\d+)[-\s]*(day|week|month|year)s?\b/gi
 const INTERVAL_PLACEHOLDER_REGEX = /\(\$(\d+)\)::interval/gi
 
 type IntervalHint = 'day' | 'week' | 'month' | 'year'
@@ -2169,7 +2223,7 @@ const pluralizeUnit = (unit: 'day' | 'week' | 'month' | 'year', value: number) =
 const extractExplicitWindow = (text: string) => {
   if (!text) return null
   const normalized = text.toLowerCase()
-  const match = normalized.match(/(\d+)\s*(day|week|month|year)s?\b/)
+  const match = normalized.match(/(\d+)[-\s]*(day|week|month|year)s?\b/)
   if (match?.[1] && match[2]) {
     const value = Number(match[1])
     if (!Number.isFinite(value) || value <= 0) return null
@@ -2179,7 +2233,7 @@ const extractExplicitWindow = (text: string) => {
   if (/\b(today|yesterday)\b/.test(normalized)) {
     return '1 day'
   }
-  const phraseMatch = normalized.match(/\b(this|last|past|previous)\s+(week|month|year)s?\b/)
+  const phraseMatch = normalized.match(/\b(this|last|past|previous)[-\s]+(week|month|year)s?\b/)
   if (phraseMatch?.[2]) {
     const unit = phraseMatch[2] as 'week' | 'month' | 'year'
     return `1 ${pluralizeUnit(unit, 1)}`
@@ -2255,7 +2309,7 @@ const resolveSessionDateFilter = (input: {
 
 const windowToDays = (window: string | null | undefined) => {
   if (!window || window === 'all_time') return null
-  const match = window.match(/(\d+)\s*(day|week|month|year)s?\b/i)
+  const match = window.match(/(\d+)[-\s]*(day|week|month|year)s?\b/i)
   if (!match?.[1] || !match[2]) return null
   const value = Number(match[1])
   if (!Number.isFinite(value) || value <= 0) return null
@@ -2271,7 +2325,7 @@ const extractComparisonWindows = (text: string) => {
   if (!text) return []
   const normalized = text.toLowerCase()
   const windows: string[] = []
-  const regex = /(\d+)\s*(day|week|month|year)s?\b/g
+  const regex = /(\d+)[-\s]*(day|week|month|year)s?\b/g
   let match: RegExpExecArray | null
   while ((match = regex.exec(normalized))) {
     const value = Number(match[1])
@@ -2283,10 +2337,10 @@ const extractComparisonWindows = (text: string) => {
 }
 
 const TIME_WINDOW_CUE_REGEX =
-  /\b(\d+\s*(day|week|month|year)s?|today|yesterday|this\s+(week|month|year)|last\s+(week|month|year|session|sessions|workout|workouts)|past\s+(week|month|year|session|sessions|workout|workouts)|most recent|latest|since\b|recent|lately|year to date|ytd|all[-\s]?time|lifetime)\b/i
+  /\b(\d+[-\s]*(day|week|month|year)s?|today|yesterday|this[-\s]+(week|month|year)|last[-\s]+(week|month|year|session|sessions|workout|workouts)|past[-\s]+(week|month|year|session|sessions|workout|workouts)|most[-\s]+recent|latest|since\b|recent|lately|year[-\s]+to[-\s]+date|ytd|all[-\s]?time|lifetime)\b/i
 const TIMEFRAME_PHRASE_REGEX =
-  /\b(today|yesterday|this week|this month|this year|last week|last month|last year|past week|past month|past year|most recent session|most recent sessions|latest session|latest sessions|last session|last sessions|last workout|last workouts|all[-\s]?time|lifetime|year to date|ytd)\b/i
-const TIMEFRAME_EXPLICIT_REGEX = /\b(\d+)\s*(day|week|month|year)s?\b/i
+  /\b(today|yesterday|this[-\s]+week|this[-\s]+month|this[-\s]+year|last[-\s]+week|last[-\s]+month|last[-\s]+year|past[-\s]+week|past[-\s]+month|past[-\s]+year|most[-\s]+recent[-\s]+session|most[-\s]+recent[-\s]+sessions|latest[-\s]+session|latest[-\s]+sessions|last[-\s]+session|last[-\s]+sessions|last[-\s]+workout|last[-\s]+workouts|all[-\s]?time|lifetime|year[-\s]+to[-\s]+date|ytd)\b/i
+const TIMEFRAME_EXPLICIT_REGEX = /\b(\d+)[-\s]*(day|week|month|year)s?\b/i
 const TIMEFRAME_AMBIGUOUS_REGEX = /\b(recent|lately|last|past|previous|current)\b/i
 const LOG_CONTEXT_CUE_REGEX = /\b(my|mine|me|our|last|recent|latest|previous|past)\b/i
 const SESSION_WINDOW_REGEX = /\b(most recent|latest|last)\s+(session|workout)\b/i
@@ -2507,8 +2561,11 @@ const EXERCISE_PROGRESS_REGEX = /\b(progress|progressed|progression|trend|trendi
 const ESTIMATED_1RM_REGEX = /\b(estimated\s*)?1rm\b|\bone[-\s]?rep\s*max\b|\be1rm\b/i
 const WORST_DAY_REGEX =
   /worst day|lowest\s+total\s+volume|lowest\s+volume\s+(?:session|day)|least\s+volume/i
+const DAY_OF_WEEK_CUE_REGEX =
+  /\b(day[-\s]+of[-\s]+week|weekday|week[-\s]+day|day[-\s]+tag|training[-\s]+day|training[-\s]+days|by[-\s]+day|by[-\s]+weekday)\b/i
+const CROSS_TAB_REGEX = /\b(cross[-\s]?tab|crosstab|pivot)\b/i
 const FAVORITE_SPLIT_REGEX =
-  /fav(?:orite)?\s+(?:split|split day|day tag)|which\s+split.*(?:most|often)|split\s+.*(?:most|often)/i
+  /fav(?:orite)?\s+(?:split|split day|day tag|training day|training days)|which\s+split.*(?:most|often)|split\s+.*(?:most|often)|day[-\s]+of[-\s]+week|weekday|week[-\s]+day|day[-\s]+tag|training[-\s]+day|training[-\s]+days|by[-\s]+day|by[-\s]+weekday/i
 const WEEKLY_VOLUME_REGEX = /weekly\s+(?:training\s+)?volume|volume\s+per\s+week/i
 const PERIOD_COMPARE_KEYWORD_REGEX = /\b(compare|compared to|vs|versus|prior|previous|before)\b/i
 const ADHERENCE_REGEX =
@@ -2674,10 +2731,12 @@ const TARGET_KEYWORD_MAP: Array<{ keywords: string[]; target: string }> = [
   { keywords: ['day tag', 'split', 'push', 'pull', 'leg', 'upper', 'lower'], target: 'day_tag' },
   { keywords: ['equipment', 'machine', 'barbell', 'dumbbell'], target: 'equipment' },
 ]
+const BODY_PART_KEYWORDS = TARGET_KEYWORD_MAP.find(entry => entry.target === 'body_part')?.keywords ?? []
 
 const ANALYSIS_TEMPLATE_HINTS: Partial<Record<AnalysisKind, GymChatTemplateName>> = {
   stalled_lifts: 'plateau_vs_progress',
   muscle_group_balance: 'body_part_balance',
+  body_part_day_split: 'workload_consistency',
   exercise_progression: 'plateau_vs_progress',
   weekly_volume: 'workload_consistency',
   favorite_split_day: 'workload_consistency',
@@ -2692,6 +2751,7 @@ const ANALYSIS_INTENT_HINTS: Partial<Record<AnalysisKind, IntentType>> = {
   exercise_summary: 'descriptive',
   exercise_progression: 'trend',
   muscle_group_balance: 'comparison',
+  body_part_day_split: 'descriptive',
   return_for_effort_volume: 'comparison',
   return_for_effort_progression: 'trend',
   stalled_lifts: 'diagnostic',
@@ -2850,7 +2910,7 @@ const inferTargets = (text: string) => {
   return Array.from(targets)
 }
 
-const RELATIVE_WINDOW_DETECT_REGEX = /(\d+)[-\s]+(day|week|month|year)s?\b/i
+const RELATIVE_WINDOW_DETECT_REGEX = /(\d+)[-\s]*(day|week|month|year)s?\b/i
 
 const UNSAFE_POLICY_ERROR_PATTERNS = [
   /unsafe keyword detected/i,
@@ -2860,6 +2920,35 @@ const UNSAFE_POLICY_ERROR_PATTERNS = [
 ]
 
 const isUnsafePolicyError = (error: string) => UNSAFE_POLICY_ERROR_PATTERNS.some(pattern => pattern.test(error))
+
+const isLongPrompt = (question: string) => {
+  if (!question) return false
+  const normalized = normalizeWhitespace(question)
+  const wordCount = normalized.split(' ').filter(Boolean).length
+  return normalized.length >= 320 || wordCount >= 70 || LONG_PROMPT_FORMAT_REGEX.test(normalized)
+}
+
+const buildLongPromptRescueResponse = (question: string): GymChatResponse | null => {
+  if (!isLongPrompt(question)) return null
+  const exerciseTarget = extractExerciseTarget(question)
+  if (!looksLikeGymIntent(question) && !exerciseTarget) return null
+  const explicitWindow = extractExplicitWindow(question)
+  const windowHint = explicitWindow ?? '12 weeks'
+  const assistantMessage = exerciseTarget
+    ? `That request has a lot of constraints. To keep it safe and accurate, pick one focus and timeframe. ` +
+      `I can start with ${exerciseTarget} over the last ${windowHint} or another window.`
+    : `That request has a lot of constraints. To keep it safe and accurate, pick one focus and timeframe ` +
+      `(for example, last ${windowHint}).`
+  const followUps = exerciseTarget
+    ? sanitizeFollowUps(buildTerseClarificationFollowUps(exerciseTarget))
+    : sanitizeFollowUps(SUGGESTED_QUESTIONS)
+  return {
+    assistantMessage,
+    citations: [],
+    queries: [],
+    followUps,
+  }
+}
 
 const shouldConfirmPlan = (question: string, intentType?: IntentType) => {
   if (!question) return false
@@ -3290,6 +3379,23 @@ export async function POST(req: Request) {
         }
       }
     }
+    const normalizedQuestionForClarification = normalizeWhitespace(question).toLowerCase()
+    const hasDayOfWeekCue = DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestionForClarification)
+    const hasBodyPartCue =
+      BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestionForClarification, BODY_PART_KEYWORDS)
+    const extractedExercise = extractExerciseTarget(question)
+    const hasExplicitExercise = Boolean(extractedExercise && !normalizeMuscleName(extractedExercise))
+    const canCrossTabBodyPartDay = hasBodyPartsMapping()
+    if (hasDayOfWeekCue && hasBodyPartCue && !hasExplicitExercise && !canCrossTabBodyPartDay) {
+      const response: GymChatResponse = {
+        assistantMessage:
+          "I can show session counts by day of week or summarize your overall body-part balance, but I can't combine body-part and day-of-week in one view yet. Which should I run first?",
+        citations: [],
+        queries: [],
+        followUps: ['Show session counts by day of week.'],
+      }
+      return respond(response)
+    }
     const exerciseClarificationOptions = shouldClarifyExerciseChoice({
       question,
       state: conversationState,
@@ -3366,6 +3472,15 @@ export async function POST(req: Request) {
     if (!analysisKindOverride && isWorstDayQuestion(question)) {
       analysisKindOverride = 'lowest_volume_day'
     }
+    const normalizedQuestionForOverrides = normalizeWhitespace(question).toLowerCase()
+    const wantsBodyPartDaySplitOverride =
+      hasBodyPartsMapping() &&
+      BODY_PART_KEYWORDS.length > 0 &&
+      containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS) &&
+      (DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestionForOverrides) || CROSS_TAB_REGEX.test(normalizedQuestionForOverrides))
+    if (!analysisKindOverride && wantsBodyPartDaySplitOverride) {
+      analysisKindOverride = 'body_part_day_split'
+    }
     if (!analysisKindOverride && isFavoriteSplitQuestion(question)) {
       analysisKindOverride = 'favorite_split_day'
     }
@@ -3413,7 +3528,7 @@ export async function POST(req: Request) {
       turnMode = 'new_question'
     }
 
-    if (pendingComparison?.status === 'ready' && !COMPARISON_SIGNAL_REGEX.test(question)) {
+    if (pendingComparison?.status === 'ready' && pendingComparison.mode !== 'replace' && !COMPARISON_SIGNAL_REGEX.test(question)) {
       const compareQuestion = buildComparisonQuestion(pendingComparison, question)
       const updated = [...messages]
       for (let i = updated.length - 1; i >= 0; i -= 1) {
@@ -3426,17 +3541,21 @@ export async function POST(req: Request) {
       question = compareQuestion
     }
 
+    const updatedScope = updateScopeFromQuestion({
+      scope: conversationState.scope,
+      extracted: extractedScope,
+      resolved: resolvedScope,
+      comparison: pendingComparison,
+      turnId,
+      timestamp: turnTimestamp,
+    })
+    if (pendingComparison?.mode === 'replace') {
+      pendingComparison = null
+    }
     conversationState = {
       ...conversationState,
       pendingComparison,
-      scope: updateScopeFromQuestion({
-        scope: conversationState.scope,
-        extracted: extractedScope,
-        resolved: resolvedScope,
-        comparison: pendingComparison,
-        turnId,
-        timestamp: turnTimestamp,
-      }),
+      scope: updatedScope,
     }
     conversationState = recordUserTurn({
       state: conversationState,
@@ -3673,7 +3792,7 @@ export async function POST(req: Request) {
       conversationState = { ...conversationState, pendingClarification: { kind: 'return_for_effort_metric' } }
       const response: GymChatResponse = {
         assistantMessage:
-          "When you say 'return for effort', do you mean (a) total volume per exercise, (b) progression over time, or (c) something else? " +
+          "When you say 'return for effort', do you mean (a or 1) total volume per exercise, (b or 2) progression over time, or (c) something else? " +
           'I can compute (a) or (b) from your logs.',
         citations: [],
         queries: [],
@@ -3769,6 +3888,12 @@ export async function POST(req: Request) {
     const setBreakdownAnchorWindow = '12 months'
     const setBreakdownAllTime = exerciseTarget ? setBreakdownAnchorAllTime : wantsAllTimeWindow
     const normalizedQuestion = normalizeWhitespace(question).toLowerCase()
+    const hasDayOfWeekCueForSplit = DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestion)
+    const hasBodyPartCueForSplit =
+      BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestion, BODY_PART_KEYWORDS)
+    const wantsBodyPartDaySplit =
+      useBodyParts && hasBodyPartCueForSplit && (hasDayOfWeekCueForSplit || CROSS_TAB_REGEX.test(normalizedQuestion))
+    const favoriteSplitLimit = hasDayOfWeekCueForSplit ? 7 : undefined
     const isReturnEffortProgression =
       analysisKindOverride === 'return_for_effort_progression' ||
       normalizedQuestion === normalizeWhitespace(RETURN_EFFORT_PROGRESSION_QUESTION).toLowerCase() ||
@@ -3884,9 +4009,13 @@ export async function POST(req: Request) {
         canonicalAnalysisKind = 'lowest_volume_day'
         return buildWorstDayVolumePlan(setsBase, { window: worstDayWindow })
       }
+      if (analysisKindOverride === 'body_part_day_split') {
+        canonicalAnalysisKind = 'body_part_day_split'
+        return buildBodyPartDaySplitPlan(setsBase, { window: explicitWindow ?? '12 weeks', limit: 200 })
+      }
       if (analysisKindOverride === 'favorite_split_day') {
         canonicalAnalysisKind = 'favorite_split_day'
-        return buildFavoriteSplitDayPlan(setsBase, { window: favoriteSplitWindow })
+        return buildFavoriteSplitDayPlan(setsBase, { window: favoriteSplitWindow, limit: favoriteSplitLimit })
       }
       if (analysisKindOverride === 'weekly_volume') {
         canonicalAnalysisKind = 'weekly_volume'
@@ -4006,9 +4135,13 @@ export async function POST(req: Request) {
         canonicalAnalysisKind = 'lowest_volume_day'
         return buildWorstDayVolumePlan(setsBase, { window: worstDayWindow })
       }
+      if (wantsBodyPartDaySplit) {
+        canonicalAnalysisKind = 'body_part_day_split'
+        return buildBodyPartDaySplitPlan(setsBase, { window: explicitWindow ?? '12 weeks', limit: 200 })
+      }
       if (isFavoriteSplitQuestion(question)) {
         canonicalAnalysisKind = 'favorite_split_day'
-        return buildFavoriteSplitDayPlan(setsBase, { window: favoriteSplitWindow })
+        return buildFavoriteSplitDayPlan(setsBase, { window: favoriteSplitWindow, limit: favoriteSplitLimit })
       }
       if (isWeeklyVolumeQuestion(question)) {
         canonicalAnalysisKind = 'weekly_volume'
@@ -4185,6 +4318,10 @@ export async function POST(req: Request) {
       }
       if (hasPolicyErrors) {
         if (unsafePolicy) {
+          const rescueResponse = buildLongPromptRescueResponse(question)
+          if (rescueResponse) {
+            return respond(rescueResponse, undefined, { ...evalMeta, queryCount: executedQueries.length })
+          }
           const response: GymChatResponse = {
             assistantMessage: 'I could not run that request safely. Please rephrase your question.',
             citations: [],

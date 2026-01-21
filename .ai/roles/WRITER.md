@@ -6,7 +6,8 @@ Shared Rules:
 - If the user changes tasks mid-thread, note the change in the handoff log and restate the path before continuing.
 - Keep a single source of truth: write updates inside the handoff log; do not delete or rewrite prior entries.
 - Use `## Status Log` in the handoff log for dated updates; include timestamp `YYYY-MM-DD HH:mm` on each entry; create it if missing.
-- Place generated drafts under `.ai/outputs/<task_slug>/` unless the user specifies a different location.
+- Place generated drafts under `.ai/outputs/<task_slug>/`.
+- Never create outputs outside `.ai/outputs/`; if a file is created elsewhere, move it immediately and update the handoff log.
 - Maintain an Output Manifest in the handoff log listing each generated draft (path + one-line purpose).
 - Avoid duplicate artifacts; overwrite existing drafts unless the user requests otherwise.
 - If `.ai/tasks/*` artifacts exist, do not edit them; ask before removing unless user explicitly requests cleanup.

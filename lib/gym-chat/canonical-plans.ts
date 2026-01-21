@@ -617,6 +617,52 @@ export const buildFavoriteSplitDayPlan = (
   }
 }
 
+export const buildBodyPartDaySplitPlan = (
+  lifts: SetsBaseCte,
+  options?: { window?: string; limit?: number },
+): CanonicalPlan => {
+  const window = options?.window ?? '12 weeks'
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 200
+  const dayTagExpr = lifts.dayTagExpr
+    ? `COALESCE(${lifts.dayTagExpr}, gm.day_tag)`
+    : 'gm.day_tag'
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Break down total sets and volume by day of week and body part over the last ${window}.`,
+        sql:
+          `WITH ${lifts.cte}, base AS (` +
+          `SELECT ${lifts.sessionDateExpr} AS session_date, ` +
+          `${dayTagExpr} AS day_tag, ` +
+          'bp.body_part AS body_part, ' +
+          `COUNT(*) AS total_sets, ` +
+          `SUM(${lifts.volumeExpr}) AS total_volume ` +
+          `FROM ${lifts.alias} ` +
+          `JOIN gym_day_meta gm ON gm.date = ${lifts.sessionDateExpr} ` +
+          'CROSS JOIN LATERAL UNNEST(gm.body_parts) AS bp(body_part) ' +
+          `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+          `AND gm.body_parts IS NOT NULL ` +
+          `AND ${dayTagExpr} IS NOT NULL AND ${dayTagExpr} <> '' ` +
+          'GROUP BY session_date, day_tag, body_part' +
+          '), agg AS (' +
+          'SELECT day_tag, body_part, ' +
+          'SUM(total_sets) AS total_sets, ' +
+          'SUM(total_volume) AS total_volume, ' +
+          'COUNT(DISTINCT session_date) AS session_count ' +
+          'FROM base ' +
+          'GROUP BY day_tag, body_part' +
+          ') ' +
+          'SELECT day_tag, body_part, session_count, total_sets, total_volume ' +
+          'FROM agg ' +
+          'ORDER BY day_tag, total_volume DESC ' +
+          `LIMIT ${limit}`,
+        params: [window],
+      },
+    ],
+  }
+}
+
 export const buildProgressiveOverloadPlan = (lifts: SetsBaseCte): CanonicalPlan => ({
   queries: [
     {

@@ -6,7 +6,8 @@ Shared Rules:
 - If the user changes tasks mid-thread, note the change in the handoff log and restate the path before continuing.
 - Keep a single source of truth: write updates inside the handoff log; do not delete or rewrite prior entries.
 - Use `## Status Log` in the handoff log for dated updates; include timestamp `YYYY-MM-DD HH:mm` on each entry; create it if missing.
-- Place generated reports under `.ai/outputs/<task_slug>/` unless the user specifies a different location.
+- Place generated reports under `.ai/outputs/<task_slug>/`.
+- Never create outputs outside `.ai/outputs/`; if a file is created elsewhere, move it immediately and update the handoff log.
 - Maintain an Output Manifest in the handoff log listing each generated report (path + one-line purpose).
 - Run at least one quick verification relevant to the task and record the command/results in the handoff log.
 - Avoid duplicate artifacts; overwrite existing reports unless the user requests otherwise.

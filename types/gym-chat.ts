@@ -19,6 +19,7 @@ export type AnalysisKind =
   | 'top_weight_sets'
   | 'lowest_volume_day'
   | 'favorite_split_day'
+  | 'body_part_day_split'
   | 'weekly_volume'
   | 'period_compare'
   | 'top_end_efforts'
@@ -136,6 +137,7 @@ export type ComparisonIntent = {
   candidateScope: Partial<ContextFrame['scope']>
   explicit: boolean
   status: 'pending' | 'ready' | 'clarify'
+  mode?: 'compare' | 'replace'
   clarificationQuestion?: string
 }
 

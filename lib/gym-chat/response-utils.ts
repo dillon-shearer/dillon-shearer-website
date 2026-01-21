@@ -229,6 +229,12 @@ export const buildAnalysisFollowUps = (analysisKind?: AnalysisKind) => {
         'Which exercises drive volume for a specific body part?',
         'Show recent shifts in body-part volume over the last 12 weeks.',
       ]
+    case 'body_part_day_split':
+      return [
+        'Show session counts by day of week.',
+        'Compare body-part balance over the last 12 weeks.',
+        'Focus on one day tag and list top exercises.',
+      ]
     case 'progressive_overload':
       return [
         'Which lifts have the longest progressive overload streaks?',

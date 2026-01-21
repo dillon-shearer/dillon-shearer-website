@@ -69,6 +69,11 @@ const FOLLOW_UP_HINTS = [
   'compare against',
   'compare before',
   'show me more',
+  'retry',
+  're-run',
+  'rerun',
+  'redo',
+  'try again',
 ]
 
 const STANDALONE_PREFIXES = [
@@ -93,7 +98,7 @@ const STANDALONE_PREFIXES = [
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
 
-export const RETURN_EFFORT_CHOICE_REGEX = /^(?:option|choice)?\s*([ab])(?:[\s\).,:-]|$)/i
+export const RETURN_EFFORT_CHOICE_REGEX = /^(?:option|choice)?\s*([ab12])(?:[\s\).,:-]|$)/i
 
 const looksLikeStandaloneQuestion = (normalized: string) =>
   STANDALONE_PREFIXES.some(prefix => normalized.startsWith(prefix))
@@ -190,7 +195,7 @@ const METRIC_KEYWORDS: Record<LastResponseContext['metric'], string[]> = {
 }
 
 const TIMEFRAME_EXPLICIT_REGEX =
-  /\b(\d+\s*(day|week|month|year)s?|today|yesterday|this\s+(week|month|year)|last\s+(week|month|year|session|sessions|workout|workouts)|past\s+(week|month|year|session|sessions|workout|workouts)|most recent|latest|since\b|all time|lifetime|year to date|ytd)\b/i
+  /\b(\d+[-\s]*(day|week|month|year)s?|today|yesterday|this[-\s]+(week|month|year)|last[-\s]+(week|month|year|session|sessions|workout|workouts)|past[-\s]+(week|month|year|session|sessions|workout|workouts)|most[-\s]+recent|latest|since\b|all[-\s]?time|lifetime|year[-\s]+to[-\s]+date|ytd)\b/i
 const TIMEFRAME_AMBIGUOUS_REGEX = /\b(recent|lately|last|past|previous|current)\b/i
 
 export const isClarificationAnswer = (pending: PendingClarification | null | undefined, message: string) => {
