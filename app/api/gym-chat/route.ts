@@ -92,6 +92,7 @@ import type {
   ContextScope,
   ContextSlot,
   ContextValue,
+  FormatConstraints,
   GymChatCitation,
   GymChatConversationState,
   GymChatMessage,
@@ -183,6 +184,27 @@ const hasDigits = (value: string) => /\d/.test(value)
 
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
 
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+}
+
+const parseNumberToken = (value?: string | null) => {
+  if (!value) return null
+  const normalized = value.toLowerCase()
+  if (/^\d+$/.test(normalized)) return Number.parseInt(normalized, 10)
+  if (normalized in NUMBER_WORDS) return NUMBER_WORDS[normalized]
+  return null
+}
+
 const DEFAULT_MEMORY_BUDGET = { maxTurns: 50, maxBytes: 16384 }
 const MAX_CONTEXT_STACK = 12
 const TOPIC_SHIFT_CONFIDENCE_THRESHOLD = 0.7
@@ -193,6 +215,8 @@ const COMPARISON_SIGNAL_REGEX = /\b(compare|vs|versus|against)\b/i
 const ZOOM_IN_REGEX = /\b(zoom in|drill into|drill in|focus on|narrow to|shift to|switch to)\b/i
 const RETRY_CUE_REGEX = /\b(retry|re-?run|rerun|redo|try again|run that again)\b/i
 const LONG_PROMPT_FORMAT_REGEX = /\b(bullets?|format|table|csv|json|markdown|strict|exact|verbatim|headings?)\b/i
+const FORMAT_RESET_REGEX = /\b(ignore that|go back to (the )?original formatting|back to (the )?original formatting)\b/i
+const FORMAT_CLEAR_REGEX = /\b(ignore (the )?formatting|no formatting constraints|drop formatting)\b/i
 const TOPIC_RESET_REGEX = /\b(new question|different topic|let's look at|let us look at|start over|reset)\b/i
 const ANALYSIS_VERB_REGEX = /\b(show|analyze|analyse|trend|compare|list|summarize|breakdown|explain)\b/i
 const METRIC_NAME_REGEX = /\b(volume|sets?|reps?|1rm|one\s+rep\s+max|weight|sessions?)\b/i
@@ -280,8 +304,10 @@ const EXERCISE_TARGET_STOPWORDS = new Set([
   'me',
   'most',
   'my',
+  'now',
   'of',
   'on',
+  'only',
   'over',
   'past',
   'performance',
@@ -300,6 +326,16 @@ const EXERCISE_TARGET_STOPWORDS = new Set([
   'set',
   'sets',
   'show',
+  'same',
+  'keep',
+  'format',
+  'include',
+  'focus',
+  'drill',
+  'zoom',
+  'switch',
+  'shift',
+  'narrow',
   'since',
   'summary',
   'summaries',
@@ -498,8 +534,8 @@ const detectComparisonIntent = (input: {
 }): ComparisonIntent | null => {
   const normalized = normalizeWhitespace(input.question).toLowerCase()
   const explicit = COMPARISON_SIGNAL_REGEX.test(normalized) || normalized.includes('compare')
-  const zoomIn = input.turnMode === 'analysis_followup' && ZOOM_IN_REGEX.test(normalized)
-  const retry = input.turnMode === 'analysis_followup' && RETRY_CUE_REGEX.test(normalized)
+  const zoomIn = ZOOM_IN_REGEX.test(normalized)
+  const retry = RETRY_CUE_REGEX.test(normalized)
   const baseScope = buildScopeSummary(input.state)
   const candidateScope = input.extracted
   const dimensions: ContextDimension[] = []
@@ -539,15 +575,27 @@ const detectComparisonIntent = (input: {
       mode: 'replace',
     }
   }
-  const shouldClarify = !explicit && (input.turnMode === 'analysis_followup' || normalized.split(' ').length <= 8)
+  if (!explicit && input.turnMode === 'analysis_followup') {
+    return {
+      dimensions,
+      baseFrameId,
+      baseScope,
+      candidateScope,
+      explicit: false,
+      status: 'ready',
+      mode: 'replace',
+    }
+  }
+  const shouldCompare =
+    explicit || candidateExercises.length > 1 || candidateWindows.length > 1 || candidateMetrics.length > 1
   return {
     dimensions,
     baseFrameId,
     baseScope,
     candidateScope,
     explicit,
-    status: shouldClarify ? 'clarify' : 'ready',
-    mode: 'compare',
+    status: 'ready',
+    mode: shouldCompare ? 'compare' : 'replace',
   }
 }
 
@@ -650,6 +698,7 @@ const shouldClarifyExerciseChoice = (input: {
   const normalized = normalizeWhitespace(input.question).toLowerCase()
   if (DAY_OF_WEEK_CUE_REGEX.test(normalized)) return null
   if (RETRY_CUE_REGEX.test(normalized)) return null
+  if (hasExplicitTimeWindow(input.question) || TIME_WINDOW_CUE_REGEX.test(normalized)) return null
   if (EXERCISE_OVERVIEW_CUE_REGEX.test(normalized) || EXERCISE_BREAKDOWN_CUE_REGEX.test(normalized)) return null
   const wordCount = normalized.split(' ').filter(Boolean).length
   const isShort = wordCount <= 10 || normalized.length <= 80
@@ -986,6 +1035,8 @@ const normalizeConversationState = (value: unknown): GymChatConversationState =>
   const lastAnalysisTargets = normalizeAnalysisTargets(state.lastAnalysis?.targets)
   const lastResponseContext = normalizeLastResponseContext(state.lastResponseContext)
   const scope = normalizeContextScope(state.scope)
+  const formatConstraints = normalizeFormatConstraints(state.formatConstraints)
+  const baseFormatConstraints = normalizeFormatConstraints(state.baseFormatConstraints)
   const contextStack = Array.isArray(state.contextStack)
     ? state.contextStack.map(entry => normalizeContextFrame(entry)).filter(Boolean) as ContextFrame[]
     : []
@@ -1037,6 +1088,8 @@ const normalizeConversationState = (value: unknown): GymChatConversationState =>
     pendingComparison: pendingComparison ?? null,
     history: history.length ? history : undefined,
     memoryBudget,
+    formatConstraints,
+    baseFormatConstraints,
     lastResponseContext,
     lastExercise: lastExercise ?? lastResponseContext?.exercise,
     lastSessionDate: lastSessionDate ?? lastResponseContext?.sessionDate,
@@ -2950,6 +3003,204 @@ const buildLongPromptRescueResponse = (question: string): GymChatResponse | null
   }
 }
 
+const resolveExerciseSuggestion = (question: string) => {
+  const extracted = extractExerciseTarget(question)
+  if (!extracted) return null
+  const suggestions = suggestExerciseNames(extracted, 1)
+  return suggestions[0] ?? null
+}
+
+const resolveLongPromptAnalysisKind = (question: string): AnalysisKind => {
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  const hasExercise = Boolean(resolveExerciseSuggestion(question))
+  if (TOP_END_EFFORT_REGEX.test(normalized)) return 'top_end_efforts'
+  if (ESTIMATED_1RM_REGEX.test(normalized) || normalized.includes('strength')) {
+    return hasExercise ? 'exercise_progression' : 'return_for_effort_progression'
+  }
+  if (EXERCISE_PROGRESS_REGEX.test(normalized)) {
+    return hasExercise ? 'exercise_progression' : 'return_for_effort_progression'
+  }
+  if (VOLUME_RANKING_REGEX.test(normalized)) return 'volume'
+  if (SET_COUNT_REGEX.test(normalized)) return 'set_count'
+  if (SESSION_COUNT_REGEX.test(normalized)) return 'session_count'
+  if (WEEKLY_VOLUME_REGEX.test(normalized)) return 'weekly_volume'
+  if (MUSCLE_GROUP_COMPARISON_REGEX.test(normalized)) return 'muscle_group_balance'
+  if (FAVORITE_SPLIT_REGEX.test(normalized)) return 'favorite_split_day'
+  if (hasExercise) return 'exercise_summary'
+  return 'exercise_summary'
+}
+
+const normalizeFormatConstraints = (value?: FormatConstraints | null): FormatConstraints | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as FormatConstraints
+  const maxWords = Number.isFinite(raw.maxWords) && raw.maxWords ? Math.floor(raw.maxWords) : undefined
+  const bulletCount = Number.isFinite(raw.bulletCount) && raw.bulletCount ? Math.floor(raw.bulletCount) : undefined
+  const sentenceLimit =
+    Number.isFinite(raw.sentenceLimit) && raw.sentenceLimit ? Math.floor(raw.sentenceLimit) : undefined
+  const requireChartTitle = raw.requireChartTitle ? true : undefined
+  if (!maxWords && !bulletCount && !sentenceLimit && !requireChartTitle) return undefined
+  return {
+    maxWords,
+    bulletCount,
+    sentenceLimit,
+    requireChartTitle,
+  }
+}
+
+const extractFormatConstraints = (question: string): FormatConstraints | undefined => {
+  if (!question) return undefined
+  const normalized = normalizeWhitespace(question).toLowerCase()
+  const constraints: FormatConstraints = {}
+  const bulletMatch = normalized.match(/(?:exactly|always include|include)\s+(\w+)\s+bullet/)
+  const wordMatch = normalized.match(/(?:under|less than|<=)\s+(\w+)\s+words?/)
+  const sentenceMatch = normalized.match(/(?:exactly\s+)?(\w+)\s+sentences?\b/)
+  const bulletCount = parseNumberToken(bulletMatch?.[1])
+  const maxWords = parseNumberToken(wordMatch?.[1])
+  const sentenceLimit = parseNumberToken(sentenceMatch?.[1])
+  if (bulletCount) constraints.bulletCount = bulletCount
+  if (maxWords) constraints.maxWords = maxWords
+  if (sentenceLimit) constraints.sentenceLimit = sentenceLimit
+  if (normalized.includes('chart title')) constraints.requireChartTitle = true
+  return normalizeFormatConstraints(constraints)
+}
+
+const mergeFormatConstraints = (
+  current: FormatConstraints | undefined,
+  next: FormatConstraints | undefined,
+): FormatConstraints | undefined => {
+  if (!next) return current
+  const merged: FormatConstraints = { ...(current ?? {}) }
+  if (next.maxWords) merged.maxWords = next.maxWords
+  if (next.requireChartTitle) merged.requireChartTitle = true
+  if (next.bulletCount) merged.bulletCount = next.bulletCount
+  if (next.sentenceLimit) {
+    merged.sentenceLimit = next.sentenceLimit
+    if (!next.bulletCount) {
+      merged.bulletCount = undefined
+    }
+  }
+  return normalizeFormatConstraints(merged)
+}
+
+const buildChartTitle = (analysisKind?: AnalysisKind) => {
+  switch (analysisKind) {
+    case 'weekly_volume':
+      return 'Weekly Training Volume'
+    case 'session_count':
+      return 'Session Count Over Time'
+    case 'volume':
+      return 'Total Volume by Exercise'
+    case 'set_count':
+      return 'Total Sets by Exercise'
+    case 'exercise_progression':
+      return 'Exercise Progression'
+    case 'return_for_effort_progression':
+      return 'Progression by Exercise'
+    case 'favorite_split_day':
+      return 'Session Count by Day Tag'
+    case 'body_part_day_split':
+      return 'Body Part by Day of Week'
+    case 'muscle_group_balance':
+      return 'Body Part Balance'
+    default:
+      return 'Training Summary'
+  }
+}
+
+const splitSentences = (text: string) =>
+  text
+    .split(/(?<=[.!?])\s+/)
+    .map(entry => entry.trim())
+    .filter(Boolean)
+
+const extractBulletCandidates = (text: string) => {
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean)
+  const bulletLines = lines.filter(line => /^[-*]\s+/.test(line))
+  if (bulletLines.length) {
+    return bulletLines.map(line => line.replace(/^[-*]\s+/, '').trim()).filter(Boolean)
+  }
+  return splitSentences(text)
+}
+
+const trimWords = (text: string, maxWords: number) => {
+  const words = text.split(/\s+/).filter(Boolean)
+  if (words.length <= maxWords) return text
+  return `${words.slice(0, maxWords).join(' ')}`
+}
+
+const applyFormatConstraints = (
+  message: string,
+  constraints: FormatConstraints,
+  analysisKind?: AnalysisKind,
+) => {
+  if (!message) return message
+  const trimmed = message.trim()
+  if (!trimmed) return trimmed
+  const sentenceLimit = constraints.sentenceLimit
+  const bulletCount = constraints.bulletCount
+  const chartTitle = constraints.requireChartTitle ? buildChartTitle(analysisKind) : null
+  let bodyText = trimmed
+  if (sentenceLimit) {
+    bodyText = splitSentences(trimmed).slice(0, sentenceLimit).join(' ')
+  } else if (bulletCount) {
+    const candidates = extractBulletCandidates(trimmed)
+    const bullets: string[] = []
+    candidates.forEach(candidate => {
+      if (bullets.length < bulletCount && candidate) bullets.push(candidate)
+    })
+    while (bullets.length < bulletCount) {
+      bullets.push('Additional detail not available from logs.')
+    }
+    bodyText = bullets.map(bullet => `- ${bullet}`).join('\n')
+  }
+  if (constraints.maxWords) {
+    const reservedWords = chartTitle ? chartTitle.split(/\s+/).length + 2 : 0
+    const maxWords = Math.max(1, constraints.maxWords - reservedWords)
+    bodyText = trimWords(bodyText, maxWords)
+  }
+  if (chartTitle) {
+    bodyText = `${bodyText}\nChart title: ${chartTitle}`
+  }
+  return bodyText.trim()
+}
+
+const buildSimplifiedQuestion = (question: string) => {
+  if (!isLongPrompt(question)) return null
+  const explicitWindow = extractExplicitWindow(question)
+  const metric = extractMetricFromQuestion(question)
+  const exerciseTarget = extractExerciseTarget(question)
+  const suggestedExercise = exerciseTarget ? suggestExerciseNames(exerciseTarget, 1)[0] ?? exerciseTarget : null
+  const windowLabel = explicitWindow ?? (containsKeyword(question, ALL_TIME_KEYWORDS) ? 'all time' : null)
+  const metricLabel =
+    metric === '1rm'
+      ? 'estimated 1RM'
+      : metric === 'sessions'
+        ? 'session count'
+        : metric
+  if (!suggestedExercise && !metricLabel) return null
+  const windowSuffix = windowLabel ? ` over the last ${windowLabel}.` : '.'
+  if (suggestedExercise && metricLabel) {
+    return `Show my ${metricLabel} for ${suggestedExercise}${windowSuffix}`
+  }
+  if (suggestedExercise) {
+    return `Show ${suggestedExercise} progression${windowSuffix}`
+  }
+  return `Show my ${metricLabel}${windowSuffix}`
+}
+
+const maybeRewriteLongPrompt = (messages: GymChatMessage[], question: string) => {
+  const simplified = buildSimplifiedQuestion(question)
+  if (!simplified) return { messages, question, didRewrite: false }
+  const updated = [...messages]
+  for (let i = updated.length - 1; i >= 0; i -= 1) {
+    if (updated[i].role === 'user') {
+      updated[i] = { ...updated[i], content: simplified }
+      break
+    }
+  }
+  return { messages: updated, question: simplified, didRewrite: true }
+}
+
 const shouldConfirmPlan = (question: string, intentType?: IntentType) => {
   if (!question) return false
   if (intentType !== 'diagnostic' && intentType !== 'planning') return false
@@ -3078,28 +3329,45 @@ export async function POST(req: Request) {
     init?: { status?: number },
     meta?: GymChatEvalMeta,
   ) => {
-    if ('assistantMessage' in body && turnId) {
+    let responseBody = body
+    const shouldApplyFormatConstraints =
+      'assistantMessage' in responseBody &&
+      conversationState.formatConstraints &&
+      !conversationState.pendingClarification &&
+      !conversationState.lastError &&
+      !('refusal' in responseBody && responseBody.refusal)
+    if (shouldApplyFormatConstraints) {
+      responseBody = {
+        ...responseBody,
+        assistantMessage: applyFormatConstraints(
+          responseBody.assistantMessage,
+          conversationState.formatConstraints,
+          conversationState.lastAnalysis?.kind,
+        ),
+      }
+    }
+    if ('assistantMessage' in responseBody && turnId) {
       conversationState = recordAssistantTurn({
         state: conversationState,
-        message: body.assistantMessage,
+        message: responseBody.assistantMessage,
         turnId,
         timestamp: turnTimestamp,
       })
     }
     const payload =
-      'assistantMessage' in body
-        ? { ...body, conversationState: buildConversationStateResponse(conversationState) }
-        : body
+      'assistantMessage' in responseBody
+        ? { ...responseBody, conversationState: buildConversationStateResponse(conversationState) }
+        : responseBody
     if (wantsStream) {
       const status = init?.status
-      if ('assistantMessage' in body) {
+      if ('assistantMessage' in responseBody) {
         if (status && status >= 400) {
-          sendError(body.assistantMessage, resolveErrorType(status))
+          sendError(responseBody.assistantMessage, resolveErrorType(status))
         } else {
           sendFinal(payload)
         }
       } else {
-        sendError(body.error, resolveErrorType(status))
+        sendError(responseBody.error, resolveErrorType(status))
       }
       return null
     }
@@ -3108,7 +3376,7 @@ export async function POST(req: Request) {
     return NextResponse.json(payload, { ...(init ?? {}), headers })
   }
   const run = async () => {
-  try {
+    try {
     let payload: {
       messages?: GymChatMessage[]
       client?: { timezone?: string }
@@ -3138,6 +3406,24 @@ export async function POST(req: Request) {
     if (!question) {
       return respond({ error: 'User question is required.' }, { status: 400 })
     }
+    const rawQuestion = question
+    if (FORMAT_CLEAR_REGEX.test(rawQuestion)) {
+      conversationState = { ...conversationState, formatConstraints: undefined, baseFormatConstraints: undefined }
+    } else if (FORMAT_RESET_REGEX.test(rawQuestion) && conversationState.baseFormatConstraints) {
+      conversationState = { ...conversationState, formatConstraints: conversationState.baseFormatConstraints }
+    } else {
+      const extractedConstraints = extractFormatConstraints(rawQuestion)
+      if (extractedConstraints) {
+        const merged = mergeFormatConstraints(conversationState.formatConstraints, extractedConstraints)
+        const base = conversationState.baseFormatConstraints ?? merged
+        conversationState = { ...conversationState, formatConstraints: merged, baseFormatConstraints: base }
+      }
+    }
+    const wasLongPrompt = isLongPrompt(question)
+    const rewriteResult = maybeRewriteLongPrompt(messages, question)
+    messages = rewriteResult.messages
+    question = rewriteResult.question
+    const forceCanonicalFromLongPrompt = wasLongPrompt || rewriteResult.didRewrite
 
     const timezone = payload.client?.timezone ?? 'UTC'
 
@@ -3162,6 +3448,9 @@ export async function POST(req: Request) {
     const correctionDetected = isCorrection(question)
     if (correctionDetected && turnMode === 'analysis_followup') {
       turnMode = 'new_question'
+    }
+    if (RETRY_CUE_REGEX.test(question) && conversationState.lastAnalysis?.kind) {
+      turnMode = 'analysis_followup'
     }
 
     conversationState = recordUserTurn({
@@ -3383,10 +3672,13 @@ export async function POST(req: Request) {
     const hasDayOfWeekCue = DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestionForClarification)
     const hasBodyPartCue =
       BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestionForClarification, BODY_PART_KEYWORDS)
+    const hasBodyPartContext =
+      conversationState.lastAnalysis?.kind === 'muscle_group_balance' ||
+      conversationState.lastAnalysis?.kind === 'body_part_day_split'
     const extractedExercise = extractExerciseTarget(question)
     const hasExplicitExercise = Boolean(extractedExercise && !normalizeMuscleName(extractedExercise))
     const canCrossTabBodyPartDay = hasBodyPartsMapping()
-    if (hasDayOfWeekCue && hasBodyPartCue && !hasExplicitExercise && !canCrossTabBodyPartDay) {
+    if (hasDayOfWeekCue && (hasBodyPartCue || hasBodyPartContext) && !hasExplicitExercise && !canCrossTabBodyPartDay) {
       const response: GymChatResponse = {
         assistantMessage:
           "I can show session counts by day of week or summarize your overall body-part balance, but I can't combine body-part and day-of-week in one view yet. Which should I run first?",
@@ -3451,6 +3743,9 @@ export async function POST(req: Request) {
     if (isTopEndEffortsComparisonQuestion(question)) {
       analysisKindOverride = 'top_end_efforts_compare_12m_3m'
     }
+    if (!analysisKindOverride && forceCanonicalFromLongPrompt) {
+      analysisKindOverride = resolveLongPromptAnalysisKind(question)
+    }
     if (!analysisKindOverride && isSetBreakdownQuestion(question)) {
       analysisKindOverride = 'set_breakdown'
     }
@@ -3475,9 +3770,13 @@ export async function POST(req: Request) {
     const normalizedQuestionForOverrides = normalizeWhitespace(question).toLowerCase()
     const wantsBodyPartDaySplitOverride =
       hasBodyPartsMapping() &&
-      BODY_PART_KEYWORDS.length > 0 &&
-      containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS) &&
-      (DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestionForOverrides) || CROSS_TAB_REGEX.test(normalizedQuestionForOverrides))
+      (DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestionForOverrides) || CROSS_TAB_REGEX.test(normalizedQuestionForOverrides)) &&
+      ((
+        BODY_PART_KEYWORDS.length > 0 &&
+        containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS)
+      ) ||
+        conversationState.lastAnalysis?.kind === 'muscle_group_balance' ||
+        conversationState.lastAnalysis?.kind === 'body_part_day_split')
     if (!analysisKindOverride && wantsBodyPartDaySplitOverride) {
       analysisKindOverride = 'body_part_day_split'
     }
@@ -3528,18 +3827,12 @@ export async function POST(req: Request) {
       turnMode = 'new_question'
     }
 
-    if (pendingComparison?.status === 'ready' && pendingComparison.mode !== 'replace' && !COMPARISON_SIGNAL_REGEX.test(question)) {
-      const compareQuestion = buildComparisonQuestion(pendingComparison, question)
-      const updated = [...messages]
-      for (let i = updated.length - 1; i >= 0; i -= 1) {
-        if (updated[i].role === 'user') {
-          updated[i] = { ...updated[i], content: compareQuestion }
-          break
-        }
-      }
-      messages = updated
-      question = compareQuestion
-    }
+    // Avoid auto-rewriting follow-ups into comparisons; explicit compare prompts handle this already.
+
+    const hasFollowupContext =
+      turnMode === 'analysis_followup' &&
+      Boolean(conversationState.lastAnalysis || conversationState.lastResponseContext || conversationState.lastPlanMeta)
+    const forceCanonicalPlan = forceCanonicalFromLongPrompt || hasFollowupContext
 
     const updatedScope = updateScopeFromQuestion({
       scope: conversationState.scope,
@@ -3587,31 +3880,52 @@ export async function POST(req: Request) {
 
     const llmMessages = buildLlmContext({ question, state: conversationState, mode: turnMode })
     let classification: Awaited<ReturnType<typeof classifyQuestion>>
-    sendStatus('classify', 'Classifying question')
-    const classifyStartedAt = Date.now()
-    try {
-      classification = await classifyQuestion(llmMessages, llmOptions)
-    } catch (error) {
-      if (isLlmRequestError(error)) {
-        log('classification failed', { status: error.status, retryable: error.retryable, detail: error.detail })
-        const likelyGymQuestion = looksLikeGymIntent(question) || hasMuscleConstraint
-        const assistantMessage = likelyGymQuestion
-          ? "I'm not sure I understood the specific analysis you're after. Can you rephrase with a lift or focus area and a timeframe?"
-          : "I'm not sure I understood that. Can you clarify what you'd like to know about training or your workout history?"
-        const response: GymChatResponse = {
-          assistantMessage,
-          citations: [],
-          queries: [],
-        }
-        return respond(response)
+    const combinedUserText = question
+    const hasGymSignal =
+      looksLikeGymIntent(combinedUserText) ||
+      hasMuscleConstraint ||
+      Boolean(extractedExercise) ||
+      Boolean(conversationState.lastAnalysis || conversationState.lastResponseContext)
+    if (forceCanonicalPlan && hasGymSignal) {
+      sendStatus('classify', 'Using conversation context')
+      const inferredTargetsForClassification = inferTargets(combinedUserText)
+      classification = {
+        domain: 'gym_data',
+        confidence: 0.95,
+        clarifyingQuestion: undefined,
+        intentType:
+          (analysisKindOverride ? ANALYSIS_INTENT_HINTS[analysisKindOverride] : undefined) ??
+          inferIntentType(combinedUserText),
+        primaryGrain: inferPrimaryGrain(combinedUserText),
+        targets: inferredTargetsForClassification.length ? inferredTargetsForClassification : undefined,
       }
-      throw error
+      log('classification skipped', { reason: forceCanonicalFromLongPrompt ? 'long_prompt' : 'followup' })
+    } else {
+      sendStatus('classify', 'Classifying question')
+      const classifyStartedAt = Date.now()
+      try {
+        classification = await classifyQuestion(llmMessages, llmOptions)
+      } catch (error) {
+        if (isLlmRequestError(error)) {
+          log('classification failed', { status: error.status, retryable: error.retryable, detail: error.detail })
+          const likelyGymQuestion = looksLikeGymIntent(question) || hasMuscleConstraint
+          const assistantMessage = likelyGymQuestion
+            ? "I'm not sure I understood the specific analysis you're after. Can you rephrase with a lift or focus area and a timeframe?"
+            : "I'm not sure I understood that. Can you clarify what you'd like to know about training or your workout history?"
+          const response: GymChatResponse = {
+            assistantMessage,
+            citations: [],
+            queries: [],
+          }
+          return respond(response)
+        }
+        throw error
+      }
+      log('classification completed', { durationMs: Date.now() - classifyStartedAt })
+      log('classification', classification)
     }
-    log('classification completed', { durationMs: Date.now() - classifyStartedAt })
-    log('classification', classification)
     classification.primaryGrain = normalizePrimaryGrainValue(classification.primaryGrain)
     const intervalHints = extractIntervalHints(question)
-    const combinedUserText = question
     const likelyGymIntent = looksLikeGymIntent(combinedUserText) || hasMuscleConstraint
     const likelyPlanningIntent = looksLikePlanningIntent(combinedUserText) || hasMuscleConstraint
     if (likelyGymIntent) {
@@ -3804,19 +4118,30 @@ export async function POST(req: Request) {
       return respond(response, undefined, evalMeta)
     }
 
-    sendStatus('plan', 'Planning SQL')
-    const planStartedAt = Date.now()
-    const plan = await planGymSql(
-      llmMessages,
-      timezone,
-      {
-        ...intentHints,
+    let plan: Awaited<ReturnType<typeof planGymSql>>
+    if (forceCanonicalPlan) {
+      plan = {
+        queries: [],
         template: templateSelection.primary,
         secondaryTemplate: templateSelection.secondary,
-      },
-      llmOptions,
-    )
-    log('plan completed', { durationMs: Date.now() - planStartedAt })
+        refusal: undefined,
+      } as Awaited<ReturnType<typeof planGymSql>>
+      log('plan skipped', { reason: forceCanonicalFromLongPrompt ? 'long_prompt' : 'followup' })
+    } else {
+      sendStatus('plan', 'Planning SQL')
+      const planStartedAt = Date.now()
+      plan = await planGymSql(
+        llmMessages,
+        timezone,
+        {
+          ...intentHints,
+          template: templateSelection.primary,
+          secondaryTemplate: templateSelection.secondary,
+        },
+        llmOptions,
+      )
+      log('plan completed', { durationMs: Date.now() - planStartedAt })
+    }
     const plannedTemplate = normalizeTemplateName(plan.template)
     const plannedSecondaryTemplate = normalizeTemplateName(plan.secondaryTemplate)
     const selectedTemplate = plannedTemplate ?? templateSelection.primary
@@ -3891,8 +4216,13 @@ export async function POST(req: Request) {
     const hasDayOfWeekCueForSplit = DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestion)
     const hasBodyPartCueForSplit =
       BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestion, BODY_PART_KEYWORDS)
+    const hasBodyPartContextForSplit =
+      conversationState.lastAnalysis?.kind === 'muscle_group_balance' ||
+      conversationState.lastAnalysis?.kind === 'body_part_day_split'
     const wantsBodyPartDaySplit =
-      useBodyParts && hasBodyPartCueForSplit && (hasDayOfWeekCueForSplit || CROSS_TAB_REGEX.test(normalizedQuestion))
+      useBodyParts &&
+      (hasBodyPartCueForSplit || hasBodyPartContextForSplit) &&
+      (hasDayOfWeekCueForSplit || CROSS_TAB_REGEX.test(normalizedQuestion))
     const favoriteSplitLimit = hasDayOfWeekCueForSplit ? 7 : undefined
     const isReturnEffortProgression =
       analysisKindOverride === 'return_for_effort_progression' ||

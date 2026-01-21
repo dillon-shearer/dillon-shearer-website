@@ -5,6 +5,13 @@ export type GymChatMessage = {
   content: string
 }
 
+export type FormatConstraints = {
+  maxWords?: number
+  bulletCount?: number
+  sentenceLimit?: number
+  requireChartTitle?: boolean
+}
+
 export type AnalysisKind =
   | 'muscle_group_balance'
   | 'return_for_effort_volume'
@@ -160,6 +167,8 @@ export type GymChatConversationState = {
   pendingComparison?: ComparisonIntent | null
   history?: SessionTurnSummary[]
   memoryBudget?: { maxTurns: number; maxBytes: number }
+  formatConstraints?: FormatConstraints
+  baseFormatConstraints?: FormatConstraints
   lastAnalysis?: {
     kind: AnalysisKind
     canonicalPlanId?: string
