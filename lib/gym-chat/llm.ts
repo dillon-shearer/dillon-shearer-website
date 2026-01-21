@@ -598,6 +598,11 @@ export const repairGymSql = async (
   return callOpenAIJson(PLAN_SCHEMA, [system, ...convo, user], 0, options)
 }
 
+type FormattingConstraint = {
+  type: 'order' | 'format' | 'length' | 'style'
+  instruction: string
+}
+
 type ExplainInput = {
   question: string
   queries: GymChatQuery[]
@@ -610,6 +615,7 @@ type ExplainInput = {
   queryResultMetadata?: QueryResultMeta[]
   validationNotes?: string[]
   planMeta?: WorkoutPlanAnalysisMeta
+  formattingConstraints?: FormattingConstraint[]
 }
 
 export const explainGymResults = async (input: ExplainInput, options?: LlmRequestOptions) => {
@@ -647,6 +653,10 @@ export const explainGymResults = async (input: ExplainInput, options?: LlmReques
     input.validationNotes && input.validationNotes.length
       ? `Response corrections (must fix):\n- ${input.validationNotes.join('\n- ')}`
       : ''
+  const formattingGuidance =
+    input.formattingConstraints && input.formattingConstraints.length
+      ? `User formatting requirements (must follow):\n- ${input.formattingConstraints.map(c => c.instruction).join('\n- ')}`
+      : ''
   const extraGuidance = [
     planningGuidance,
     diagnosticGuidance,
@@ -654,6 +664,7 @@ export const explainGymResults = async (input: ExplainInput, options?: LlmReques
     planHistoryGuidance,
     checklistGuidance,
     validationGuidance,
+    formattingGuidance,
   ]
     .filter(Boolean)
     .join('\n')

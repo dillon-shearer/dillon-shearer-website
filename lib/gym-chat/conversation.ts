@@ -99,6 +99,8 @@ const STANDALONE_PREFIXES = [
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim()
 
 export const RETURN_EFFORT_CHOICE_REGEX = /^(?:option|choice)?\s*([ab12])(?:[\s\).,:-]|$)/i
+export const TERSE_CHOICE_REGEX = /^(?:option|choice)?\s*([abcd1234])(?:[\s\).,:-]|$)/i
+export const EXERCISE_CHOICE_REGEX = /^(?:option|choice)?\s*([a-z]|\d{1,2})(?:[\s\).,:-]|$)/i
 
 const looksLikeStandaloneQuestion = (normalized: string) =>
   STANDALONE_PREFIXES.some(prefix => normalized.startsWith(prefix))
@@ -195,7 +197,7 @@ const METRIC_KEYWORDS: Record<LastResponseContext['metric'], string[]> = {
 }
 
 const TIMEFRAME_EXPLICIT_REGEX =
-  /\b(\d+[-\s]*(day|week|month|year)s?|today|yesterday|this[-\s]+(week|month|year)|last[-\s]+(week|month|year|session|sessions|workout|workouts)|past[-\s]+(week|month|year|session|sessions|workout|workouts)|most[-\s]+recent|latest|since\b|all[-\s]?time|lifetime|year[-\s]+to[-\s]+date|ytd)\b/i
+  /\b(\d+[-\s]*(day|week|month|year)s?|today|yesterday|this[-\s]+(week|month|year)|last[-\s]+(week|month|year|session|sessions|workout|workouts)|past[-\s]+(week|month|year|session|sessions|workout|workouts)|most[-\s]+recent|latest|since[-\s]+\S+|all[-\s]?time|lifetime|year[-\s]+to[-\s]+date|ytd)\b/i
 const TIMEFRAME_AMBIGUOUS_REGEX = /\b(recent|lately|last|past|previous|current)\b/i
 
 export const isClarificationAnswer = (pending: PendingClarification | null | undefined, message: string) => {
@@ -221,11 +223,15 @@ export const isClarificationAnswer = (pending: PendingClarification | null | und
     // User is responding to a "what would you like to know about X?" clarification
     // Accept any short response that clarifies intent
     if (!normalized) return false
+    if (normalized === '?') return true
+    if (TERSE_CHOICE_REGEX.test(normalized)) return true
     if (isShort) return true
     return false
   }
   if (pending.kind === 'exercise_choice') {
     if (!normalized) return false
+    if (normalized === '?') return true
+    if (EXERCISE_CHOICE_REGEX.test(normalized)) return true
     if (isShort) return true
     return false
   }
@@ -840,4 +846,121 @@ export const buildLlmContext = (input: {
   }
   messages.push({ role: 'user' as const, content: input.question })
   return messages
+}
+
+export type FormattingConstraint = {
+  type: 'order' | 'format' | 'length' | 'style'
+  instruction: string
+}
+
+/**
+ * Detects explicit formatting constraints in user questions.
+ * Examples: "list in order of most to least", "use bullet points", "keep it brief"
+ */
+export const detectFormattingConstraints = (question: string): FormattingConstraint[] => {
+  if (!question) return []
+  const normalized = question.toLowerCase()
+  const constraints: FormattingConstraint[] = []
+
+  // Order constraints
+  if (
+    /\b(in order|order by|sort by|sorted by|rank|ranked)\b.*\b(most|least|highest|lowest|best|worst)/i.test(
+      question,
+    ) ||
+    /\b(most|least|highest|lowest|best|worst)\s+to\s+(most|least|highest|lowest|best|worst)\b/i.test(question)
+  ) {
+    constraints.push({
+      type: 'order',
+      instruction: 'List items in the specified order (most to least, highest to lowest, etc.)',
+    })
+  }
+
+  // Format constraints (bullets, numbered, table)
+  if (/\b(bullet|bulleted|bullets|bullet points?)\b/i.test(question)) {
+    constraints.push({ type: 'format', instruction: 'Use bullet points for the list' })
+  }
+  if (/\b(numbered|numbered list)\b/i.test(question)) {
+    constraints.push({ type: 'format', instruction: 'Use a numbered list' })
+  }
+  if (/\b(table|tabular|in a table)\b/i.test(question)) {
+    constraints.push({ type: 'format', instruction: 'Present data in a table format' })
+  }
+
+  // Length constraints
+  if (/\b(brief|short|concise|quick|quick summary)\b/i.test(question)) {
+    constraints.push({ type: 'length', instruction: 'Keep the response brief (2-3 sentences)' })
+  }
+  if (/\b(detailed|in detail|comprehensive|thorough)\b/i.test(question)) {
+    constraints.push({ type: 'length', instruction: 'Provide a detailed, comprehensive response' })
+  }
+  if (/\b(\d+)\s*(word|sentence)s?\b/i.test(question)) {
+    const match = question.match(/\b(\d+)\s*(word|sentence)s?\b/i)
+    if (match) {
+      constraints.push({
+        type: 'length',
+        instruction: `Limit response to approximately ${match[1]} ${match[2]}s`,
+      })
+    }
+  }
+
+  // Style constraints
+  if (/\b(explain like|simple terms|layman'?s terms)\b/i.test(question)) {
+    constraints.push({ type: 'style', instruction: 'Use simple, non-technical language' })
+  }
+
+  return constraints
+}
+
+/**
+ * Detects if the current question is very similar to a recent question in history.
+ * Returns the similar entry if found, otherwise null.
+ */
+export const detectRepeatedQuestion = (
+  question: string,
+  history: SessionTurnSummary[] | undefined,
+  lookbackTurns = 10,
+): SessionTurnSummary | null => {
+  if (!history?.length || !question) return null
+
+  const normalizedCurrent = normalizeWhitespace(question).toLowerCase().trim()
+  const currentTokens = new Set(
+    normalizedCurrent
+      .split(/\s+/)
+      .filter(token => token.length > 3) // Only consider words longer than 3 chars
+      .filter(token => !/^(the|and|for|with|from|that|this|what|when|show|list|give)$/i.test(token)),
+  )
+
+  // Only check recent user questions (not assistant responses)
+  const recentUserQuestions = history
+    .filter(entry => entry.role === 'user')
+    .slice(-lookbackTurns)
+
+  for (const entry of recentUserQuestions) {
+    const normalizedHistory = normalizeWhitespace(entry.text).toLowerCase().trim()
+
+    // Check exact match
+    if (normalizedCurrent === normalizedHistory) {
+      return entry
+    }
+
+    // Check high similarity (Jaccard similarity >= 0.7)
+    const historyTokens = new Set(
+      normalizedHistory
+        .split(/\s+/)
+        .filter(token => token.length > 3)
+        .filter(token => !/^(the|and|for|with|from|that|this|what|when|show|list|give)$/i.test(token)),
+    )
+
+    const intersection = new Set([...currentTokens].filter(token => historyTokens.has(token)))
+    const union = new Set([...currentTokens, ...historyTokens])
+
+    if (union.size > 0) {
+      const similarity = intersection.size / union.size
+      if (similarity >= 0.7) {
+        return entry
+      }
+    }
+  }
+
+  return null
 }

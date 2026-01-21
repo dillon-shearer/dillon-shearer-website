@@ -11,10 +11,10 @@ export type GymChatTemplateName =
 export const TERSE_INPUT_CLARIFICATION = {
   title: 'You mentioned "{exercise}". What would you like to know?',
   options: [
-    'Last session data',
-    'Progression over time',
-    'Volume/set totals',
-    'Best sets or PRs',
+    '(a or 1) Last session data',
+    '(b or 2) Progression over time',
+    '(c or 3) Volume/set totals',
+    '(d or 4) Best sets or PRs',
   ],
 }
 

@@ -69,11 +69,25 @@ const interpretSqlError = (error: string): SqlErrorInterpretation => {
   }
 }
 
+const windowToDays = (window: string | null | undefined): number | null => {
+  if (!window || window === 'all_time') return null
+  const match = window.match(/(\d+)[-\s]*(day|week|month|year)s?\b/i)
+  if (!match?.[1] || !match[2]) return null
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+  const unit = match[2].toLowerCase()
+  if (unit === 'day') return value
+  if (unit === 'week') return value * 7
+  if (unit === 'month') return value * 30
+  if (unit === 'year') return value * 365
+  return null
+}
+
 export const buildSqlErrorAssistantMessage = (
   question: string,
   queries: GymChatQuery[],
-  options?: { nextSqlById?: Record<string, string>; debug?: boolean },
-) => {
+  options?: { nextSqlById?: Record<string, string>; debug?: boolean; timeWindow?: string },
+): { message: string; followUps?: string[] } => {
   const allFailed = queries.length > 0 && queries.every(query => query.error)
   if (allFailed && !options?.debug) {
     const normalizedQuestion = question.toLowerCase()
@@ -110,12 +124,29 @@ export const buildSqlErrorAssistantMessage = (
       ? `Try one of these:\n${suggestedAlternatives.map(a => `- ${a}`).join('\n')}`
       : 'Try re-asking with a specific lift and timeframe, e.g. "last 12 weeks of Hack Squats".'
 
-    return [
-      "I couldn't safely run this analysis on your logs.",
-      'This usually means the filters or time window were too broad or referenced something that does not exist.',
-      alternativesText,
-      'If you want, I can retry with a narrower window or different filters.',
-    ].join('\n')
+    // Generate narrower window follow-ups based on timeWindow
+    const followUps: string[] = []
+    if (options?.timeWindow && options.timeWindow !== 'all_time') {
+      const days = windowToDays(options.timeWindow)
+      if (days && days > 30) {
+        if (days > 180) followUps.push('Try the last 90 days')
+        if (days > 60) followUps.push('Try the last 8 weeks')
+        followUps.push('Try the last 30 days')
+      }
+    } else if (options?.timeWindow === 'all_time') {
+      followUps.push('Try the last 12 months')
+      followUps.push('Try the last 90 days')
+    }
+
+    return {
+      message: [
+        "I couldn't safely run this analysis on your logs.",
+        'This usually means the filters or time window were too broad or referenced something that does not exist.',
+        alternativesText,
+        'If you want, I can retry with a narrower window or different filters.',
+      ].join('\n'),
+      followUps: followUps.length > 0 ? followUps : undefined,
+    }
   }
   const issues = queries
     .filter(query => query.error)
@@ -157,5 +188,5 @@ export const buildSqlErrorAssistantMessage = (
     lines.push('')
     lines.push(`Original question: "${question}"`)
   }
-  return lines.join('\n')
+  return { message: lines.join('\n') }
 }

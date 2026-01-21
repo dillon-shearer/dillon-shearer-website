@@ -484,11 +484,14 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current
     if (!el) return
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     const isNearTop = el.scrollTop < 80
-    setAutoScrollEnabled(current => (current !== isNearBottom ? isNearBottom : current))
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     setScrollPosition(isNearTop ? 'top' : isNearBottom ? 'bottom' : 'middle')
-  }, [])
+    // Always keep auto-scroll enabled (user wants "always scroll to bottom")
+    if (!autoScrollEnabled) {
+      setAutoScrollEnabled(true)
+    }
+  }, [autoScrollEnabled])
 
   // Update scroll position on mount and when messages change
   useEffect(() => {
@@ -503,10 +506,8 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     }
     if (lastAssistantMessageIdRef.current === latestAssistant.id) return
     lastAssistantMessageIdRef.current = latestAssistant.id
-    if (autoScrollEnabled) {
-      scrollToBottom()
-    }
-  }, [messages, autoScrollEnabled, scrollToBottom])
+    scrollToBottom()
+  }, [messages, scrollToBottom])
 
   const scrollToBottomSoon = useCallback(
     (behavior: ScrollBehavior = 'auto') => {
@@ -922,15 +923,15 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         </div>
       </div>
 
-      <div className="mt-4">
+      <div className="sticky bottom-0 z-10 mt-4 bg-gradient-to-t from-gray-900 via-gray-900 to-transparent pb-0 pt-4">
         <div className="flex items-center gap-2">
-          <div className="flex-1 rounded-2xl bg-gray-700/50 px-3 py-2">
+          <div className="flex-1 rounded-2xl bg-gray-700/50 px-3 py-2 shadow-lg">
             <textarea
               ref={textareaRef}
               value={input}
               onChange={event => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Message"
+              placeholder="Message (Enter to send, Shift+Enter for new line)"
               rows={1}
               className="max-h-32 w-full resize-none overflow-hidden border-0 bg-transparent text-sm text-white/90 placeholder:text-white/50 focus:outline-none focus:ring-0"
             />
