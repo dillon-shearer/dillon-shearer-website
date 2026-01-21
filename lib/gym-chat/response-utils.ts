@@ -231,9 +231,15 @@ export const buildAnalysisFollowUps = (analysisKind?: AnalysisKind) => {
       ]
     case 'body_part_day_split':
       return [
-        'Show session counts by day of week.',
+        'Show session counts by training day.',
         'Compare body-part balance over the last 12 weeks.',
         'Focus on one day tag and list top exercises.',
+      ]
+    case 'weekday_breakdown':
+      return [
+        'Show session counts by day of week.',
+        'Compare body-part volume by weekday.',
+        'Focus on a specific weekday and list top exercises.',
       ]
     case 'progressive_overload':
       return [

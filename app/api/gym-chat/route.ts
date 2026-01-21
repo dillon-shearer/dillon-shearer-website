@@ -7,6 +7,7 @@ import { getCatalogTables, loadGymCatalog } from '@/lib/gym-chat/catalog'
 import {
   buildFavoriteSplitDayPlan,
   buildBodyPartDaySplitPlan,
+  buildWeekdayBreakdownPlan,
   buildBestSetsPlan,
   buildExercisePrsPlan,
   buildExerciseProgressionPlan,
@@ -30,6 +31,7 @@ import {
   buildBest1rmOverallPlan,
   buildInactiveExercisesPlan,
   buildWorkoutTimingPlan,
+  type CanonicalPlan,
 } from '@/lib/gym-chat/canonical-plans'
 import { buildSetsBaseCte, type SetsBaseCte } from '@/lib/gym-chat/sql-builders'
 import {
@@ -74,6 +76,7 @@ import {
   TERSE_CHOICE_REGEX,
   EXERCISE_CHOICE_REGEX,
   detectFormattingConstraints,
+  validateFormattingConstraints,
   detectRepeatedQuestion,
 } from '@/lib/gym-chat/conversation'
 import type { TurnMode, FormattingConstraint } from '@/lib/gym-chat/conversation'
@@ -500,6 +503,7 @@ const mapAnalysisTopic = (kind: AnalysisKind): AnalysisTopic => {
   if (
     kind === 'muscle_group_balance' ||
     kind === 'body_part_day_split' ||
+    kind === 'weekday_breakdown' ||
     kind === 'stalled_lifts' ||
     kind === 'inactive_exercises'
   ) {
@@ -705,11 +709,14 @@ const shouldClarifyExerciseChoice = (input: {
   if (RETRY_CUE_REGEX.test(normalized)) return null
   if (hasExplicitTimeWindow(input.question) || TIME_WINDOW_CUE_REGEX.test(normalized)) return null
   if (EXERCISE_OVERVIEW_CUE_REGEX.test(normalized) || EXERCISE_BREAKDOWN_CUE_REGEX.test(normalized)) return null
+  // Don't clarify if the question is asking for multi-exercise analysis
+  if (/biggest.*swing|week.*week|variab|fluctuat|change/i.test(normalized)) return null
   const wordCount = normalized.split(' ').filter(Boolean).length
   const isShort = wordCount <= 10 || normalized.length <= 80
   const hasCue = MULTI_CONTEXT_EXERCISE_CUE_REGEX.test(normalized) || containsPronounReference(input.question)
-  if (input.turnMode === 'analysis_followup' && (isShort || hasCue)) return options
-  if (hasCue && isShort) return options
+  const hasAnalysisCue = /compar|analyz|break.*down|biggest|most|trend|progress/i.test(normalized)
+  if (input.turnMode === 'analysis_followup' && isShort && hasCue && !hasAnalysisCue) return options
+  if (hasCue && isShort && !hasAnalysisCue) return options
   return null
 }
 
@@ -728,6 +735,7 @@ const ANALYSIS_KINDS: AnalysisKind[] = [
   'lowest_volume_day',
   'favorite_split_day',
   'body_part_day_split',
+  'weekday_breakdown',
   'weekly_volume',
   'period_compare',
   'top_end_efforts',
@@ -1881,6 +1889,44 @@ const applyResponseContext = (
   const nextHistory = historyEntry
     ? upsertHistoryEntry(state.history, historyEntry, state.memoryBudget)
     : state.history
+
+  // Detect if this was a zoom-in/drill-down turn
+  const isZoomIn =
+    meta?.turnMode === 'analysis_followup' && context.timeWindow && context.timeWindow !== state.lastTimeWindow
+
+  // If zoom-in detected, make the time window sticky
+  let finalScope = nextScope
+  if (isZoomIn && context.timeWindow) {
+    finalScope = {
+      ...nextScope,
+      timeWindows: {
+        ...nextScope.timeWindows,
+        sticky: {
+          value: context.timeWindow,
+          source: 'sticky',
+          turnId,
+          timestamp,
+        },
+      },
+    }
+  }
+
+  // If user explicitly asks for a different time window, clear the sticky
+  const newExplicitWindow = extractExplicitWindow(meta?.question ?? '')
+  if (
+    newExplicitWindow &&
+    state.scope?.timeWindows?.sticky?.value &&
+    newExplicitWindow !== state.scope.timeWindows.sticky.value
+  ) {
+    finalScope = {
+      ...finalScope,
+      timeWindows: {
+        ...finalScope.timeWindows,
+        sticky: undefined,
+      },
+    }
+  }
+
   return {
     ...state,
     lastResponseContext: context,
@@ -1888,7 +1934,7 @@ const applyResponseContext = (
     lastSessionDate: context.sessionDate ?? state.lastSessionDate,
     lastTimeWindow: context.timeWindow ?? state.lastTimeWindow,
     lastMetric: context.metric ?? state.lastMetric,
-    scope: nextScope,
+    scope: finalScope,
     contextStack: nextStack,
     pendingComparison: null,
     history: nextHistory,
@@ -2637,6 +2683,10 @@ const EXERCISE_PROGRESS_REGEX = /\b(progress|progressed|progression|trend|trendi
 const ESTIMATED_1RM_REGEX = /\b(estimated\s*)?1rm\b|\bone[-\s]?rep\s*max\b|\be1rm\b/i
 const WORST_DAY_REGEX =
   /worst day|lowest\s+total\s+volume|lowest\s+volume\s+(?:session|day)|least\s+volume/i
+const WEEKDAY_CUE_REGEX =
+  /\b(day[-\s]+of[-\s]+week|weekday|week[-\s]+day|by[-\s]+weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i
+const TRAINING_DAY_CUE_REGEX =
+  /\b(day[-\s]+tag|training[-\s]+day|training[-\s]+days|split[-\s]+day|by[-\s]+split)\b/i
 const DAY_OF_WEEK_CUE_REGEX =
   /\b(day[-\s]+of[-\s]+week|weekday|week[-\s]+day|day[-\s]+tag|training[-\s]+day|training[-\s]+days|by[-\s]+day|by[-\s]+weekday)\b/i
 const CROSS_TAB_REGEX = /\b(cross[-\s]?tab|crosstab|pivot)\b/i
@@ -2813,6 +2863,7 @@ const ANALYSIS_TEMPLATE_HINTS: Partial<Record<AnalysisKind, GymChatTemplateName>
   stalled_lifts: 'plateau_vs_progress',
   muscle_group_balance: 'body_part_balance',
   body_part_day_split: 'workload_consistency',
+  weekday_breakdown: 'workload_consistency',
   exercise_progression: 'plateau_vs_progress',
   weekly_volume: 'workload_consistency',
   favorite_split_day: 'workload_consistency',
@@ -2828,6 +2879,7 @@ const ANALYSIS_INTENT_HINTS: Partial<Record<AnalysisKind, IntentType>> = {
   exercise_progression: 'trend',
   muscle_group_balance: 'comparison',
   body_part_day_split: 'descriptive',
+  weekday_breakdown: 'descriptive',
   return_for_effort_volume: 'comparison',
   return_for_effort_progression: 'trend',
   stalled_lifts: 'diagnostic',
@@ -3132,7 +3184,9 @@ const buildChartTitle = (analysisKind?: AnalysisKind) => {
     case 'favorite_split_day':
       return 'Session Count by Day Tag'
     case 'body_part_day_split':
-      return 'Body Part by Day of Week'
+      return 'Body Part by Training Day'
+    case 'weekday_breakdown':
+      return 'Training by Day of Week'
     case 'muscle_group_balance':
       return 'Body Part Balance'
     default:
@@ -3773,6 +3827,9 @@ export async function POST(req: Request) {
     if (resolvedPronoun?.dataPoint?.date) {
       resolvedScope.sessionDate = resolvedPronoun.dataPoint.date
     }
+    // Track multiple target exercises for multi-exercise requests
+    const multipleExercises = extractedScope.exercises && extractedScope.exercises.length > 1
+    const targetExercises = multipleExercises ? extractedScope.exercises : null
     const comparisonIntent = detectComparisonIntent({
       question,
       state: conversationState,
@@ -3823,15 +3880,27 @@ export async function POST(req: Request) {
       analysisKindOverride = 'lowest_volume_day'
     }
     const normalizedQuestionForOverrides = normalizeWhitespace(question).toLowerCase()
+    const hasWeekdayCue = WEEKDAY_CUE_REGEX.test(normalizedQuestionForOverrides)
+    const hasTrainingDayCue = TRAINING_DAY_CUE_REGEX.test(normalizedQuestionForOverrides)
+    const hasDayCue = hasWeekdayCue || hasTrainingDayCue
+
+    const wantsWeekdayBreakdown =
+      hasWeekdayCue &&
+      !hasTrainingDayCue &&
+      ((BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS)) ||
+        CROSS_TAB_REGEX.test(normalizedQuestionForOverrides) ||
+        conversationState.lastAnalysis?.kind === 'muscle_group_balance')
+
     const wantsBodyPartDaySplitOverride =
       hasBodyPartsMapping() &&
-      (DAY_OF_WEEK_CUE_REGEX.test(normalizedQuestionForOverrides) || CROSS_TAB_REGEX.test(normalizedQuestionForOverrides)) &&
-      ((
-        BODY_PART_KEYWORDS.length > 0 &&
-        containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS)
-      ) ||
+      (hasTrainingDayCue || (hasDayCue && !hasWeekdayCue)) &&
+      ((BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS)) ||
         conversationState.lastAnalysis?.kind === 'muscle_group_balance' ||
         conversationState.lastAnalysis?.kind === 'body_part_day_split')
+
+    if (!analysisKindOverride && wantsWeekdayBreakdown) {
+      analysisKindOverride = 'weekday_breakdown'
+    }
     if (!analysisKindOverride && wantsBodyPartDaySplitOverride) {
       analysisKindOverride = 'body_part_day_split'
     }
@@ -4229,7 +4298,8 @@ export async function POST(req: Request) {
     ) {
       wantsAllTimeWindow = true
     }
-    let explicitWindow = wantsAllTimeWindow ? null : extractExplicitWindow(question)
+    const stickyWindow = conversationState.scope?.timeWindows?.sticky?.value ?? null
+    let explicitWindow = wantsAllTimeWindow ? null : extractExplicitWindow(question) ?? stickyWindow ?? null
     if (!hasExplicitWindow && !explicitWindow && contextWindow && contextWindow !== 'all_time') {
       explicitWindow = contextWindow
     }
@@ -4394,6 +4464,17 @@ export async function POST(req: Request) {
         canonicalAnalysisKind = 'lowest_volume_day'
         return buildWorstDayVolumePlan(setsBase, { window: worstDayWindow })
       }
+      if (analysisKindOverride === 'weekday_breakdown') {
+        canonicalAnalysisKind = 'weekday_breakdown'
+        const hasCrossTab =
+          CROSS_TAB_REGEX.test(normalizedQuestion) ||
+          (BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestion, BODY_PART_KEYWORDS))
+
+        return buildWeekdayBreakdownPlan(setsBase, {
+          window: explicitWindow ?? DEFAULT_TIME_WINDOW,
+          groupBy: hasCrossTab ? 'weekday_bodypart' : 'weekday',
+        })
+      }
       if (analysisKindOverride === 'body_part_day_split') {
         canonicalAnalysisKind = 'body_part_day_split'
         return buildBodyPartDaySplitPlan(setsBase, { window: explicitWindow ?? '12 weeks', limit: 200 })
@@ -4547,7 +4628,64 @@ export async function POST(req: Request) {
       return null
     })()
 
-    if (plan.refusal && !canonicalPlan && !workoutPlan) {
+    // Build multi-exercise plans if multiple exercises were specified
+    let multiExercisePlan: CanonicalPlan | null = null
+    if (targetExercises && targetExercises.length >= 2 && targetExercises.length <= 5) {
+      const perExercisePlans: CanonicalPlan[] = []
+
+      for (const exercise of targetExercises) {
+        let planForExercise: CanonicalPlan | null = null
+
+        if (canonicalAnalysisKind === 'exercise_progression') {
+          planForExercise = buildExerciseProgressionPlan(setsBase, {
+            exercise,
+            window: explicitWindow ?? DEFAULT_TIME_WINDOW,
+            bucket: progressionBucket,
+          })
+        } else if (canonicalAnalysisKind === 'exercise_summary') {
+          planForExercise = buildExerciseSummaryPlan(setsBase, {
+            exercise,
+            window: explicitWindow ?? DEFAULT_TIME_WINDOW,
+          })
+        } else if (canonicalAnalysisKind === 'best_sets') {
+          planForExercise = buildBestSetsPlan(setsBase, {
+            exercise,
+            window: explicitWindow ?? DEFAULT_TIME_WINDOW,
+            limit: requestedTopN ?? 10,
+          })
+        } else {
+          // Default to exercise summary
+          planForExercise = buildExerciseSummaryPlan(setsBase, {
+            exercise,
+            window: explicitWindow ?? DEFAULT_TIME_WINDOW,
+          })
+        }
+
+        if (planForExercise) {
+          // Prefix query IDs with exercise name to avoid conflicts
+          const prefixed: CanonicalPlan = {
+            queries: planForExercise.queries.map((q: any, i: number) => ({
+              ...q,
+              id: `${exercise.replace(/\s+/g, '_').toLowerCase()}_${q.id || `q${i + 1}`}`,
+              purpose: `[${exercise}] ${q.purpose}`,
+            })),
+          }
+          perExercisePlans.push(prefixed)
+        }
+      }
+
+      // Merge all plans
+      if (perExercisePlans.length) {
+        multiExercisePlan = {
+          queries: perExercisePlans.flatMap((p: any) => p.queries),
+        }
+      }
+    }
+
+    // Use multiExercisePlan if it exists
+    const finalCanonicalPlan = multiExercisePlan ?? canonicalPlan
+
+    if (plan.refusal && !finalCanonicalPlan && !workoutPlan) {
       const response: GymChatResponse = {
         assistantMessage: plan.refusal.message,
         citations: [],
@@ -4557,11 +4695,11 @@ export async function POST(req: Request) {
       return respond(response, undefined, evalMeta)
     }
 
-    const plannedQueries = (workoutPlan?.queries ?? canonicalPlan?.queries ?? plan.queries ?? []).map((query, index) => ({
+    const plannedQueries = (workoutPlan?.queries ?? finalCanonicalPlan?.queries ?? plan.queries ?? []).map((query: any, index: number) => ({
       ...query,
       id: query.id || `q${index + 1}`,
     }))
-    const isCanonicalPlan = Boolean(canonicalPlan) && !workoutPlan
+    const isCanonicalPlan = Boolean(finalCanonicalPlan) && !workoutPlan
     const isWorkoutPlan = Boolean(workoutPlan)
 
     log('planned queries', plannedQueries.length)
@@ -5349,6 +5487,23 @@ export async function POST(req: Request) {
       if (correctionDetected) {
         checklist.push('Acknowledge the correction and restate the corrected focus before the analysis.')
       }
+      if (targetExercises && targetExercises.length > 1) {
+        checklist.push(
+          `This analysis covers ${targetExercises.length} exercises: ${targetExercises.join(', ')}. ` +
+            `Present each exercise in a separate section with a clear heading.`,
+        )
+      }
+      if (
+        CROSS_TAB_REGEX.test(question) ||
+        canonicalAnalysisKind === 'body_part_day_split' ||
+        canonicalAnalysisKind === 'weekday_breakdown'
+      ) {
+        checklist.push(
+          'This is a cross-tabulation request. Provide a narrative summary of the patterns ' +
+            '(e.g., "chest volume peaks on Push Day at 12,500 lb-reps"). ' +
+            'Note that the full cross-tab table is available in the query details.',
+        )
+      }
       return checklist
     })()
 
@@ -5374,7 +5529,25 @@ export async function POST(req: Request) {
         llmOptions,
       )
       let validationIssues = validateRankingResponse(question, explanation.assistantMessage, responseMeta)
-      if (validationIssues.length) {
+
+      // Validate formatting constraints
+      let formattingIssues: string[] = []
+      if (formattingConstraints.length) {
+        formattingIssues = validateFormattingConstraints(
+          explanation.assistantMessage,
+          formattingConstraints,
+          targetExercises,
+        )
+      }
+
+      // Retry if there are validation or formatting issues
+      if (validationIssues.length || formattingIssues.length) {
+        const allValidationNotes = [
+          ...comparisonNotes,
+          ...validationIssues.map(issue => issue.message),
+          ...formattingIssues,
+        ]
+
         explanation = await explainGymResults(
           {
             question,
@@ -5386,10 +5559,7 @@ export async function POST(req: Request) {
             responseMeta,
             queryResultMetadata,
             planMeta: intentHints.planMeta,
-            validationNotes: [
-              ...comparisonNotes,
-              ...validationIssues.map(issue => issue.message),
-            ],
+            validationNotes: allValidationNotes,
             formattingConstraints: formattingConstraints.length ? formattingConstraints : undefined,
             forceCitations: true,
           },

@@ -663,6 +663,88 @@ export const buildBodyPartDaySplitPlan = (
   }
 }
 
+export const buildWeekdayBreakdownPlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    window?: string
+    groupBy?: 'weekday' | 'weekday_bodypart'
+    limit?: number
+  },
+): CanonicalPlan => {
+  const window = options?.window ?? '12 weeks'
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 100
+  const groupBy = options?.groupBy ?? 'weekday'
+
+  if (groupBy === 'weekday_bodypart') {
+    // Cross-tab: weekday x body part
+    return {
+      queries: [
+        {
+          id: 'q1',
+          purpose: `Break down sets and volume by calendar weekday (Mon-Sun) and body part over the last ${window}.`,
+          sql:
+            `WITH ${lifts.cte}, base AS (` +
+            `SELECT ${lifts.sessionDateExpr} AS session_date, ` +
+            `TO_CHAR(${lifts.sessionDateExpr}, 'Dy') AS weekday, ` +
+            'bp.body_part AS body_part, ' +
+            `COUNT(*) AS total_sets, ` +
+            `SUM(${lifts.volumeExpr}) AS total_volume ` +
+            `FROM ${lifts.alias} ` +
+            `JOIN gym_day_meta gm ON gm.date = ${lifts.sessionDateExpr} ` +
+            'CROSS JOIN LATERAL UNNEST(gm.body_parts) AS bp(body_part) ' +
+            `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+            `AND gm.body_parts IS NOT NULL ` +
+            'GROUP BY session_date, weekday, body_part' +
+            '), agg AS (' +
+            'SELECT weekday, body_part, ' +
+            'SUM(total_sets) AS total_sets, ' +
+            'SUM(total_volume) AS total_volume, ' +
+            'COUNT(DISTINCT session_date) AS session_count ' +
+            'FROM base ' +
+            'GROUP BY weekday, body_part' +
+            ') ' +
+            'SELECT weekday, body_part, session_count, total_sets, total_volume ' +
+            'FROM agg ' +
+            // Order by weekday (Mon, Tue, Wed...)
+            `ORDER BY ` +
+            `CASE weekday ` +
+            `WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3 ` +
+            `WHEN 'Thu' THEN 4 WHEN 'Fri' THEN 5 WHEN 'Sat' THEN 6 WHEN 'Sun' THEN 7 ` +
+            `ELSE 8 END, ` +
+            'total_volume DESC ' +
+            `LIMIT ${limit}`,
+          params: [window],
+        },
+      ],
+    }
+  } else {
+    // Simple weekday breakdown
+    return {
+      queries: [
+        {
+          id: 'q1',
+          purpose: `Break down session count and total volume by calendar weekday (Mon-Sun) over the last ${window}.`,
+          sql:
+            `WITH ${lifts.cte} ` +
+            `SELECT TO_CHAR(${lifts.sessionDateExpr}, 'Dy') AS weekday, ` +
+            `COUNT(DISTINCT ${lifts.sessionDateExpr}) AS session_count, ` +
+            `COUNT(*) AS total_sets, ` +
+            `SUM(${lifts.volumeExpr}) AS total_volume ` +
+            `FROM ${lifts.alias} ` +
+            `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+            'GROUP BY weekday ' +
+            `ORDER BY ` +
+            `CASE weekday ` +
+            `WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3 ` +
+            `WHEN 'Thu' THEN 4 WHEN 'Fri' THEN 5 WHEN 'Sat' THEN 6 WHEN 'Sun' THEN 7 ` +
+            `ELSE 8 END`,
+          params: [window],
+        },
+      ],
+    }
+  }
+}
+
 export const buildProgressiveOverloadPlan = (lifts: SetsBaseCte): CanonicalPlan => ({
   queries: [
     {

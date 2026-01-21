@@ -27,6 +27,7 @@ export type AnalysisKind =
   | 'lowest_volume_day'
   | 'favorite_split_day'
   | 'body_part_day_split'
+  | 'weekday_breakdown'
   | 'weekly_volume'
   | 'period_compare'
   | 'top_end_efforts'

@@ -912,6 +912,54 @@ export const detectFormattingConstraints = (question: string): FormattingConstra
 }
 
 /**
+ * Validates that a response honors formatting constraints.
+ * Returns an array of validation issues to be used in retry prompts.
+ */
+export const validateFormattingConstraints = (
+  response: string,
+  constraints: FormattingConstraint[],
+  exercises?: string[] | null,
+): string[] => {
+  const issues: string[] = []
+
+  for (const constraint of constraints) {
+    if (constraint.type === 'format' && constraint.instruction.includes('bullet')) {
+      // Check for bullet points
+      if (!/^[\s]*[-*•]\s/m.test(response)) {
+        issues.push('Use bullet points (-, *, or •) for the list as requested.')
+      }
+    }
+
+    if (constraint.type === 'order' && /most.*least|highest.*lowest/i.test(constraint.instruction)) {
+      // This is hard to validate programmatically, add a reminder
+      issues.push('Ensure items are listed in the requested order (most to least, highest to lowest).')
+    }
+
+    if (constraint.type === 'length') {
+      if (/2-3 sentence/i.test(constraint.instruction)) {
+        // Count sections if multiple exercises
+        if (exercises && exercises.length > 1) {
+          for (const exercise of exercises) {
+            const sectionMatch = response.match(new RegExp(`##?\\s*${exercise}[\\s\\S]*?(?=##|$)`, 'i'))
+            if (sectionMatch) {
+              const sentences = sectionMatch[0].split(/[.!?]+/).filter(s => s.trim().length > 10)
+              if (sentences.length > 4) {
+                issues.push(
+                  `The ${exercise} section has ${sentences.length} sentences; ` +
+                    `limit to 2-3 sentences max as requested.`,
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return issues
+}
+
+/**
  * Detects if the current question is very similar to a recent question in history.
  * Returns the similar entry if found, otherwise null.
  */
