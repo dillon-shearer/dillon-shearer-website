@@ -12,6 +12,7 @@ import {
   buildExercisePrsPlan,
   buildExerciseProgressionPlan,
   buildExerciseSummaryPlan,
+  buildExerciseVariabilityPlan,
   buildLightWeightProgressPlan,
   buildMuscleGroupComparisonPlan,
   buildProgressiveOverloadPlan,
@@ -396,6 +397,7 @@ const EXERCISE_TARGET_STOPWORDS = new Set([
 ])
 
 const EXERCISE_TARGET_SPLIT_REGEX = /\b(vs|versus|and|&)\b/i
+const MULTI_EXERCISE_DELIMITER_REGEX = /[,;]\s*|\b\s+and\s+\b/i
 const PHRASE_WINDOW_REGEX = /\b(this|last|past|previous)[-\s]+(week|month|year)s?\b/gi
 
 const extractExerciseTarget = (text: string) => {
@@ -409,6 +411,42 @@ const extractExerciseTarget = (text: string) => {
   const candidate = filtered.slice(0, 4).join(' ').trim()
   if (!candidate || candidate.length < 3) return null
   return candidate
+}
+
+const extractMultipleExercises = (question: string): string[] => {
+  const exercises: string[] = []
+
+  // First check if there are delimiters suggesting multiple exercises
+  if (!MULTI_EXERCISE_DELIMITER_REGEX.test(question)) {
+    return exercises
+  }
+
+  // Split on delimiters (commas, semicolons, "and")
+  const parts = question.split(MULTI_EXERCISE_DELIMITER_REGEX).map(p => p.trim()).filter(Boolean)
+
+  // Only proceed if we have 2-5 parts (reasonable multi-exercise request)
+  if (parts.length < 2 || parts.length > 5) {
+    return exercises
+  }
+
+  // Try to extract exercise from each part
+  for (const part of parts) {
+    // Skip parts that are clearly not exercise names
+    if (part.length < 3 || /^\d+$/.test(part)) continue
+
+    // Check for common formatting/constraint phrases to skip
+    if (/bullet|sentence|order|format|list|keep|use|include|show/i.test(part)) continue
+
+    const candidate = extractExerciseTarget(part)
+    if (candidate && candidate.length >= 3) {
+      // Avoid duplicates
+      if (!exercises.some(ex => ex.toLowerCase() === candidate.toLowerCase())) {
+        exercises.push(candidate)
+      }
+    }
+  }
+
+  return exercises
 }
 
 const resolveExerciseTarget = (input: {
@@ -433,15 +471,23 @@ const resolveExerciseTarget = (input: {
 }
 
 const extractScopeFromQuestion = (question: string): Partial<ContextFrame['scope']> => {
-  const exercises: string[] = []
-  const exercise = extractExerciseTarget(question)
-  if (exercise) exercises.push(exercise)
-  if (!exercise && EXERCISE_TARGET_SPLIT_REGEX.test(question)) {
-    const parts = question.split(EXERCISE_TARGET_SPLIT_REGEX).map(part => part.trim()).filter(Boolean)
-    parts.forEach(part => {
-      const candidate = extractExerciseTarget(part)
-      if (candidate) exercises.push(candidate)
-    })
+  let exercises: string[] = []
+
+  // Try multi-exercise extraction first
+  const multiExercises = extractMultipleExercises(question)
+  if (multiExercises.length >= 2) {
+    exercises = multiExercises
+  } else {
+    // Fall back to single exercise extraction
+    const exercise = extractExerciseTarget(question)
+    if (exercise) exercises.push(exercise)
+    if (!exercise && EXERCISE_TARGET_SPLIT_REGEX.test(question)) {
+      const parts = question.split(EXERCISE_TARGET_SPLIT_REGEX).map(part => part.trim()).filter(Boolean)
+      parts.forEach(part => {
+        const candidate = extractExerciseTarget(part)
+        if (candidate) exercises.push(candidate)
+      })
+    }
   }
   const timeWindowSet = new Set<string>()
   const explicitWindow = extractExplicitWindow(question)
@@ -490,7 +536,8 @@ const mapAnalysisTopic = (kind: AnalysisKind): AnalysisTopic => {
     kind === 'exercise_progression' ||
     kind === 'return_for_effort_progression' ||
     kind === 'progressive_overload' ||
-    kind === 'lighter_weight_progress'
+    kind === 'lighter_weight_progress' ||
+    kind === 'exercise_variability'
   ) {
     return 'progression'
   }
@@ -3004,6 +3051,16 @@ const isInactiveExercisesQuestion = (text: string) => INACTIVE_EXERCISES_REGEX.t
 
 const isWorkoutTimingQuestion = (text: string) => WORKOUT_TIMING_REGEX.test(text || '')
 
+const isExerciseVariabilityQuestion = (text: string) => {
+  if (!text) return false
+  const normalized = text.toLowerCase()
+  // Match patterns like "biggest swings", "week over week", "variability", "fluctuation"
+  const hasSwingCue = /biggest.*swing|most.*variab|week.*week.*change|week.*week.*swing/i.test(normalized)
+  const hasVariabilityCue = /variab|fluctuat|inconsisten|unstabl/i.test(normalized)
+  const hasChangePattern = /week.*week|session.*session|day.*day/i.test(normalized) && /change|differ|swing/i.test(normalized)
+  return hasSwingCue || hasVariabilityCue || hasChangePattern
+}
+
 const isPeriodCompareQuestion = (text: string) => {
   if (!text) return false
   const normalized = text.toLowerCase()
@@ -3876,6 +3933,9 @@ export async function POST(req: Request) {
     if (!analysisKindOverride && isTopWeightSetsQuestion(question)) {
       analysisKindOverride = 'top_weight_sets'
     }
+    if (!analysisKindOverride && isExerciseVariabilityQuestion(question)) {
+      analysisKindOverride = 'exercise_variability'
+    }
     if (!analysisKindOverride && isWorstDayQuestion(question)) {
       analysisKindOverride = 'lowest_volume_day'
     }
@@ -3886,14 +3946,15 @@ export async function POST(req: Request) {
 
     const wantsWeekdayBreakdown =
       hasWeekdayCue &&
-      !hasTrainingDayCue &&
       ((BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS)) ||
         CROSS_TAB_REGEX.test(normalizedQuestionForOverrides) ||
-        conversationState.lastAnalysis?.kind === 'muscle_group_balance')
+        conversationState.lastAnalysis?.kind === 'muscle_group_balance' ||
+        conversationState.lastAnalysis?.kind === 'weekday_breakdown')
 
     const wantsBodyPartDaySplitOverride =
       hasBodyPartsMapping() &&
-      (hasTrainingDayCue || (hasDayCue && !hasWeekdayCue)) &&
+      hasTrainingDayCue &&
+      !hasWeekdayCue &&
       ((BODY_PART_KEYWORDS.length > 0 && containsKeyword(normalizedQuestionForOverrides, BODY_PART_KEYWORDS)) ||
         conversationState.lastAnalysis?.kind === 'muscle_group_balance' ||
         conversationState.lastAnalysis?.kind === 'body_part_day_split')
@@ -4459,6 +4520,17 @@ export async function POST(req: Request) {
       if (analysisKindOverride === 'top_weight_sets') {
         canonicalAnalysisKind = 'top_weight_sets'
         return buildTopWeightSetsPlan(setsBase, { limit: topWeightLimit, window: topWeightWindow })
+      }
+      if (analysisKindOverride === 'exercise_variability') {
+        canonicalAnalysisKind = 'exercise_variability'
+        // Use exercises from previous context if this is a follow-up
+        const contextExercises = conversationState.lastResponseContext?.exercises
+        const variabilityExercises = targetExercises ?? contextExercises ?? null
+        return buildExerciseVariabilityPlan(setsBase, {
+          exercises: variabilityExercises,
+          window: explicitWindow ?? DEFAULT_TIME_WINDOW,
+          limit: 10,
+        })
       }
       if (analysisKindOverride === 'lowest_volume_day') {
         canonicalAnalysisKind = 'lowest_volume_day'
@@ -5474,6 +5546,12 @@ export async function POST(req: Request) {
       if (analysisKind === 'weekly_volume') {
         checklist.push('Summarize weekly training volume over the requested window with citations.')
       }
+      if (analysisKind === 'exercise_variability') {
+        checklist.push(
+          'Focus on week-over-week variability metrics: average change percentage, standard deviation, and maximum swings. ' +
+          'Explain which exercises show the most inconsistency and potential reasons (deload weeks, progressive overload, etc.).'
+        )
+      }
       if (progressionWindowOverride) {
         checklist.push(`No data in the requested window; expanded to ${progressionWindowOverride}.`)
       }
@@ -5540,12 +5618,31 @@ export async function POST(req: Request) {
         )
       }
 
+      // Validate that the response analyzed the correct exercises
+      let exerciseIssues: string[] = []
+      if (targetExercises && targetExercises.length >= 2) {
+        const responseText = explanation.assistantMessage.toLowerCase()
+        const missingExercises = targetExercises.filter(exercise => {
+          const exerciseLower = exercise.toLowerCase()
+          return !responseText.includes(exerciseLower)
+        })
+
+        if (missingExercises.length > 0) {
+          exerciseIssues.push(
+            `You must analyze ALL ${targetExercises.length} requested exercises: ${targetExercises.join(', ')}. ` +
+              `Missing analysis for: ${missingExercises.join(', ')}. ` +
+              `Create a separate section with a heading for each requested exercise.`
+          )
+        }
+      }
+
       // Retry if there are validation or formatting issues
-      if (validationIssues.length || formattingIssues.length) {
+      if (validationIssues.length || formattingIssues.length || exerciseIssues.length) {
         const allValidationNotes = [
           ...comparisonNotes,
           ...validationIssues.map(issue => issue.message),
           ...formattingIssues,
+          ...exerciseIssues,
         ]
 
         explanation = await explainGymResults(

@@ -23,6 +23,7 @@ export type AnalysisKind =
   | 'set_breakdown'
   | 'exercise_summary'
   | 'exercise_progression'
+  | 'exercise_variability'
   | 'top_weight_sets'
   | 'lowest_volume_day'
   | 'favorite_split_day'

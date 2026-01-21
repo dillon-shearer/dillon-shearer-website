@@ -677,35 +677,42 @@ export const buildWeekdayBreakdownPlan = (
 
   if (groupBy === 'weekday_bodypart') {
     // Cross-tab: weekday x body part
+    // Try gym_day_meta first, fall back to exercise_body_parts if that table is empty
     return {
       queries: [
         {
           id: 'q1',
           purpose: `Break down sets and volume by calendar weekday (Mon-Sun) and body part over the last ${window}.`,
           sql:
-            `WITH ${lifts.cte}, base AS (` +
-            `SELECT ${lifts.sessionDateExpr} AS session_date, ` +
-            `TO_CHAR(${lifts.sessionDateExpr}, 'Dy') AS weekday, ` +
-            'bp.body_part AS body_part, ' +
+            `WITH ${lifts.cte}, ` +
+            'weekday_exercises AS (' +
+            `SELECT TO_CHAR(${lifts.sessionDateExpr}, 'Dy') AS weekday, ` +
+            `${lifts.alias}.exercise, ` +
+            `${lifts.sessionDateExpr} AS session_date, ` +
             `COUNT(*) AS total_sets, ` +
             `SUM(${lifts.volumeExpr}) AS total_volume ` +
             `FROM ${lifts.alias} ` +
-            `JOIN gym_day_meta gm ON gm.date = ${lifts.sessionDateExpr} ` +
-            'CROSS JOIN LATERAL UNNEST(gm.body_parts) AS bp(body_part) ' +
             `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
-            `AND gm.body_parts IS NOT NULL ` +
-            'GROUP BY session_date, weekday, body_part' +
-            '), agg AS (' +
-            'SELECT weekday, body_part, ' +
-            'SUM(total_sets) AS total_sets, ' +
-            'SUM(total_volume) AS total_volume, ' +
-            'COUNT(DISTINCT session_date) AS session_count ' +
-            'FROM base ' +
-            'GROUP BY weekday, body_part' +
+            `GROUP BY weekday, ${lifts.alias}.exercise, session_date` +
+            '), ' +
+            'exercise_mappings AS (' +
+            'SELECT DISTINCT exercise, body_part ' +
+            'FROM exercise_body_parts' +
+            '), ' +
+            'weekday_bodyparts AS (' +
+            'SELECT we.weekday, em.body_part, ' +
+            'we.session_date, ' +
+            'we.total_sets, ' +
+            'we.total_volume ' +
+            'FROM weekday_exercises we ' +
+            'JOIN exercise_mappings em ON we.exercise = em.exercise' +
             ') ' +
-            'SELECT weekday, body_part, session_count, total_sets, total_volume ' +
-            'FROM agg ' +
-            // Order by weekday (Mon, Tue, Wed...)
+            'SELECT weekday, body_part, ' +
+            'COUNT(DISTINCT session_date) AS session_count, ' +
+            'SUM(total_sets) AS total_sets, ' +
+            'SUM(total_volume) AS total_volume ' +
+            'FROM weekday_bodyparts ' +
+            'GROUP BY weekday, body_part ' +
             `ORDER BY ` +
             `CASE weekday ` +
             `WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3 ` +
@@ -1407,6 +1414,149 @@ export const buildWorkoutTimingPlan = (
           'FROM time_buckets ' +
           'GROUP BY time_slot ' +
           'ORDER BY session_count DESC',
+        params: [window],
+      },
+    ],
+  }
+}
+
+export const buildExerciseVariabilityPlan = (
+  lifts: SetsBaseCte,
+  options?: {
+    exercises?: string[] | null
+    window?: string
+    limit?: number
+  },
+): CanonicalPlan => {
+  const window = options?.window ?? '12 weeks'
+  const limit = options?.limit && options.limit > 0 ? Math.floor(options.limit) : 10
+
+  // If specific exercises provided, filter to those
+  if (options?.exercises && options.exercises.length > 0) {
+    const exerciseFilters = options.exercises
+      .map((_, idx) => `${lifts.alias}.exercise ILIKE $${idx + 2}`)
+      .join(' OR ')
+
+    return {
+      queries: [
+        {
+          id: 'q1',
+          purpose: `Analyze week-over-week variability for ${options.exercises.join(', ')} over the last ${window}.`,
+          sql:
+            `WITH ${lifts.cte}, weekly_stats AS (` +
+            `SELECT ${lifts.alias}.exercise, ` +
+            `DATE_TRUNC('week', ${lifts.sessionDateExpr})::date AS week_start, ` +
+            `COUNT(*) AS weekly_sets, ` +
+            `SUM(${lifts.volumeExpr}) AS weekly_volume, ` +
+            `AVG(${lifts.est1rmExpr}) AS avg_e1rm ` +
+            `FROM ${lifts.alias} ` +
+            `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+            `AND (${exerciseFilters}) ` +
+            `GROUP BY ${lifts.alias}.exercise, week_start` +
+            '), deltas AS (' +
+            'SELECT exercise, ' +
+            'week_start, ' +
+            'weekly_sets, ' +
+            'weekly_volume, ' +
+            'avg_e1rm, ' +
+            'LAG(weekly_volume) OVER (PARTITION BY exercise ORDER BY week_start) AS prev_volume, ' +
+            'LAG(avg_e1rm) OVER (PARTITION BY exercise ORDER BY week_start) AS prev_e1rm ' +
+            'FROM weekly_stats' +
+            '), changes AS (' +
+            'SELECT exercise, ' +
+            'week_start, ' +
+            'weekly_volume, ' +
+            'avg_e1rm, ' +
+            'CASE WHEN prev_volume > 0 THEN ABS((weekly_volume - prev_volume) / prev_volume) ELSE 0 END AS volume_change_pct, ' +
+            'CASE WHEN prev_e1rm > 0 THEN ABS((avg_e1rm - prev_e1rm) / prev_e1rm) ELSE 0 END AS e1rm_change_pct ' +
+            'FROM deltas ' +
+            'WHERE prev_volume IS NOT NULL' +
+            '), aggregated AS (' +
+            'SELECT exercise, ' +
+            'COUNT(*) AS week_count, ' +
+            'AVG(volume_change_pct) AS avg_volume_change_pct, ' +
+            'STDDEV(volume_change_pct) AS stddev_volume_change, ' +
+            'MAX(volume_change_pct) AS max_volume_swing, ' +
+            'AVG(e1rm_change_pct) AS avg_e1rm_change_pct, ' +
+            'STDDEV(e1rm_change_pct) AS stddev_e1rm_change, ' +
+            'MAX(e1rm_change_pct) AS max_e1rm_swing ' +
+            'FROM changes ' +
+            'GROUP BY exercise' +
+            ') ' +
+            'SELECT exercise, ' +
+            'week_count, ' +
+            'ROUND((avg_volume_change_pct * 100)::numeric, 1) AS avg_volume_change_pct, ' +
+            'ROUND((stddev_volume_change * 100)::numeric, 1) AS stddev_volume_change_pct, ' +
+            'ROUND((max_volume_swing * 100)::numeric, 1) AS max_volume_swing_pct, ' +
+            'ROUND((avg_e1rm_change_pct * 100)::numeric, 1) AS avg_e1rm_change_pct, ' +
+            'ROUND((max_e1rm_swing * 100)::numeric, 1) AS max_e1rm_swing_pct ' +
+            'FROM aggregated ' +
+            'ORDER BY stddev_volume_change DESC NULLS LAST ' +
+            `LIMIT ${limit}`,
+          params: [window, ...options.exercises.map(ex => `%${ex}%`)],
+        },
+      ],
+    }
+  }
+
+  // No specific exercises - analyze all exercises
+  return {
+    queries: [
+      {
+        id: 'q1',
+        purpose: `Identify exercises with the highest week-over-week variability over the last ${window}.`,
+        sql:
+          `WITH ${lifts.cte}, weekly_stats AS (` +
+          `SELECT ${lifts.alias}.exercise, ` +
+          `DATE_TRUNC('week', ${lifts.sessionDateExpr})::date AS week_start, ` +
+          `COUNT(*) AS weekly_sets, ` +
+          `SUM(${lifts.volumeExpr}) AS weekly_volume, ` +
+          `AVG(${lifts.est1rmExpr}) AS avg_e1rm ` +
+          `FROM ${lifts.alias} ` +
+          `WHERE ${lifts.performedAtExpr} >= CURRENT_DATE - ($1)::interval ` +
+          `GROUP BY ${lifts.alias}.exercise, week_start ` +
+          `HAVING COUNT(*) >= 3` +
+          '), deltas AS (' +
+          'SELECT exercise, ' +
+          'week_start, ' +
+          'weekly_sets, ' +
+          'weekly_volume, ' +
+          'avg_e1rm, ' +
+          'LAG(weekly_volume) OVER (PARTITION BY exercise ORDER BY week_start) AS prev_volume, ' +
+          'LAG(avg_e1rm) OVER (PARTITION BY exercise ORDER BY week_start) AS prev_e1rm ' +
+          'FROM weekly_stats' +
+          '), changes AS (' +
+          'SELECT exercise, ' +
+          'week_start, ' +
+          'weekly_volume, ' +
+          'avg_e1rm, ' +
+          'CASE WHEN prev_volume > 0 THEN ABS((weekly_volume - prev_volume) / prev_volume) ELSE 0 END AS volume_change_pct, ' +
+          'CASE WHEN prev_e1rm > 0 THEN ABS((avg_e1rm - prev_e1rm) / prev_e1rm) ELSE 0 END AS e1rm_change_pct ' +
+          'FROM deltas ' +
+          'WHERE prev_volume IS NOT NULL' +
+          '), aggregated AS (' +
+          'SELECT exercise, ' +
+          'COUNT(*) AS week_count, ' +
+          'AVG(volume_change_pct) AS avg_volume_change_pct, ' +
+          'STDDEV(volume_change_pct) AS stddev_volume_change, ' +
+          'MAX(volume_change_pct) AS max_volume_swing, ' +
+          'AVG(e1rm_change_pct) AS avg_e1rm_change_pct, ' +
+          'STDDEV(e1rm_change_pct) AS stddev_e1rm_change, ' +
+          'MAX(e1rm_change_pct) AS max_e1rm_swing ' +
+          'FROM changes ' +
+          'GROUP BY exercise ' +
+          'HAVING COUNT(*) >= 4' +
+          ') ' +
+          'SELECT exercise, ' +
+          'week_count, ' +
+          'ROUND((avg_volume_change_pct * 100)::numeric, 1) AS avg_volume_change_pct, ' +
+          'ROUND((stddev_volume_change * 100)::numeric, 1) AS stddev_volume_change_pct, ' +
+          'ROUND((max_volume_swing * 100)::numeric, 1) AS max_volume_swing_pct, ' +
+          'ROUND((avg_e1rm_change_pct * 100)::numeric, 1) AS avg_e1rm_change_pct, ' +
+          'ROUND((max_e1rm_swing * 100)::numeric, 1) AS max_e1rm_swing_pct ' +
+          'FROM aggregated ' +
+          'ORDER BY stddev_volume_change DESC NULLS LAST ' +
+          `LIMIT ${limit}`,
         params: [window],
       },
     ],

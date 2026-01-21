@@ -241,6 +241,12 @@ export const buildAnalysisFollowUps = (analysisKind?: AnalysisKind) => {
         'Compare body-part volume by weekday.',
         'Focus on a specific weekday and list top exercises.',
       ]
+    case 'exercise_variability':
+      return [
+        'Which exercise has the most consistent week-over-week volume?',
+        'Show me the weekly breakdown for the most variable exercise.',
+        'Compare variability across body parts.',
+      ]
     case 'progressive_overload':
       return [
         'Which lifts have the longest progressive overload streaks?',
