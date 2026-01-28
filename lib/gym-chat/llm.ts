@@ -313,6 +313,9 @@ const buildToolResultPayload = (queries: GymChatQuery[]) => ({
     rowCount: query.rowCount,
     rows: query.previewRows,
     error: query.error,
+    ...(query.exerciseSuggestions?.length
+      ? { exerciseSuggestions: query.exerciseSuggestions }
+      : {}),
   })),
 })
 
@@ -368,7 +371,7 @@ export async function runGymChatConversation(input: {
   const executedQueries: GymChatQuery[] = []
   let assistantMessage = ''
 
-  for (let round = 0; round < 3; round += 1) {
+  for (let round = 0; round < 4; round += 1) {
     input.onStatus?.('thinking', 'Analyzing your question...')
     const response = await callOpenAIChat(messages, input.tools, 0.2, input.options)
     const choice = response?.choices?.[0]

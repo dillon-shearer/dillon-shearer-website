@@ -11,6 +11,7 @@ import {
   QUERY_TIMEOUT_MS,
   validateAndRewriteSql,
 } from '@/lib/gym-chat/sql-policy'
+import { suggestExerciseNames } from '@/lib/gym-chat/response-utils'
 import {
   runGymChatConversation,
   isLlmRequestError,
@@ -165,7 +166,7 @@ When you call execute_gym_query, the tool returns JSON:
 
 - rows contains at most 20 preview rows; rowCount is the full count.
 - Never cite a query with a non-null error.
-- If rowCount is 0, say so explicitly and suggest a narrower/wider timeframe or a different exercise name.
+- If rowCount is 0 and the query filtered by exercise name, the user may have misspelled the exercise. Run a follow-up query: SELECT DISTINCT exercise FROM gym_lifts WHERE exercise ILIKE $1 with a broad wildcard pattern (e.g., '%ben%' for 'bech press', '%cur%' for 'crul'). If matches are found, suggest them: "I didn't find 'bech press', but I found these exercises: Bench Press, Incline Bench Press. Did you mean one of these?" If no matches, say no recorded sessions and suggest checking the exercise name.
 
 ## SQL Rules (CRITICAL - follow exactly)
 - Only generate SELECT statements. No INSERT, UPDATE, DELETE, DROP, ALTER, CREATE.
@@ -208,11 +209,28 @@ When you call execute_gym_query, the tool returns JSON:
 ## Conversation Guidelines
 - You have full conversation history. Use it to understand pronouns ("that exercise", "the set after that"), follow-ups, and context.
 - If the user asks about a specific exercise or date mentioned earlier, reference it naturally.
-- If a question is ambiguous, ask for clarification rather than guessing wrong.
+- If a question is ambiguous, follow the Ambiguity Resolution rules below. Never guess an exercise when the user hasn't specified one.
 - For general fitness questions that don't need data, respond directly without querying.
 - For questions clearly unrelated to fitness or gym data, politely redirect.
 - When the user asks for comparisons, run multiple queries to compare the periods/exercises.
 - If a query returns no data, tell the user and suggest adjusting the timeframe or exercise name.
+
+## Ambiguity Resolution (CRITICAL)
+When the user's message is vague, incomplete, or could refer to multiple things, you MUST ask for clarification before querying. Do NOT guess an exercise or metric. Examples of ambiguous inputs that require clarification:
+- One-word queries: "Progress?", "Update?", "Stats?", "Numbers?"
+- General performance questions without a specific exercise: "How am I doing?", "Am I improving?", "How's my training going?"
+- Bare exercise types at the start of a conversation with no prior context: "Bench?", "Squats?"
+
+For these cases — when there is no prior conversation context to disambiguate — respond with a clarifying question like: "I can help with that! Are you looking for progress on a specific exercise, or would you like an overall summary of your recent training?"
+
+Exception: If the user has been discussing specific exercises earlier in the conversation, a short follow-up like "Bench?" or "Squats?" should be interpreted using that context, not treated as ambiguous.
+
+If the user asks for overall/general progress (e.g., "Give me an overall summary", "How's my training overall?"), provide an aggregate summary by querying:
+1. Total sessions in the last 90 days
+2. Total sets and volume in the last 90 days
+3. Number of unique exercises performed
+4. Most-trained exercises by set count
+Do NOT default to any single exercise when the intent is clearly general.
 
 ## Timezone
 Use timezone ${timezone} for all date reasoning.
@@ -473,9 +491,24 @@ export async function POST(req: Request) {
         systemPrompt,
         messages: openaiMessages,
         tools: [EXECUTE_GYM_QUERY_TOOL],
-        executeQueries: async queries => ({
-          queries: await executeToolCall(queries, connection),
-        }),
+        executeQueries: async queries => {
+          const results = await executeToolCall(queries, connection)
+          for (const result of results) {
+            if (result.rowCount === 0 && !result.error && result.params?.length) {
+              for (const param of result.params) {
+                if (typeof param !== 'string' || param.length < 2) continue
+                const stripped = param.replace(/%/g, '').trim()
+                if (stripped.length < 2) continue
+                const suggestions = suggestExerciseNames(stripped)
+                if (suggestions.length) {
+                  result.exerciseSuggestions = suggestions
+                  break
+                }
+              }
+            }
+          }
+          return { queries: results }
+        },
         onStatus: sendStatus,
         options: { budget: llmRetryBudget },
       })
@@ -543,4 +576,3 @@ export async function POST(req: Request) {
     },
   })
 }
-

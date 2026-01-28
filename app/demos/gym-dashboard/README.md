@@ -13,6 +13,23 @@
 > - Files touched
 > - Brief reason and user scenario that motivated the change.
 
+[2026-01-28T18:05:44Z] Gym Chat retest remediation
+- **Agent / Model**: GPT-5 (Builder Agent)
+- **Scope**:
+  - `app/api/gym-chat/route.ts`
+  - `app/demos/gym-dashboard/chat/ChatClient.tsx`
+  - `lib/gym-chat/response-utils.ts`
+  - `lib/gym-chat/semantics.ts`
+  - `app/demos/gym-dashboard/README.md`
+- **Reason**:
+  - Retest report flagged ambiguous queries defaulting to a specific lift, hidden scrollbars for long responses, and no fuzzy matching for misspelled exercises.
+- **Key Changes**:
+  - Added explicit ambiguity resolution and overall-summary guidance to the system prompt, plus semantic hints for general progress and fuzzy name lookups.
+  - Restored a visible, thin scrollbar in the main chat message list to signal long responses are scrollable.
+  - Added Levenshtein-based fuzzy matching to exercise name suggestions while preserving exact/partial match behavior.
+- **Related Conversation / Prompt**:
+  - Gym chat retest report (builder agent remediation prompt).
+
 [2026-01-02T16:28:56Z] Gym Chat multi-turn state & failure fallback hardening
 - **Agent / Model**: GPT-5 (Codex)
 - **Scope**:

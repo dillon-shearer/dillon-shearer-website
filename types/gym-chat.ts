@@ -96,6 +96,7 @@ export type GymChatQuery = {
   durationMs: number
   previewRows: Record<string, unknown>[]
   error: string | null
+  exerciseSuggestions?: string[]
   policy?: {
     appliedLimit: number
     appliedTimeWindow: GymChatTimeWindow | null

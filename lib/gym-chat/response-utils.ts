@@ -95,6 +95,52 @@ const WORKOUT_EXERCISE_LIBRARY: WorkoutTemplateExercise[] = [
 
 const normalizeExerciseText = (value: string) => value.trim().toLowerCase()
 
+const levenshteinDistance = (a: string, b: string): number => {
+  const matrix: number[][] = []
+  for (let i = 0; i <= a.length; i++) {
+    matrix[i] = [i]
+  }
+  for (let j = 0; j <= b.length; j++) {
+    matrix[0][j] = j
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      )
+    }
+  }
+  return matrix[a.length][b.length]
+}
+
+const fuzzyMatchExercises = (input: string, maxDistance = 2, maxResults = 3): string[] => {
+  const normalized = normalizeExerciseText(input)
+  if (!normalized) return []
+  const scored = WORKOUT_EXERCISE_LIBRARY
+    .map(entry => {
+      const name = normalizeExerciseText(entry.name)
+      const distance = levenshteinDistance(normalized, name)
+      const words = name.split(/\s+/)
+      const inputWords = normalized.split(/\s+/)
+      let bestWordDistance = distance
+      for (const inputWord of inputWords) {
+        for (const word of words) {
+          const wordDist = levenshteinDistance(inputWord, word)
+          if (wordDist < bestWordDistance) {
+            bestWordDistance = wordDist
+          }
+        }
+      }
+      return { name: entry.name, distance: Math.min(distance, bestWordDistance) }
+    })
+    .filter(entry => entry.distance <= maxDistance)
+    .sort((a, b) => a.distance - b.distance)
+  return scored.slice(0, maxResults).map(entry => entry.name)
+}
+
 const mapWindowDays = (window: string | null | undefined) => {
   if (!window) return null
   if (window === 'all_time') return null
@@ -510,6 +556,8 @@ export const suggestExerciseNames = (input: string, maxResults = 3) => {
     return candidate.includes(normalized) || normalized.includes(candidate)
   }).map(entry => entry.name)
   if (partialMatches.length) return partialMatches.slice(0, maxResults)
+  const fuzzyMatches = fuzzyMatchExercises(input, 3, maxResults)
+  if (fuzzyMatches.length) return fuzzyMatches
   const primaryMuscle = resolveExercisePrimaryMuscle(input)
   if (!primaryMuscle) return []
   const muscleMatches = WORKOUT_EXERCISE_LIBRARY.filter(entry => entry.primaryMuscle === primaryMuscle)

@@ -62,6 +62,14 @@ const SEMANTIC_MAPPINGS = [
     sql:
       "WITH sets AS (SELECT exercise, weight, reps, COALESCE(date::date, timestamp::date) AS session_date, COALESCE(timestamp::timestamptz, date::timestamptz) AS performed_at FROM gym_lifts), session_best AS (SELECT session_date, exercise, MAX(weight * (1 + reps / 30.0)) AS est_1rm FROM sets WHERE performed_at >= CURRENT_DATE - ($1)::interval GROUP BY session_date, exercise), deltas AS (SELECT session_date, exercise, est_1rm, LAG(est_1rm) OVER (PARTITION BY exercise ORDER BY session_date) AS prev_1rm, (est_1rm - LAG(est_1rm) OVER (PARTITION BY exercise ORDER BY session_date)) AS delta FROM session_best), streaks AS (SELECT session_date, exercise, est_1rm, prev_1rm, delta, CASE WHEN delta > 0 THEN 1 ELSE 0 END AS is_increase, SUM(CASE WHEN delta <= 0 OR delta IS NULL THEN 1 ELSE 0 END) OVER (PARTITION BY exercise ORDER BY session_date) AS break_id FROM deltas), streak_groups AS (SELECT exercise, break_id, MIN(CASE WHEN is_increase = 1 THEN session_date END) AS streak_start, MAX(CASE WHEN is_increase = 1 THEN session_date END) AS streak_end, SUM(CASE WHEN is_increase = 1 THEN 1 ELSE 0 END) AS streak_len FROM streaks GROUP BY exercise, break_id), breaks AS (SELECT exercise, break_id, MIN(session_date) AS break_date FROM streaks WHERE is_increase = 0 GROUP BY exercise, break_id) SELECT g.exercise, g.streak_len, g.streak_start, g.streak_end, b.break_date FROM streak_groups g LEFT JOIN breaks b ON b.exercise = g.exercise AND b.break_id = g.break_id + 1 ORDER BY g.streak_len DESC NULLS LAST LIMIT 1.",
   },
+  {
+    phrase: 'overall progress / general summary',
+    sql: "Run multiple queries: (1) SELECT COUNT(DISTINCT date::date) AS session_count FROM gym_lifts; (2) SELECT COUNT(*) AS total_sets, SUM(weight * reps) AS total_volume FROM gym_lifts; (3) SELECT exercise, COUNT(*) AS set_count FROM gym_lifts GROUP BY exercise ORDER BY set_count DESC LIMIT 5. Present these as a holistic training snapshot.",
+  },
+  {
+    phrase: 'exercise name lookup / fuzzy search',
+    sql: "SELECT DISTINCT exercise FROM gym_lifts WHERE exercise ILIKE $1. Use broad wildcards (e.g., '%bench%') to find exercises when the exact name returns no results.",
+  },
 ] as const
 
 export const SEMANTIC_HINTS = SEMANTIC_MAPPINGS
