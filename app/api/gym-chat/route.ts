@@ -173,8 +173,8 @@ When you call execute_gym_query, the tool returns JSON:
 - No UNION, VALUES, or recursive CTEs.
 - Use actual table and column names from the schema. Never use SELECT *.
 - Do not schema-qualify table names (no public.gym_lifts -- use gym_lifts directly).
-- All user-provided values MUST be parameterized with $1..$n placeholders and params array.
-- Never embed literal filters including LIKE/ILIKE patterns. Use params (e.g., params: ["%bench%"], SQL: exercise ILIKE $1).
+- ALL string values in WHERE, HAVING, or JOIN conditions MUST be parameterized with $1..$n placeholders and params array — this includes exercise names, day tags, body parts, and any other filter values, whether they came from the user or from your own knowledge.
+- Never embed literal strings in SQL. Use params for everything: LIKE/ILIKE patterns (params: ["%bench%"], SQL: exercise ILIKE $1), IN clauses (params: ["Bench Press", "Squat"], SQL: exercise IN ($1, $2)), and equality checks (params: ["Lat Pulldown"], SQL: exercise = $1).
 - For relative time windows: use CURRENT_DATE - ($1)::interval (never INTERVAL $1).
 - Do NOT use FILTER aggregates or explicit window frames (ROWS BETWEEN / RANGE BETWEEN). Use CASE expressions and default window frames instead.
 - For body_parts: use UNNEST(body_parts) AS body_part in SELECT and GROUP BY. Filter with EXISTS (SELECT 1 FROM unnest(body_parts) AS bp WHERE bp ILIKE $1).
