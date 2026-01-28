@@ -952,3 +952,4 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     </div>
   )
 }
+
