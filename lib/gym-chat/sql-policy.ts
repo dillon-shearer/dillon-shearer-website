@@ -3,6 +3,7 @@ import type {
   Expr,
   ExprBinary,
   ExprInteger,
+  ExprLiteral,
   ExprTernary,
   BinaryOperator,
   SelectFromStatement,
@@ -581,6 +582,65 @@ const applyDateRefCasts = (statement: SelectStatement): SelectStatement => {
   return mapper.statement(statement) as SelectStatement
 }
 
+type AutoParameterizeResult = {
+  statement: SelectStatement
+  params: unknown[]
+}
+
+/**
+ * Auto-parameterize string literals in SQL that are not whitelisted.
+ * This transforms SQL like `WHERE exercise = 'Bench Press'`
+ * into `WHERE exercise = $N` with the value added to params.
+ */
+const autoParameterizeStrings = (
+  statement: SelectStatement,
+  params: unknown[],
+): AutoParameterizeResult => {
+  let nextIndex = params.length + 1
+  const extraParams: unknown[] = []
+
+  const mapper = astMapper(() => ({
+    constant: (value: ExprLiteral): Expr | undefined => {
+      // Handle ExprString (type: 'string')
+      if (value.type === 'string') {
+        const literal = normalizeName(value.value)
+        // Keep whitelisted literals
+        if (ALLOWED_STRING_LITERALS.has(literal)) return value
+        // Keep interval patterns
+        if (INTERVAL_LITERAL_REGEX.test(value.value)) return value
+        // Replace with parameter placeholder
+        const paramNode: Expr = { type: 'parameter', name: `$${nextIndex}` }
+        extraParams.push(value.value)
+        nextIndex += 1
+        return paramNode
+      }
+      // Handle ExprConstant (type: 'constant') with string values
+      if (value.type === 'constant') {
+        const dataType = 'dataType' in value && value.dataType && 'name' in value.dataType
+          ? normalizeName(value.dataType.name)
+          : ''
+        // Keep interval literals
+        if (dataType === 'interval' && typeof value.value === 'string') return value
+        // Parameterize other string values
+        if (typeof value.value === 'string') {
+          const paramNode: Expr = { type: 'parameter', name: `$${nextIndex}` }
+          extraParams.push(value.value)
+          nextIndex += 1
+          return paramNode
+        }
+      }
+      // Leave other literal types unchanged (integers, booleans, nulls, etc.)
+      return value
+    },
+  }))
+
+  const mapped = mapper.statement(statement) as SelectStatement
+  return {
+    statement: mapped,
+    params: [...params, ...extraParams],
+  }
+}
+
 const buildDateFilterExpr = (tableAlias: string | null, window: '90 days' | '12 months'): ExprBinary => {
   const table = tableAlias ? { name: tableAlias } : undefined
   const dateRef: Expr = {
@@ -766,6 +826,75 @@ const ensureParamsMatchPlaceholders = (sql: string, params: unknown[]) => {
   }
 }
 
+/**
+ * Validate that WITH statement outer queries only reference tables/aliases
+ * that are visible in the outer scope (CTE aliases + outer FROM tables).
+ * This catches errors like referencing `gym_lifts.date` in the outer query
+ * when `gym_lifts` is only available inside a CTE binding.
+ */
+const validateCteScoping = (statement: SelectStatement): void => {
+  if (statement.type !== 'with') return
+  if (statement.in.type !== 'select') return
+
+  const outerSelection = statement.in
+
+  // Collect names visible in the outer query scope:
+  // 1. CTE aliases (e.g., "sets", "base")
+  // 2. Tables explicitly in the outer FROM clause
+  const outerScope = new Set<string>()
+
+  // Add all CTE aliases
+  statement.bind.forEach(binding => {
+    outerScope.add(normalizeName(binding.alias.name))
+  })
+
+  // Add tables and aliases from the outer query's FROM clause
+  if (outerSelection.from) {
+    for (const fromEntry of outerSelection.from) {
+      // Handle fromTable entries
+      if ('name' in fromEntry && fromEntry.name && typeof fromEntry.name === 'object') {
+        const tableEntry = fromEntry as { name: { name: string; alias?: string } }
+        outerScope.add(normalizeName(tableEntry.name.name))
+        if (tableEntry.name.alias) {
+          outerScope.add(normalizeName(tableEntry.name.alias))
+        }
+      }
+      // Handle aliased subqueries, function calls, etc.
+      if ('alias' in fromEntry && fromEntry.alias) {
+        const aliasRaw = (fromEntry as { alias?: { name?: string } | string }).alias
+        const aliasName = typeof aliasRaw === 'string' ? aliasRaw : aliasRaw?.name
+        if (typeof aliasName === 'string') {
+          outerScope.add(normalizeName(aliasName))
+        }
+      }
+    }
+  }
+
+  // Collect table-qualified column references from the outer query only
+  const outerTableRefs = new Set<string>()
+  const outerVisitor = astVisitor(() => ({
+    ref: ref => {
+      if (ref.table) {
+        outerTableRefs.add(normalizeName(ref.table.name))
+      }
+    },
+  }))
+
+  // Visit only the outer selection (statement.in), not the full WITH statement.
+  // This ensures we only see refs in the outer query, not CTE bindings.
+  outerVisitor.statement(outerSelection)
+
+  // Check each outer table reference against the outer scope
+  outerTableRefs.forEach(ref => {
+    if (!outerScope.has(ref)) {
+      throw new Error(
+        `Table "${ref}" is referenced in the outer query but is only defined inside a CTE binding. ` +
+          `Use the CTE alias instead (e.g., "sets.column_name" not "${ref}.column_name").`,
+      )
+    }
+  })
+}
+
 export const validateAndRewriteSql = (rawSql: string, params: unknown[]): SqlPolicyResult => {
   if (!rawSql.trim()) {
     throw new Error('SQL is empty.')
@@ -783,17 +912,32 @@ export const validateAndRewriteSql = (rawSql: string, params: unknown[]): SqlPol
   }
 
   const selectStatement = ensureSingleSelect(statements[0])
-  const coercedStatement = applyDateRefCasts(selectStatement)
+
+  // Auto-parameterize string literals before validation.
+  // This transforms SQL like `WHERE exercise = 'Bench Press'`
+  // into `WHERE exercise = $N` with the value added to params.
+  const { statement: parameterized, params: updatedParams } = autoParameterizeStrings(
+    selectStatement,
+    params,
+  )
+
+  const coercedStatement = applyDateRefCasts(parameterized)
   const allowlist = getCatalogAllowlist()
   const summary = collectValidationSummary(coercedStatement, allowlist)
-  ensureParamsMatchPlaceholders(hintFreeSql, params)
+
+  // Validate CTE scoping: ensure outer query only references tables in outer scope
+  validateCteScoping(coercedStatement)
+
+  // Validate placeholders against the parameterized SQL (not original)
+  const parameterizedSql = toSql.statement(parameterized)
+  ensureParamsMatchPlaceholders(parameterizedSql, updatedParams)
 
   const { statement, limit, timeWindow } = applyPolicyToStatement(coercedStatement, summary, hints)
   const sql = toSql.statement(statement)
 
   return {
     sql,
-    params,
+    params: updatedParams,
     appliedLimit: limit,
     appliedTimeWindow: timeWindow,
   }

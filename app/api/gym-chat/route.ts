@@ -180,7 +180,9 @@ When you call execute_gym_query, the tool returns JSON:
 - For body_parts: use UNNEST(body_parts) AS body_part in SELECT and GROUP BY. Filter with EXISTS (SELECT 1 FROM unnest(body_parts) AS bp WHERE bp ILIKE $1).
 - Default time windows: set-level queries = last 90 days; trend/weekly/monthly = last 12 months. The system will enforce these if you omit date filters.
 - For all-time queries: prepend /*policy:time_window=all_time*/ before the SELECT.
-- Prefer a shared sets CTE: WITH sets AS (SELECT exercise, weight, reps, COALESCE(date::date, timestamp::date) AS session_date, COALESCE(timestamp::timestamptz, date::timestamptz) AS performed_at FROM gym_lifts)\n- When you use the sets CTE, ONLY reference the sets alias in outer queries (never gym_lifts.* outside the CTE).\n- Apply date filters in the sets CTE; do not repeat them in the outer query unless you are using sets.session_date.
+- Prefer a shared sets CTE: WITH sets AS (SELECT exercise, weight, reps, COALESCE(date::date, timestamp::date) AS session_date, COALESCE(timestamp::timestamptz, date::timestamptz) AS performed_at FROM gym_lifts)
+- CRITICAL CTE SCOPING: When you use a CTE (WITH ... AS), ONLY reference the CTE alias in outer queries. Never qualify columns with the original table name (e.g., gym_lifts.date) outside the CTE -- use the CTE alias (e.g., sets.session_date) instead. Referencing the original table in the outer query will cause a "missing FROM-clause entry" error.
+- Apply date filters in the sets CTE; do not repeat them in the outer query unless you are using sets.session_date.
 - Default row limit: 200. Hard limit: 1000. For "top N" questions, use ORDER BY + LIMIT N.
 - Query timeout is 2 seconds per query.
 

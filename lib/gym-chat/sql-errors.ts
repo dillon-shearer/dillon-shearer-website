@@ -11,10 +11,11 @@ const interpretSqlError = (error: string): SqlErrorInterpretation => {
   if (missingFrom?.[1]) {
     const table = missingFrom[1]
     return {
-      diagnosis: `The query references "${table}" but never joins it in FROM.`,
+      diagnosis: `The query references "${table}" but it is not available in that scope.`,
       suggestion:
-        `Add a JOIN to ${table} with the correct key (for gym data this is often the date), ` +
-        'or include it in the FROM clause with the proper alias.',
+        `If you used a CTE (WITH ... AS), reference the CTE alias in the outer query instead of "${table}". ` +
+        `Use "sets.column_name" instead of "${table}.column_name". ` +
+        `Only reference "${table}" inside the CTE binding where it appears in FROM.`,
     }
   }
   if (normalized.includes('unsupported syntax')) {
@@ -96,11 +97,13 @@ export const buildSqlErrorAssistantMessage = (
       normalizedQuestion.includes('body part') ||
       normalizedQuestion.includes('body parts')
     if (isMuscleGroupQuestion) {
-      return [
-        "I couldn't safely run this analysis on your logs.",
-        'This usually means the query structure was invalid.',
-        "Try something like: 'Compare my chest vs back volume over the last 12 weeks.'",
-      ].join('\n')
+      return {
+        message: [
+          "I couldn't safely run this analysis on your logs.",
+          'This usually means the query structure was invalid.',
+          "Try something like: 'Compare my chest vs back volume over the last 12 weeks.'",
+        ].join('\n'),
+      }
     }
     // Suggest specific alternatives based on query intent
     const suggestedAlternatives: string[] = []
