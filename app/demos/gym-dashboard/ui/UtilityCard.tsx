@@ -5,7 +5,6 @@ import React from 'react'
 type Props = {
   filters: React.ReactNode
   downloadButton: React.ReactNode
-  lastModified: string
   insightContext: {
     scope: 'week' | 'month' | 'year' | 'day' | 'custom'
     selectedExercises?: string[]
@@ -17,7 +16,6 @@ type Props = {
 export default function UtilityCard({
   filters,
   downloadButton,
-  lastModified,
 }: Props) {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -32,20 +30,12 @@ export default function UtilityCard({
         style={{ minHeight: 64 }}
       >
         {/* Left: filters (date picker, prev/next, etc.) */}
-        <div className="flex-1 min-w-[220px] flex items-center relative z-30 pointer-events-auto">
+        <div className="flex-1 min-w-0 flex items-center relative z-30 pointer-events-auto">
           {filters}
         </div>
 
-        {/* Right: download + last modified */}
-        <div className="flex-1 min-w-[260px] flex items-center justify-end gap-3">
-          <div className="pointer-events-auto">{downloadButton}</div>
-          <div className="text-xs text-gray-500 text-right whitespace-nowrap">
-            Last modified{' '}
-            <span className="font-medium text-gray-700 dark:text-gray-300">
-              {lastModified}
-            </span>
-          </div>
-        </div>
+        {/* Right: download */}
+        <div className="pointer-events-auto">{downloadButton}</div>
       </div>
     </div>
   )

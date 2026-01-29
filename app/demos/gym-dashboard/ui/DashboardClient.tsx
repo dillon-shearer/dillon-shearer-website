@@ -619,12 +619,26 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   return (
     <div className="bg-black text-white">
       <div className="max-w-7xl mx-auto px-6 pb-12">
+        <div className="pt-12 text-center flex flex-col items-center gap-4">
+          <h1 className="text-4xl font-bold">Workout Data Dashboard</h1>
+          <p className="text-sm opacity-75 italic">
+            Enjoy my daily live workout data available for viewing or download.
+          </p>
+          {lastModifiedStr ? (
+            <p className="text-xs text-gray-500">
+              Last modified{' '}
+              <span className="font-medium text-gray-300">
+                {lastModifiedStr}
+              </span>
+            </p>
+          ) : null}
+        </div>
+
         {/* Utility Card row */}
         <div className="mt-4 mb-6">
           <UtilityCard
             filters={Filters}
             downloadButton={DownloadButton}
-            lastModified={lastModifiedStr}
             insightContext={{ scope: insightScope, selectedExercises, dateFrom, dateTo }}
           />
         </div>
