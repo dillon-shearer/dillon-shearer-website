@@ -46,7 +46,7 @@ export default function HomePage() {
               <div className="text-center">
                 <HeroTitle />
                 <p className="mt-4 text-lg text-white/80 max-w-3xl mx-auto">
-                  I work end to end across the data lifecycle for health teams: sourcing and modeling messy clinical inputs, building the automation and analytics that sit on top, and delivering stories decision makers can trust.
+                  Data-centric software engineer working end to end across the data lifecycle. Currently building analytics, pipelines, and AI tooling for healthcare and life-science teams.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
@@ -63,13 +63,10 @@ export default function HomePage() {
                   View interactive demos
                 </a>
                 <a
-                  href="/Dillon_Shearer_Resume.pdf"
+                  href="/resumes"
                   className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-white/20 hover:border-white/60 font-semibold text-white/80"
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
                 >
-                  Download resume
+                  View Role-Specific Resumes
                 </a>
               </div>
             </div>

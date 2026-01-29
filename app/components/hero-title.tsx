@@ -7,6 +7,9 @@ export default function HeroTitle() {
       <div className="hero-title" data-replace="Data With Dillon" aria-label="Data With Dillon">
         <span>Data With Dillon</span>
       </div>
+      <p className="mt-3 text-sm text-white/40 tracking-wide">
+        Data Engineer &middot; Data Analyst &middot; Full-Stack Python Developer
+      </p>
     </div>
   )
 }

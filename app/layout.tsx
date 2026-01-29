@@ -11,7 +11,7 @@ import EmbedToggle from './components/embed-toggle'
 import RouteWarmup from './components/route-warmup'
 import { baseUrl } from './sitemap'
 
-const siteDescription = 'Healthcare-focused data scientist building analytics portals, dashboards, and AI copilots for life-science teams.'
+const siteDescription = 'Data-centric software engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
@@ -72,7 +72,7 @@ export default function RootLayout({
           'https://github.com/dillon-shearer',
           'https://www.linkedin.com/in/dillonshearer/',
         ],
-        jobTitle: 'Data Scientist',
+        jobTitle: 'Data-Centric Software Engineer',
         worksFor: {
           '@type': 'Organization',
           name: 'Data With Dillon',

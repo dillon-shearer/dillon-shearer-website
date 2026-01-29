@@ -47,7 +47,7 @@ export default function Footer() {
               className="flex items-center transition-all hover:text-neutral-800 dark:hover:text-neutral-100 justify-center"
               rel="noopener noreferrer"
               target="_blank"
-              href="/Dillon_Shearer_Resume.pdf"
+              href="/resumes"
             >
               <ArrowIcon />
               <p className="ml-2 h-7">Resume</p>

@@ -304,3 +304,131 @@ body[data-embed-preview='true'] [data-embed-hide='true'] {
   opacity: 1;
   animation: bento-shimmer 2s linear infinite;
 }
+
+/* ---------------------------------------------------------------- */
+/* Print styles for resume pages                                     */
+/* ---------------------------------------------------------------- */
+@media print {
+  /* Hide site chrome */
+  [data-embed-hide='true'],
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Reset everything to white document */
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Reduce overall print scale for downloads */
+  html {
+    font-size: 10.5pt !important;
+  }
+
+  .resume-content {
+    line-height: 1.35;
+  }
+
+  .resume-content h1 {
+    font-size: 20pt !important;
+  }
+
+  .resume-content h2 {
+    font-size: 9pt !important;
+  }
+
+  .resume-content h3 {
+    font-size: 12pt !important;
+  }
+
+  /* Strip all layout constraints */
+  main,
+  main > div {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Strip card frames from resume wrapper */
+  .min-h-screen {
+    min-height: auto !important;
+  }
+
+  .min-h-screen > div {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Remove all borders and rounded corners in print */
+  .resume-content,
+  .resume-content * {
+    border-radius: 0 !important;
+  }
+
+  /* Resume text colors for print */
+  .resume-content h1,
+  .resume-content h2,
+  .resume-content h3 {
+    color: black !important;
+  }
+
+  .resume-content p,
+  .resume-content li,
+  .resume-content span {
+    color: #333 !important;
+  }
+
+  .resume-content header {
+    border-bottom: 1px solid #ccc !important;
+  }
+
+  /* Section headers */
+  .resume-content section > h2 {
+    color: #555 !important;
+    font-weight: 600 !important;
+  }
+
+  /* Skill pills for print */
+  .resume-content span[class*="rounded-full"] {
+    background: #f3f4f6 !important;
+    border: 1px solid #d1d5db !important;
+    color: #374151 !important;
+  }
+
+  /* Page setup */
+  @page {
+    margin: 0.5in 0.65in;
+    size: letter;
+  }
+
+  /* Only avoid breaks for specific entries, not entire sections */
+  .resume-content .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Clean links for print */
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
+  /* Ensure resume links remain visible in print */
+  .resume-content a {
+    color: #111 !important;
+    text-decoration: underline !important;
+  }
+}
