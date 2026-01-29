@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import ResumeView from '@/app/components/resume-view'
-import PrintButton from './print-button'
+import DownloadButton from './print-button'
 import {
   ALL_VARIANTS,
   getResumeData,
@@ -66,7 +66,7 @@ export default async function ResumePage({ params }: Props) {
             </svg>
             All Resumes
           </Link>
-          <PrintButton />
+          <DownloadButton slug={slug} />
         </div>
 
         {/* Resume */}

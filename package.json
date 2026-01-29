@@ -16,6 +16,7 @@
     "gym-chat:quick-win-eval": "tsx eval/run-gym-chat-quick-win-eval.ts"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.2",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
     "@tailwindcss/postcss": "4.0.0-alpha.13",
