@@ -853,7 +853,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="absolute inset-0 overflow-x-hidden overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 hover:[&::-webkit-scrollbar-thumb]:bg-white/20 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.1)_transparent]"
+          className="absolute inset-0 overflow-x-hidden overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.1)_transparent]"
         >
           {showStart ? (
             <div className="flex h-full items-center justify-center">
@@ -928,4 +928,3 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     </div>
   )
 }
-
