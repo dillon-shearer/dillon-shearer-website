@@ -58,24 +58,6 @@ const buildTimezone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 const CITATION_REGEX = /\[([a-zA-Z0-9_-]+)\](?!\()/g
-const STREAM_STATUS_MESSAGES: Record<string, string> = {
-  started: 'Starting request...',
-  catalog: 'Loading workout catalog...',
-  classify: 'Classifying your question...',
-  plan: 'Planning queries...',
-  repair: 'Fixing query plan...',
-  query: 'Running queries...',
-  explain: 'Generating response...',
-}
-
-const getStreamStatusMessage = (payload: { stage?: string; message?: string }) => {
-  if (payload.message) return payload.message
-  if (payload.stage && payload.stage in STREAM_STATUS_MESSAGES) {
-    return STREAM_STATUS_MESSAGES[payload.stage]
-  }
-  return 'Working...'
-}
-
 const mergeHistory = (
   existing?: GymChatConversationState['history'],
   incoming?: GymChatConversationState['history'],
@@ -536,7 +518,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
       const assistantPlaceholder: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
-        content: 'Working on it...',
+        content: '',
         createdAt: new Date().toISOString(),
       }
       const outgoingMessages = [...messages, userMessage]
@@ -554,16 +536,9 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
       }
 
       let timeoutId: ReturnType<typeof setTimeout> | undefined
-      let stillWorkingTimeout: ReturnType<typeof setTimeout> | undefined
       let finalReceived = false
-      let statusSeen = false
       let effectiveRequestId: string | undefined
       try {
-        stillWorkingTimeout = setTimeout(() => {
-          if (!finalReceived && !statusSeen) {
-            updateAssistantMessage({ content: 'Still working...' })
-          }
-        }, 4000)
         const controller = new AbortController()
         const timeoutMs = 60000
         const headers: Record<string, string> = {
@@ -601,10 +576,6 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         if (contentType.includes('text/event-stream')) {
           await readEventStream(res, event => {
             if (event.event === 'status') {
-              statusSeen = true
-              updateAssistantMessage({
-                content: getStreamStatusMessage(event.data ?? {}),
-              })
               return
             }
             if (event.event === 'final') {
@@ -676,7 +647,6 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         })
       } finally {
         if (timeoutId) clearTimeout(timeoutId)
-        if (stillWorkingTimeout) clearTimeout(stillWorkingTimeout)
         setIsLoading(false)
       }
     },
@@ -717,8 +687,14 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
       const anchorPrefix = `query-${message.id}-`
       const queryIds =
         message.role === 'assistant' ? new Set(message.queries?.map(query => query.id) ?? []) : new Set<string>()
-      // Status messages are short assistant messages without queries/charts (e.g., "Planning SQL", "Running queries...")
-      const isStatusMessage = message.role === 'assistant' && !message.queries?.length && !message.chartSpecs?.length && message.content.length < 50
+      const isStatusMessage =
+        message.role === 'assistant' &&
+        !message.queries?.length &&
+        !message.chartSpecs?.length &&
+        !message.followUps?.length &&
+        !message.retryPayload &&
+        message.content.trim().length === 0
+      if (isStatusMessage) return null
       return (
         <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
           <div
@@ -877,7 +853,7 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="absolute inset-0 overflow-x-hidden overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          className="absolute inset-0 overflow-x-hidden overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 hover:[&::-webkit-scrollbar-thumb]:bg-white/20 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.1)_transparent]"
         >
           {showStart ? (
             <div className="flex h-full items-center justify-center">
@@ -952,3 +928,4 @@ export default function ChatClient({ embedded = false, onClose }: ChatClientProp
     </div>
   )
 }
+

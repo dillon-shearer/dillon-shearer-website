@@ -461,7 +461,22 @@ const collectValidationSummary = (statement: SelectStatement, allowlist: Catalog
     throw new Error(errors[0])
   }
 
-  const hasDateFilter = Boolean(mainSelection && mainSelection.where && exprReferencesDate(mainSelection.where))
+  let hasDateFilter = Boolean(mainSelection && mainSelection.where && exprReferencesDate(mainSelection.where))
+
+  // Also check CTE bindings for date filters so the policy does not
+  // inject a duplicate when the LLM already filtered inside the CTE.
+  if (!hasDateFilter && statement.type === 'with') {
+    for (const binding of statement.bind) {
+      if (
+        binding.statement.type === 'select' &&
+        binding.statement.where &&
+        exprReferencesDate(binding.statement.where)
+      ) {
+        hasDateFilter = true
+        break
+      }
+    }
+  }
 
   return {
     tables,
@@ -629,6 +644,24 @@ const applyTimeWindow = (
   return { selection: { ...selection, where: nextWhere }, applied: window }
 }
 
+const cteBindingReferencesTable = (cteStatement: SelectStatement, tableName: string): boolean => {
+  let found = false
+  const v = astVisitor(map => ({
+    fromTable: table => {
+      if (normalizeName(table.name.name) === tableName) {
+        found = true
+      }
+      map.super().fromTable(table)
+    },
+  }))
+  try {
+    v.statement(cteStatement)
+  } catch {
+    // ignore – best-effort check
+  }
+  return found
+}
+
 const applyPolicyToStatement = (
   statement: SelectStatement,
   summary: ValidationSummary,
@@ -654,11 +687,62 @@ const applyPolicyToStatement = (
     if (statement.in.type !== 'select') {
       throw new Error('WITH statements must wrap a SELECT query.')
     }
-    const applied = applyPolicyToStatement(statement.in, summary, hints)
+
+    // Apply LIMIT to the outer query as usual.
+    const { selection: limitedOuter, limit } = applyLimit(statement.in)
+
+    // For time-window injection: apply the date filter to the CTE binding
+    // that contains the primary table rather than the outer query.
+    // The outer query typically only references CTE aliases (e.g. "sets"),
+    // so injecting "gym_lifts.date >= ..." there causes a
+    // "missing FROM-clause entry for table" error.
+    if (hints.timeWindow === 'all_time') {
+      return {
+        statement: { ...statement, in: limitedOuter },
+        limit,
+        timeWindow: 'all_time',
+      }
+    }
+
+    if (summary.hasDateFilter) {
+      return {
+        statement: { ...statement, in: limitedOuter },
+        limit,
+        timeWindow: null,
+      }
+    }
+
+    // Find the first real table (not a CTE alias).
+    const primaryTable = summary.tables.find(t => !summary.cteAliases.has(t.name))
+    if (!primaryTable) {
+      return {
+        statement: { ...statement, in: limitedOuter },
+        limit,
+        timeWindow: null,
+      }
+    }
+
+    const window = summary.isTrendQuery ? '12 months' : '90 days'
+    let appliedWindow: '90 days' | '12 months' | null = null
+    const updatedBindings = statement.bind.map(binding => {
+      if (appliedWindow) return binding
+      if (binding.statement.type !== 'select') return binding
+      if (!cteBindingReferencesTable(binding.statement, primaryTable.name)) return binding
+
+      const tableAlias = primaryTable.alias || primaryTable.name
+      const dateExpr = buildDateFilterExpr(tableAlias, window)
+      const cteSelection = binding.statement as SelectFromStatement
+      const nextWhere: Expr = cteSelection.where
+        ? ({ type: 'binary', op: 'AND', left: cteSelection.where, right: dateExpr } as ExprBinary)
+        : dateExpr
+      appliedWindow = window
+      return { ...binding, statement: { ...cteSelection, where: nextWhere } }
+    })
+
     return {
-      statement: { ...statement, in: applied.statement },
-      limit: applied.limit,
-      timeWindow: applied.timeWindow,
+      statement: { ...statement, bind: updatedBindings, in: limitedOuter },
+      limit,
+      timeWindow: appliedWindow,
     }
   }
 

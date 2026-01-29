@@ -541,7 +541,9 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               aria-label="Previous Day"
               disabled={datasetMinDate ? dayDate <= datasetMinDate : false}
             >
-              ◀
+              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+                <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
+              </svg>
             </button>
             <div className="min-w-[120px] text-center text-[13px] text-gray-300">
               {formatLongDate(dayDate)}
@@ -552,7 +554,9 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               aria-label="Next Day"
               disabled={dayDate >= todayUTCKey()}
             >
-              ▶
+              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+                <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
+              </svg>
             </button>
           </div>
         ) : mode === 'year' ? (
@@ -562,7 +566,9 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               onClick={decYear}
               aria-label="Previous Year"
             >
-              ◀
+              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+                <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
+              </svg>
             </button>
             <div className="min-w-[64px] text-center text-[13px] text-gray-300">{year}</div>
             <button
@@ -571,7 +577,9 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               aria-label="Next Year"
               disabled={year >= currentYear}
             >
-              ▶
+              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+                <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
+              </svg>
             </button>
           </div>
         ) : (

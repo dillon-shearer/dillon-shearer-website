@@ -1,172 +1,40 @@
 import { z } from 'zod'
 
-import { getCatalogContext, loadGymCatalog } from './catalog'
-import { getCapabilitiesContext } from './capabilities'
-import { SEMANTIC_HINTS } from './semantics'
-import { TEMPLATES } from './templates'
+import type { GymChatChartSpec, GymChatCitation, GymChatQuery } from '@/types/gym-chat'
 
-import type { GymChatTemplateName } from './templates'
-import type { QueryResultMeta, ResponseMeta } from './response-utils'
-
-import type {
-  GymChatMessage,
-  GymChatQuery,
-  GymChatCitation,
-  GymChatChartSpec,
-  WorkoutPlanAnalysisMeta,
-} from '@/types/gym-chat'
-
-type OpenAIMessage = {
-  role: 'system' | 'user' | 'assistant'
-  content: string
+export type OpenAIToolCall = {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
 }
 
-const CAPABILITIES_CONTEXT = getCapabilitiesContext()
+export type OpenAIMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content?: string
+  tool_call_id?: string
+  tool_calls?: OpenAIToolCall[]
+}
 
-const CLASSIFY_SCHEMA = z.object({
-  domain: z.enum(['gym_data', 'fitness_general', 'other']),
-  confidence: z.number().min(0).max(1),
-  clarifyingQuestion: z.string().optional(),
-  intentType: z.enum(['descriptive', 'trend', 'comparison', 'diagnostic', 'planning']).optional(),
-  primaryGrain: z.preprocess(
-    value => (value == null || value === '' ? undefined : value),
-    z.string().optional(),
-  ).optional(),
-  targets: z.array(z.string()).optional(),
-})
-
-const PLAN_SCHEMA = z.object({
-  refusal: z
-    .object({
-      message: z.string(),
-      reason: z.string().optional(),
-    })
-    .optional(),
-  queries: z
-    .array(
-      z.object({
-        id: z.string(),
-        purpose: z.string(),
-        sql: z.string(),
-        params: z.array(z.any()),
-      }),
-    )
-    .optional()
-    .default([]),
-  template: z.string().optional(),
-  secondaryTemplate: z.string().optional(),
-})
-
-const CITATION_SCHEMA = z.object({
-  marker: z.string().optional(),
-  queryId: z.string().optional(),
-  rowStart: z.number().int().optional(),
-  rowEnd: z.number().int().optional(),
-  note: z.string().optional(),
-})
-
-const CHART_SCHEMA = z.object({
-  type: z.enum(['line', 'bar']),
-  queryId: z.string(),
-  x: z.string(),
-  y: z.string(),
-  title: z.string().optional(),
-})
-
-const ASSISTANT_MESSAGE_SCHEMA = z.preprocess(value => {
-  if (typeof value === 'string') return value
-  if (value && typeof value === 'object') {
-    const sections: string[] = []
-    const record = value as Record<string, unknown>
-    const directAnswer = record.answer ?? record.directAnswer ?? record.tldr ?? record.tlDr ?? record.summary
-    if (directAnswer) {
-      const text =
-        typeof directAnswer === 'string'
-          ? directAnswer
-          : Array.isArray(directAnswer)
-            ? directAnswer.join(' ')
-            : JSON.stringify(directAnswer)
-      if (text.trim()) {
-        sections.push(text.trim())
-      }
-    }
-    const pushSection = (title: string, content: unknown) => {
-      if (content == null) return
-      if (Array.isArray(content) && content.length === 0) return
-      if (typeof content === 'string' && !content.trim()) return
-      const body = Array.isArray(content)
-        ? content.map(item => (typeof item === 'string' ? `- ${item}` : `- ${JSON.stringify(item)}`)).join('\n')
-        : typeof content === 'string'
-          ? content
-          : JSON.stringify(content, null, 2)
-      sections.push(`**${title}**\n${body}`.trim())
-    }
-    pushSection('Key findings', record.keyFindings)
-    pushSection('Training implications', record.trainingImplications)
-    pushSection('Limitations', record.limitations)
-    if (!sections.length) {
-      return JSON.stringify(value)
-    }
-    return sections.join('\n\n')
+export type OpenAITool = {
+  type: 'function'
+  function: {
+    name: string
+    description?: string
+    parameters: Record<string, unknown>
   }
-  if (value == null) return ''
-  return String(value)
-}, z.string())
+}
 
-const EXPLAIN_SCHEMA = z.object({
-  assistantMessage: ASSISTANT_MESSAGE_SCHEMA,
-  citations: z.preprocess(
-    value => {
-      if (value == null) return []
-      const normalized = (() => {
-        if (Array.isArray(value)) return value
-        if (typeof value === 'object') return [value]
-        return []
-      })()
-      return normalized.filter(item => item && typeof item === 'object')
-    },
-    z.array(CITATION_SCHEMA).transform(items =>
-      items
-        .filter(item => item.marker && item.queryId && item.rowStart !== undefined && item.rowEnd !== undefined)
-        .map(item => ({
-          marker: item.marker as string,
-          queryId: item.queryId as string,
-          rowStart: item.rowStart as number,
-          rowEnd: item.rowEnd as number,
-          note: item.note,
-        })),
-    ),
-  ),
-  chartSpecs: z.preprocess(
-    value => {
-      if (Array.isArray(value)) return value
-      return []
-    },
-    z.array(CHART_SCHEMA),
-  ).optional(),
-  followUps: z.preprocess(
-    value => {
-      if (value == null) return undefined
-      if (Array.isArray(value)) return value
-      if (typeof value === 'string' && value.trim()) return [value.trim()]
-      return undefined
-    },
-    z.array(z.string()).optional(),
-  ),
-})
+export type ToolCallResult = {
+  queries: GymChatQuery[]
+}
 
-const FITNESS_GENERAL_SCHEMA = z.object({
-  assistantMessage: ASSISTANT_MESSAGE_SCHEMA,
-  followUps: z.preprocess(
-    value => {
-      if (value == null) return undefined
-      if (Array.isArray(value)) return value
-      if (typeof value === 'string' && value.trim()) return [value.trim()]
-      return undefined
-    },
-    z.array(z.string()).optional(),
-  ),
-})
+export type GymChatLlmResult = {
+  assistantMessage: string
+  queries: GymChatQuery[]
+  citations: GymChatCitation[]
+  chartSpecs?: GymChatChartSpec[]
+  followUps?: string[]
+}
 
 const resolveApiKey = () => process.env.OPENAI_API_KEY || process.env.GYM_CHAT_OPENAI_API_KEY || ''
 const resolveApiBase = () => process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1'
@@ -196,7 +64,7 @@ const buildLlmError = (
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
 const MAX_LLM_ATTEMPTS = 3
-const LLM_TIMEOUT_MS = 15000
+const LLM_TIMEOUT_MS = 30000
 
 type LlmRetryBudget = {
   remainingMs: () => number
@@ -336,428 +204,252 @@ const callOpenAIJson = async <T>(
   throw buildLlmError('LLM request failed.', { retryable: true })
 }
 
-export const classifyQuestion = async (messages: GymChatMessage[], options?: LlmRequestOptions) => {
-  await loadGymCatalog().catch(() => undefined)
-  const catalogContext = getCatalogContext()
-  const recent = messages.slice(-6)
-  const transcript = recent.map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n')
-  const system: OpenAIMessage = {
-    role: 'system',
-    content:
-      'You classify whether a user question is about the read-only gym analytics warehouse (tables prefixed gym_). ' +
-      'Classify general fitness, programming, or goal-setting questions that do not require log analysis as fitness_general. ' +
-      'Classify as gym_data when the user references their history, progress, recent sessions, specific lift stats, time windows, or asks for analysis of their logged workouts. ' +
-      'If the user mixes recommendations with log-based analysis, choose gym_data. ' +
-      `${catalogContext}\n\n${CAPABILITIES_CONTEXT}\n` +
-      'Return JSON with: { "domain": "gym_data" | "fitness_general" | "other", "confidence": number, "clarifyingQuestion"?: string, "intentType"?: string, "primaryGrain"?: string, "targets"?: string[] }. ' +
-      'intentType options: descriptive, trend, comparison, diagnostic, planning. ' +
-      'primaryGrain options: set, session, week, month, all_time. ' +
-      'targets is an array of nouns in the question (e.g., exercise, body_part, day_tag, equipment). ' +
-      'If the question is ambiguous, set confidence < 0.8 and provide a clarifyingQuestion. ' +
-      'Use the conversation context to interpret short follow-up questions. ' +
-      'If it is clearly not about fitness or gym data, set domain to "other" with high confidence.',
-  }
-  const user: OpenAIMessage = {
-    role: 'user',
-    content: `Conversation context:\n${transcript}\n\nClassify the latest user question.`,
-  }
-  return callOpenAIJson(CLASSIFY_SCHEMA, [system, user], 0, options)
-}
-
-export const planGymSql = async (
-  messages: GymChatMessage[],
-  timezone: string,
-  intentHints?: {
-    intentType?: string
-    primaryGrain?: string
-    targets?: string[]
-    template?: GymChatTemplateName
-    secondaryTemplate?: GymChatTemplateName
-    planMeta?: WorkoutPlanAnalysisMeta
-  },
-  options?: LlmRequestOptions,
-) => {
-  await loadGymCatalog().catch(() => undefined)
-  const catalogContext = getCatalogContext()
-  const intentContextParts: string[] = []
-  if (intentHints?.intentType) {
-    intentContextParts.push(`intent_type=${intentHints.intentType}`)
-  }
-  if (intentHints?.primaryGrain) {
-    intentContextParts.push(`primary_grain=${intentHints.primaryGrain}`)
-  }
-  if (intentHints?.targets?.length) {
-    intentContextParts.push(`targets=${intentHints.targets.join(', ')}`)
-  }
-  if (intentHints?.template) {
-    intentContextParts.push(`template=${intentHints.template}`)
-  }
-  if (intentHints?.secondaryTemplate) {
-    intentContextParts.push(`secondary_template=${intentHints.secondaryTemplate}`)
-  }
-  if (intentHints?.planMeta) {
-    const planMetaParts: string[] = []
-    if (intentHints.planMeta.targetsMuscles?.include?.length) {
-      planMetaParts.push(`muscle_targets=${intentHints.planMeta.targetsMuscles.include.join(',')}`)
+type OpenAIChatResponse = {
+  choices?: Array<{
+    finish_reason?: string
+    message?: {
+      role?: string
+      content?: string | null
+      tool_calls?: OpenAIToolCall[]
     }
-    if (intentHints.planMeta.targetsMuscles?.exclude?.length) {
-      planMetaParts.push(`muscle_exclude=${intentHints.planMeta.targetsMuscles.exclude.join(',')}`)
-    }
-    if (intentHints.planMeta.targetsMuscles?.strict) {
-      planMetaParts.push('muscle_strict=true')
-    }
-    if (intentHints.planMeta.usesHistoricalLifts) {
-      planMetaParts.push('uses_historical_lifts=true')
-    }
-    if (planMetaParts.length) {
-      intentContextParts.push(`plan_meta=${planMetaParts.join(';')}`)
-    }
-  }
-  const intentContext = intentContextParts.length
-    ? `Intent hints:\n- ${intentContextParts.join('\n- ')}\n\n`
-    : ''
-
-  const templateContextParts: string[] = []
-  const primaryTemplate = intentHints?.template ? TEMPLATES[intentHints.template] : undefined
-  if (primaryTemplate) {
-    templateContextParts.push(`Primary template: ${primaryTemplate.name} - ${primaryTemplate.description}`)
-    templateContextParts.push(
-      `Primary query blueprints:\n${primaryTemplate.queryBlueprints
-        .map(blueprint => `- ${blueprint.role}: ${blueprint.mustMeasure}`)
-        .join('\n')}`,
-    )
-  }
-  const secondaryTemplate = intentHints?.secondaryTemplate ? TEMPLATES[intentHints.secondaryTemplate] : undefined
-  if (secondaryTemplate) {
-    templateContextParts.push(`Secondary template: ${secondaryTemplate.name} - ${secondaryTemplate.description}`)
-    templateContextParts.push(
-      `Secondary query blueprints:\n${secondaryTemplate.queryBlueprints
-        .map(blueprint => `- ${blueprint.role}: ${blueprint.mustMeasure}`)
-        .join('\n')}`,
-    )
-  }
-  const templateContext = templateContextParts.length ? `Template hints:\n${templateContextParts.join('\n')}\n\n` : ''
-
-  const system: OpenAIMessage = {
-    role: 'system',
-    content:
-      'You are a SQL planner for a read-only gym analytics database. ' +
-      'Follow all rules exactly and output JSON only.\n\n' +
-      `${catalogContext}\n\n${CAPABILITIES_CONTEXT}\n\n` +
-      `${intentContext}${templateContext}` +
-      `Semantic hints:\n${SEMANTIC_HINTS}\n\n` +
-      `Template options: ${Object.keys(TEMPLATES).join(', ')}.\n` +
-      'Rules:\n' +
-      '- Only generate SELECT statements (no UNION, no VALUES, no recursive CTEs).\n' +
-      '- Use actual table and column names from the schema. Do not use SELECT *.\n' +
-      '- Do not schema-qualify table names (e.g., avoid public.gym_lifts); use the bare allowlisted table name.\n' +
-      '- All user-provided values must be parameterized with $1..$n placeholders and params array.\n' +
-      '- Never embed literal filters (including LIKE/ILIKE patterns) for user terms. Build them via params (e.g., params: ["%shoulder%"], SQL: column ILIKE $1).\n' +
-      "- For relative time windows, use CURRENT_DATE - ($1)::interval (never write INTERVAL $1).\n" +
-      '- SQL dialect limits: do not use FILTER aggregates and do not use explicit window frames (ROWS BETWEEN / RANGE BETWEEN). Use CASE expressions and default window frames.\n' +
-      '- For body_parts analysis, use UNNEST(body_parts) AS body_part in the SELECT list and group by body_part (avoid set-returning functions in FROM). When filtering body_parts arrays, never call functions like ANY(body_parts); instead use EXISTS (SELECT 1 FROM unnest(body_parts) AS bp WHERE bp ILIKE $1) or body_parts @> ARRAY[$1::text].\n' +
-      '- Default time windows: raw/set-level queries = last 90 days; trend/weekly/monthly = last 12 months.\n' +
-      '- If the user explicitly asks for all-time or lifetime data, prepend the SQL with /*policy:time_window=all_time*/.\n' +
-      '- If the user asks for "top N" or "most/least", include ORDER BY the requested metric DESC and LIMIT N (unless you explicitly need extra rows for ties, in which case note that in the query purpose).\n' +
-      '- When using table aliases (e.g., gym_lifts gl), define them in FROM/JOIN and only reference aliases that are in scope; do not reference aliases from inner CTEs outside their SELECT.\n' +
-      '- Prefer a shared sets CTE for per-set data: WITH sets AS (SELECT exercise, weight, reps, COALESCE(date::date, timestamp::date) AS session_date, COALESCE(timestamp::timestamptz, date::timestamptz) AS performed_at FROM gym_lifts). Use sets as the only set-level source and reference session_date/performed_at for joins and time filters.\n' +
-      '- For muscle-group weekly volume comparison between recent 12 weeks and prior 12 weeks: use the sets CTE, join gym_day_meta gm on gm.date = sets.session_date, UNNEST(gm.body_parts) AS body_part, compute weekly volume per body_part, then average by window and compute percent change + flag >= 15%. If body_parts are not available in schema, fall back to exercise-level comparison and state the fallback in the response.\n' +
-      '- For progressive overload streaks: compute per-exercise session anchors (e.g., max estimated 1RM per day), use LAG to get delta, define break_id = SUM(CASE WHEN delta <= 0 OR delta IS NULL THEN 1 ELSE 0 END) OVER (PARTITION BY exercise ORDER BY date), then count consecutive increases per break_id. Avoid window frames and FILTER clauses.\n' +
-      '- Encourage multi-query plans when the question involves comparisons, diagnostics, or planning future adjustments.\n' +
-      '- For fatigue / momentum / drop-off style questions, always add queries that compare early vs late sets within the same sessions (e.g., bucket set_number into thirds, compute deltas between first and last sets, track per-session cumulative volume) and pair them with weekly/monthly workload summaries so the explainer can call out where momentum fades.\n' +
-      '- When the user references a specific exercise (e.g., incline press) and a future attempt or target, always include (a) a recent-window query filtered to that exercise (last 7 days/last block) and (b) a broader anchor query (e.g., last 12 months or all-time) capturing top sets, estimated 1RM, and recent bests.\n' +
-      '- If a requested recent window is likely to be sparse, add a fallback query with a larger window instead of returning zero data; this ensures the explainer can still cite historical anchors while calling out the gap.\n' +
-      '- Planning intent: summarize historical patterns (volume, frequency, balance) and surface gaps that inform future focus; extract concrete anchors such as latest top set weight, average working weight, and recent PRs so downstream reasoning can recommend next targets.\n' +
-      '- Planning intent must still stay grounded in historical data, but you should surface the metrics that a coach would use to pick the next load (recent best set, last week average, rate of increase).\n' +
-      '- If the user mixes requests for recommendations or future focus with data analysis, analyze the available data and note any gaps rather than refusing.\n' +
-      `- Use timezone ${timezone} for date reasoning.\n` +
-      '- If a template is a strong fit, set template and optional secondaryTemplate using the provided template options.\n' +
-      'Only refuse when the question is clearly unrelated to the gym data.\n\n' +
-      'Return JSON:\n' +
-      '{ "queries": [{ "id": "q1", "purpose": "...", "sql": "SELECT ...", "params": [] }], "template"?: "...", "secondaryTemplate"?: "..." }\n' +
-      'or { "refusal": { "message": "...", "reason": "..." } }',
-  }
-
-  const recentMessages = messages.slice(-12)
-  const convo: OpenAIMessage[] = recentMessages.map(message => ({
-    role: message.role,
-    content: message.content,
-  }))
-
-  return callOpenAIJson(PLAN_SCHEMA, [system, ...convo], 0, options)
-}
-
-export const repairGymSql = async (
-  messages: GymChatMessage[],
-  timezone: string,
-  input: {
-    question: string
-    failedQueries: Array<{ id: string; purpose: string; sql: string; params: unknown[]; error: string | null }>
-  },
-  intentHints?: {
-    intentType?: string
-    primaryGrain?: string
-    targets?: string[]
-    template?: GymChatTemplateName
-    secondaryTemplate?: GymChatTemplateName
-    planMeta?: WorkoutPlanAnalysisMeta
-  },
-  options?: LlmRequestOptions,
-) => {
-  await loadGymCatalog().catch(() => undefined)
-  const catalogContext = getCatalogContext()
-  const intentContextParts: string[] = []
-  if (intentHints?.intentType) {
-    intentContextParts.push(`intent_type=${intentHints.intentType}`)
-  }
-  if (intentHints?.primaryGrain) {
-    intentContextParts.push(`primary_grain=${intentHints.primaryGrain}`)
-  }
-  if (intentHints?.targets?.length) {
-    intentContextParts.push(`targets=${intentHints.targets.join(', ')}`)
-  }
-  if (intentHints?.template) {
-    intentContextParts.push(`template=${intentHints.template}`)
-  }
-  if (intentHints?.secondaryTemplate) {
-    intentContextParts.push(`secondary_template=${intentHints.secondaryTemplate}`)
-  }
-  if (intentHints?.planMeta) {
-    const planMetaParts: string[] = []
-    if (intentHints.planMeta.targetsMuscles?.include?.length) {
-      planMetaParts.push(`muscle_targets=${intentHints.planMeta.targetsMuscles.include.join(',')}`)
-    }
-    if (intentHints.planMeta.targetsMuscles?.exclude?.length) {
-      planMetaParts.push(`muscle_exclude=${intentHints.planMeta.targetsMuscles.exclude.join(',')}`)
-    }
-    if (intentHints.planMeta.targetsMuscles?.strict) {
-      planMetaParts.push('muscle_strict=true')
-    }
-    if (intentHints.planMeta.usesHistoricalLifts) {
-      planMetaParts.push('uses_historical_lifts=true')
-    }
-    if (planMetaParts.length) {
-      intentContextParts.push(`plan_meta=${planMetaParts.join(';')}`)
-    }
-  }
-  const intentContext = intentContextParts.length
-    ? `Intent hints:\n- ${intentContextParts.join('\n- ')}\n\n`
-    : ''
-
-  const system: OpenAIMessage = {
-    role: 'system',
-    content:
-      'You are a SQL repair agent for a read-only gym analytics database. ' +
-      'Fix the provided SQL based on the errors and return corrected queries only. ' +
-      'Keep the original intent, query ids, and purposes unless an id is missing. ' +
-      'Follow all rules exactly and output JSON only.\n\n' +
-      `${catalogContext}\n\n${CAPABILITIES_CONTEXT}\n\n` +
-      `${intentContext}` +
-      `Semantic hints:\n${SEMANTIC_HINTS}\n\n` +
-      `Template options: ${Object.keys(TEMPLATES).join(', ')}.\n` +
-      'Rules:\n' +
-      '- Only generate SELECT statements (no UNION, no VALUES, no recursive CTEs).\n' +
-      '- Use actual table and column names from the schema. Do not use SELECT *.\n' +
-      '- Do not schema-qualify table names (e.g., avoid public.gym_lifts); use the bare allowlisted table name.\n' +
-      '- All user-provided values must be parameterized with $1..$n placeholders and params array.\n' +
-      '- Never embed literal filters (including LIKE/ILIKE patterns) for user terms. Build them via params (e.g., params: ["%shoulder%"], SQL: column ILIKE $1).\n' +
-      "- For relative time windows, use CURRENT_DATE - ($1)::interval (never write INTERVAL $1).\n" +
-      '- SQL dialect limits: do not use FILTER aggregates and do not use explicit window frames (ROWS BETWEEN / RANGE BETWEEN). Use CASE expressions and default window frames.\n' +
-      '- For body_parts analysis, use UNNEST(body_parts) AS body_part in the SELECT list and group by body_part (avoid set-returning functions in FROM). When filtering body_parts arrays, never call functions like ANY(body_parts); instead use EXISTS (SELECT 1 FROM unnest(body_parts) AS bp WHERE bp ILIKE $1) or body_parts @> ARRAY[$1::text].\n' +
-      '- Default time windows: raw/set-level queries = last 90 days; trend/weekly/monthly = last 12 months.\n' +
-      '- If the user explicitly asks for all-time or lifetime data, prepend the SQL with /*policy:time_window=all_time*/.\n' +
-      '- If the user asks for "top N" or "most/least", include ORDER BY the requested metric DESC and LIMIT N (unless you explicitly need extra rows for ties, in which case note that in the query purpose).\n' +
-      '- When using table aliases (e.g., gym_lifts gl), define them in FROM/JOIN and only reference aliases that are in scope.\n' +
-      '- Prefer a shared sets CTE for per-set data: WITH sets AS (SELECT exercise, weight, reps, COALESCE(date::date, timestamp::date) AS session_date, COALESCE(timestamp::timestamptz, date::timestamptz) AS performed_at FROM gym_lifts). Use sets as the only set-level source and reference session_date/performed_at for joins and time filters.\n' +
-      '- For muscle-group weekly volume comparison between recent 12 weeks and prior 12 weeks: use the sets CTE, join gym_day_meta gm on gm.date = sets.session_date, UNNEST(gm.body_parts) AS body_part, compute weekly volume per body_part, then average by window and compute percent change + flag >= 15%. If body_parts are not available in schema, fall back to exercise-level comparison and state the fallback in the response.\n' +
-      '- For progressive overload streaks: compute per-exercise session anchors (e.g., max estimated 1RM per day), use LAG to get delta, define break_id = SUM(CASE WHEN delta <= 0 OR delta IS NULL THEN 1 ELSE 0 END) OVER (PARTITION BY exercise ORDER BY date), then count consecutive increases per break_id. Avoid window frames and FILTER clauses.\n' +
-      `- Use timezone ${timezone} for date reasoning.\n` +
-      'Return JSON:\n' +
-      '{ "queries": [{ "id": "q1", "purpose": "...", "sql": "SELECT ...", "params": [] }], "template"?: "...", "secondaryTemplate"?: "..." }\n' +
-      'or { "refusal": { "message": "...", "reason": "..." } }',
-  }
-
-  const recentMessages = messages.slice(-12)
-  const convo: OpenAIMessage[] = recentMessages.map(message => ({
-    role: message.role,
-    content: message.content,
-  }))
-
-  const user: OpenAIMessage = {
-    role: 'user',
-    content: JSON.stringify(
-      {
-        question: input.question,
-        failedQueries: input.failedQueries,
-      },
-      null,
-      2,
-    ),
-  }
-
-  return callOpenAIJson(PLAN_SCHEMA, [system, ...convo, user], 0, options)
-}
-
-type FormattingConstraint = {
-  type: 'order' | 'format' | 'length' | 'style'
-  instruction: string
-}
-
-type ExplainInput = {
-  question: string
-  queries: GymChatQuery[]
-  intentType?: string
-  selectedTemplate?: GymChatTemplateName
-  secondaryTemplate?: GymChatTemplateName
-  explainChecklist?: string[]
-  forceCitations?: boolean
-  responseMeta?: ResponseMeta
-  queryResultMetadata?: QueryResultMeta[]
-  validationNotes?: string[]
-  planMeta?: WorkoutPlanAnalysisMeta
-  formattingConstraints?: FormattingConstraint[]
-}
-
-export const explainGymResults = async (input: ExplainInput, options?: LlmRequestOptions) => {
-  const isDiagnosticMode = input.intentType === 'diagnostic' || input.selectedTemplate === 'momentum_dropoff'
-  const planningGuidance =
-    input.intentType === 'planning'
-      ? 'Intent type = planning: propose concrete next targets grounded in historical anchors. Provide conservative vs aggressive options when possible, and cite the anchors used (recent top set, average working weight, recent PRs).'
-      : ''
-
-  const diagnosticGuidance = isDiagnosticMode
-    ? 'Diagnostic mode: compare early vs late sets within-session when possible (use set_number buckets or similar proxies), quantify the drop-off (percent and/or absolute change) with citations, and if no drop-off is found, state that explicitly along with the proxy used.'
-    : ''
-
-  const planConstraintGuidance = (() => {
-    const targets = input.planMeta?.targetsMuscles?.include ?? []
-    if (!targets.length) return ''
-    const strict = input.planMeta?.targetsMuscles?.strict ? 'strict' : 'flexible'
-    const excludes = input.planMeta?.targetsMuscles?.exclude?.length
-      ? ` Exclude: ${input.planMeta.targetsMuscles.exclude.join(', ')}.`
-      : ''
-    return (
-      `Planning constraints (${strict}): only recommend exercises that target ${targets.join(', ')}.` +
-      `${excludes} Do not add unrelated muscles, even as accessory work.`
-    )
-  })()
-  const planHistoryGuidance = input.planMeta?.usesHistoricalLifts
-    ? 'User asked to use historical lifts: anchor suggested loads to the provided query data. If no relevant history is available, say so clearly and give structure-only guidance.'
-    : ''
-
-  const checklistGuidance =
-    input.explainChecklist && input.explainChecklist.length
-      ? `Explain checklist (cover every bullet explicitly):\n- ${input.explainChecklist.join('\n- ')}`
-      : ''
-  const validationGuidance =
-    input.validationNotes && input.validationNotes.length
-      ? `Response corrections (must fix):\n- ${input.validationNotes.join('\n- ')}`
-      : ''
-  const formattingGuidance =
-    input.formattingConstraints && input.formattingConstraints.length
-      ? `User formatting requirements (must follow):\n- ${input.formattingConstraints.map(c => c.instruction).join('\n- ')}`
-      : ''
-  const extraGuidance = [
-    planningGuidance,
-    diagnosticGuidance,
-    planConstraintGuidance,
-    planHistoryGuidance,
-    checklistGuidance,
-    validationGuidance,
-    formattingGuidance,
-  ]
-    .filter(Boolean)
-    .join('\n')
-
-  const system: OpenAIMessage = {
-    role: 'system',
-    content:
-      'You are a careful gym data analyst. Use only the provided query results. ' +
-      'Do not invent numbers. Any numeric claim must include citations like [q1]. ' +
-      'If data is insufficient, explicitly state what is missing. ' +
-      'When listing ranked items, default to the top 10 unless the user specifically requests more; mention that additional entries are available in the query details. ' +
-      'For ranking questions, always include: (1) a 1-2 sentence summary, (2) a ranked list with counts, and (3) a single "Coverage/Limitations" line that states time window, rows returned, rows shown, any limit applied, and tie handling. ' +
-      'Use responseMeta and queryResultMetadata from the input to ground those counts. If top N was requested and more rows were returned than shown, say "Showing X of Y returned (top N requested: N)". Never claim "top N" if fewer than N results are shown. ' +
-      'If you mention "lowest" while discussing a top N list, label it clearly (e.g., "lowest among the top N shown") or omit it. ' +
-      'Metric consistency: use responseMeta.metricName and responseMeta.metricUnits. Do not switch to another metric (e.g., volume/lb-reps) unless the user explicitly asked for it. ' +
-      'If the question asks for a comparison window or metric not present in the queries, say you do not have that data yet and propose the exact query you would run, then ask to proceed. ' +
-      'When a query returns 5 rows or fewer, summarize them inline (e.g., a short table or bullet list) so the user does not need to open the query details. ' +
-      "Only answer the user's actual question. Do not introduce new analysis goals (e.g., body-part balance, split analysis, injury risk) unless the question explicitly asks for them. " +
-      'If queries only support a partial answer, state precisely what you can answer and what you cannot, then offer at most one short sentence proposing an additional query. ' +
-      'For simple scalar questions (counts, totals, simple all-time variants), keep the response to 1–2 sentences plus a short Coverage/Limitations line when relevant. ' +
-      `${CAPABILITIES_CONTEXT}\n` +
-'Structure assistantMessage as plain conversational text. First paragraph must directly answer the question. Then use sections with headings in this order: Key findings, Training implications, Limitations. Do not output assistantMessage as JSON – use natural sentences and bullet lists instead. ' +
-'Limit each section (especially Limitations) to observations that materially impact the specific topic asked. Never mention unrelated data gaps (e.g., body-part volume when the user asked about weekday frequency). If there is no meaningful limitation, explicitly say so instead of inventing one. ' +
-      'Only discuss metrics and implications that come directly from the provided queries; do not speculate about other measurements or recommend unrelated analyses unless the user explicitly asked for them. ' +
-      'If the user asks "why it might matter" or similar, only answer after you have computed the requested flags or comparisons; otherwise say the data is missing and offer to run the comparison query. ' +
-      'If a query purpose explicitly says it is a fallback because muscle/body_part mapping is missing, state that fallback clearly in the Limitations section. ' +
-'If a relevant query returns zero rows, say so explicitly and invite the user to adjust their request or timeframe—never fill Key findings or Training implications with generic exercise advice. ' +
-"If any query includes an error, explain the failure in plain English, propose a fix, and offer to retry. Do not respond with a generic 'try again later.' " +
-"When the user asks for a future workout/session/day, insert a 'Proposed session' subsection (before Training implications) that lists 4-6 exercises with sets/reps/load targets derived from the highest-volume or most recent rows in the queries, and cite each recommendation (e.g., '3x8 incline press at last week's top set 205 lb [q1]'). If data is sparse, build the proposal from the widest available window and note the gap under Limitations." +
-'When intentType is planning, explicitly translate historical anchors into suggested next targets (e.g., +2.5-5 lb or the next available plate jump) and cite the anchors used. ' +
-'Return JSON with assistantMessage (string), citations, optional chartSpecs, and optional followUps (array of natural-language questions the user could ask next). ' +
-'Each followUp should be grounded in the available data (e.g., compare time periods, drill into a specific exercise, examine body parts). ' +
-'FollowUps must be phrased as direct questions the user might type (e.g., "Show a corrected analysis of session frequency for top-end efforts.", "Compare top-end efforts over the last 12 months vs the last 3 months."). Avoid meta-offers like "Would you like..." or "Interested in...". ' +
-'Citations must map to query ids and row ranges.' +
-(extraGuidance ? `\n${extraGuidance}` : '') +
-(input.forceCitations
-  ? '\nBe strict: if you include digits, include citations and ensure citations are non-empty.'
-  : ''),
-  }
-
-  const user: OpenAIMessage = {
-    role: 'user',
-    content: JSON.stringify(
-      {
-        question: input.question,
-        intentType: input.intentType ?? null,
-        selectedTemplate: input.selectedTemplate ?? null,
-        secondaryTemplate: input.secondaryTemplate ?? null,
-        explainChecklist: input.explainChecklist ?? [],
-        planMeta: input.planMeta ?? null,
-        responseMeta: input.responseMeta ?? null,
-        queryResultMetadata: input.queryResultMetadata ?? [],
-        queries: input.queries.map(query => ({
-          id: query.id,
-          purpose: query.purpose,
-          rowCount: query.rowCount,
-          previewRows: query.previewRows.map((row, index) => ({ row: index, ...row })),
-          error: query.error,
-        })),
-      },
-      null,
-      2,
-    ),
-  }
-
-  return callOpenAIJson(EXPLAIN_SCHEMA, [system, user], 0.2, options) as Promise<{
-    assistantMessage: string
-    citations: GymChatCitation[]
-    chartSpecs?: GymChatChartSpec[]
-    followUps?: string[]
   }>
 }
 
-export const explainFitnessGeneral = async (messages: GymChatMessage[], options?: LlmRequestOptions) => {
-  const recent = messages.slice(-8)
-  const transcript = recent.map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n')
-  const system: OpenAIMessage = {
-    role: 'system',
-    content:
-      'You are a helpful strength coach providing general fitness guidance without using any logged data. ' +
-      'Do not claim to have reviewed logs. Clearly separate general guidance from log-backed statements. ' +
-      'Structure assistantMessage as plain text: first paragraph answers the question, then add a "General guidance" section with bullets, ' +
-      'then a "Log-backed notes" section that explicitly states no workout history was reviewed and invites the user to ask for data-backed analysis if desired. ' +
-      'You may include general numbers (sets/week, rep ranges, etc.) without citations, but avoid personalized claims about the user. ' +
-      'Return JSON with assistantMessage and optional followUps (array of clarifying questions).',
+const callOpenAIChat = async (
+  messages: OpenAIMessage[],
+  tools: OpenAITool[],
+  temperature: number,
+  options?: LlmRequestOptions,
+): Promise<OpenAIChatResponse> => {
+  const apiKey = resolveApiKey()
+  if (!apiKey) {
+    throw buildLlmError('Missing OpenAI API key.', { status: 401, retryable: false })
   }
-  const user: OpenAIMessage = {
-    role: 'user',
-    content: `Conversation context:\n${transcript}\n\nRespond to the latest user question.`,
+  const payload = JSON.stringify({
+    model: resolveModel(),
+    temperature,
+    messages,
+    tools,
+    tool_choice: 'auto',
+  })
+
+  const maxAttempts = options?.maxAttempts ?? MAX_LLM_ATTEMPTS
+  const timeoutMs = options?.timeoutMs ?? LLM_TIMEOUT_MS
+  const shouldRetry = (info: {
+    attempt: number
+    maxAttempts: number
+    status?: number
+    retryable: boolean
+    detail?: string
+  }) => {
+    if (!info.retryable || info.attempt >= info.maxAttempts) return false
+    if (options?.budget) {
+      const remainingMs = options.budget.remainingMs()
+      const minRetryWindowMs = options.budget.minRetryWindowMs ?? 2000
+      if (remainingMs <= minRetryWindowMs) {
+        return false
+      }
+    }
+    return options?.shouldRetry ? options.shouldRetry(info) : true
   }
 
-  return callOpenAIJson(FITNESS_GENERAL_SCHEMA, [system, user], 0.4, options) as Promise<{
-    assistantMessage: string
-    followUps?: string[]
-  }>
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: Response
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      response = await fetch(`${resolveApiBase()}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: payload,
+        signal: controller.signal,
+      })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw buildLlmError('LLM request timed out.', {
+          status: 504,
+          detail: 'Timed out waiting for model response.',
+          retryable: false,
+        })
+      }
+      const detail = error instanceof Error ? error.message : 'Network error'
+      const retryable = true
+      if (shouldRetry({ attempt, maxAttempts, retryable, detail })) {
+        await sleep(200 * attempt)
+        continue
+      }
+      throw buildLlmError(`LLM request failed: ${detail}`, { retryable, detail })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
+    if (!response.ok) {
+      const detail = await response.text()
+      const retryable = RETRYABLE_STATUS.has(response.status)
+      if (shouldRetry({ attempt, maxAttempts, retryable, detail, status: response.status })) {
+        await sleep(200 * attempt)
+        continue
+      }
+      throw buildLlmError(`LLM request failed: ${detail}`, {
+        status: response.status,
+        detail,
+        retryable,
+      })
+    }
+
+    return (await response.json()) as OpenAIChatResponse
+  }
+
+  throw buildLlmError('LLM request failed.', { retryable: true })
 }
+
+const buildToolResultPayload = (queries: GymChatQuery[]) => ({
+  queries: queries.map(query => ({
+    id: query.id,
+    purpose: query.purpose,
+    rowCount: query.rowCount,
+    rows: query.previewRows,
+    error: query.error,
+    ...(query.exerciseSuggestions?.length
+      ? { exerciseSuggestions: query.exerciseSuggestions }
+      : {}),
+  })),
+})
+
+const extractCitations = (text: string, queries: GymChatQuery[]): GymChatCitation[] => {
+  const citations: GymChatCitation[] = []
+  const markerRegex = /\[(q\d+)\]/g
+  let match: RegExpExecArray | null
+  while ((match = markerRegex.exec(text)) !== null) {
+    const queryId = match[1]
+    const query = queries.find(item => item.id === queryId)
+    if (query && !query.error) {
+      citations.push({
+        marker: queryId,
+        queryId,
+        rowStart: 0,
+        rowEnd: Math.max(0, (query.previewRows?.length ?? 1) - 1),
+      })
+    }
+  }
+  return citations
+}
+
+const FOLLOW_UP_SECTION_REGEX = /\n*\*\*Follow-up questions?:\*\*\s*[\s\S]*$/i
+
+const extractFollowUps = (text: string): string[] | undefined => {
+  const followUpMatch = text.match(/\*\*Follow-up questions?:\*\*\s*([\s\S]*?)$/i)
+  if (!followUpMatch) return undefined
+  const lines = followUpMatch[1]
+    .split('\n')
+    .map(line => line.replace(/^[-*\d.)\s]+/, '').trim())
+    .filter(line => line.length > 0 && line.endsWith('?'))
+  return lines.length > 0 ? lines.slice(0, 4) : undefined
+}
+
+const stripFollowUpSection = (text: string): string =>
+  text.replace(FOLLOW_UP_SECTION_REGEX, '').trimEnd()
+
+export async function runGymChatConversation(input: {
+  systemPrompt: string
+  messages: OpenAIMessage[]
+  tools: OpenAITool[]
+  executeQueries: (
+    queries: Array<{ id: string; purpose: string; sql: string; params: unknown[] }>,
+  ) => Promise<ToolCallResult>
+  onStatus?: (stage: string, message: string) => void
+  options?: LlmRequestOptions
+}): Promise<GymChatLlmResult> {
+  const messages = input.messages
+  if (!messages.length || messages[0].role !== 'system') {
+    messages.unshift({ role: 'system', content: input.systemPrompt })
+  }
+
+  const executedQueries: GymChatQuery[] = []
+  let assistantMessage = ''
+
+  for (let round = 0; round < 4; round += 1) {
+    input.onStatus?.('thinking', 'Analyzing your question...')
+    const response = await callOpenAIChat(messages, input.tools, 0.2, input.options)
+    const choice = response?.choices?.[0]
+    if (!choice || !choice.message) {
+      throw buildLlmError('LLM response missing message.', { status: 500, retryable: false })
+    }
+
+    const toolCalls = choice.message.tool_calls ?? []
+    if (toolCalls.length) {
+      messages.push({
+        role: 'assistant',
+        content: choice.message.content ?? '',
+        tool_calls: toolCalls,
+      })
+
+      for (const toolCall of toolCalls) {
+        if (toolCall.type !== 'function') {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: 'Unsupported tool call type.' }),
+          })
+          continue
+        }
+        if (toolCall.function.name !== 'execute_gym_query') {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: `Unsupported tool: ${toolCall.function.name}` }),
+          })
+          continue
+        }
+
+        let parsedArgs: { queries?: Array<{ id: string; purpose: string; sql: string; params: unknown[] }> } = {}
+        try {
+          parsedArgs = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {}
+        } catch {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: 'Invalid tool arguments JSON.' }),
+          })
+          continue
+        }
+
+        const queries = Array.isArray(parsedArgs.queries) ? parsedArgs.queries : []
+        input.onStatus?.('query', 'Running database queries...')
+        const result = await input.executeQueries(queries)
+        executedQueries.push(...result.queries)
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(buildToolResultPayload(result.queries)),
+        })
+      }
+      continue
+    }
+
+    assistantMessage = choice.message.content ?? ''
+    messages.push({ role: 'assistant', content: assistantMessage })
+    break
+  }
+
+  if (!assistantMessage) {
+    throw buildLlmError('LLM did not return a final response.', { status: 500, retryable: false })
+  }
+
+  const citations = extractCitations(assistantMessage, executedQueries)
+  const followUps = extractFollowUps(assistantMessage)
+  const cleanedMessage = followUps ? stripFollowUpSection(assistantMessage) : assistantMessage
+
+  return {
+    assistantMessage: cleanedMessage,
+    queries: executedQueries,
+    citations,
+    chartSpecs: undefined,
+    followUps,
+  }
+}
+
+export { callOpenAIJson, extractJson }

@@ -1,0 +1,74 @@
+---
+title: 'How I Use AI Coding Tools in My Workflow'
+publishedAt: '2026-01-28'
+summary: 'A practical look at the AI workflow behind my portfolio projects: where the tools shine, where they fail, and how I keep things sane.'
+---
+
+I have been building features on this portfolio with AI in the loop for a while now. It has been great, but it has also been messy. The short version: tools matter, but workflow matters more. I get the best results when I keep a tight loop of planning, building, and testing, and when I treat the models like collaborators that need guardrails and oversight.
+
+Below is how that workflow evolved, where it broke, and what I do now.
+
+## The starting point: Codex, excitement, and a cost wall
+
+I started with Codex because it was included with my ChatGPT subscription. It felt like magic. Then I found OpenCode and started experimenting with roles and custom instructions. It was powerful, but the token usage got expensive fast. I could not justify another subscription just to keep experimenting. That cost pressure was a real constraint, and it pushed me toward tools I already had access to.
+
+That is when I found the Codex VS Code extension. It became my main engine for big changes. It holds context well, and it fits inside my normal editing flow. But it also made some questionable edits. The most common pattern was trying to add more rules to the SQL policy when the correct answer was simpler: give the LLM more freedom, not more shackles. That forced me to choose between heavy planning up front or a lot of oversight after the fact.
+
+## The loop that actually worked
+
+My best results came from using different models for different jobs:
+
+- Plan with Claude (fast context, better reasoning)
+- Build with Codex (fast implementation inside the editor)
+- Test with a separate ChatGPT agent (UI and data behavior)
+
+It sounds like overkill, but it ended up being the fastest path to stable changes. I used Claude to turn raw conversations into a clean prompt and plan. Then I handed that plan to Codex for implementation. After that, I ran a testing agent that probed the UI and functionality, wrote a report, and I fed the report back into Claude for the next planning pass. It was a loop.
+
+## The failure mode that forced a pivot
+
+Two problems kept showing up.
+
+First: context tracking and pronouns. A user would ask about lat pulldowns, then follow with, "what was the max lift for that?" The assistant would lose the reference to "that" and get confused. The responses looked plausible but were wrong, which is worse than a clear failure.
+
+Second: SQL drift. Longer threads led to SQL syntax errors, wrong columns, and increasingly complex queries. This got worse because I kept trying to enforce more rules in the system prompt, which actually made the model more brittle.
+
+That is where Claude's suggestion landed: stop trying to manually encode every SQL rule in prompts and offload more of the SQL composition to the LLM with clearer constraints and better examples. In other words, simplify the system prompt, and trust the model to do the heavy lifting within guardrails.
+
+That was the pivot.
+
+## What improved after the pivot
+
+The difference was big. Not perfect, but honestly massive.
+
+- Fewer broken queries and fewer syntax errors
+- Better answers to follow-up questions
+- Faster iteration and less rework
+- Better UI behavior and more consistent testing
+
+Most of the remaining issues were minor and nitpicky, which is exactly where I want to be. The hard, structural failures were gone.
+
+## The workflow I use now (simple version)
+
+If I had to summarize the process for another builder, I would keep it short:
+
+1. Write a clean problem statement and a small list of acceptance tests.
+2. Use a planner model to expand that into a focused prompt and plan.
+3. Use a builder model to implement the plan in the repo.
+4. Run a testing agent to attack the UI and data paths.
+5. Feed the report back into planning and iterate.
+
+That is it. No magic. Just a tight loop, where each model does one job well.
+
+## Lessons learned
+
+- **Workflow beats model choice.** A mediocre model in a good loop outperforms a strong model used carelessly.
+- **Guardrails are necessary, but too many are a trap.** The system prompt should reduce risk, not choke the model.
+- **Costs are real.** Token usage and subscriptions add up. I only keep tools in the flow if they earn their cost.
+- **Testing is part of the AI workflow.** Treat the model like a new teammate. You still need to review and test.
+
+## Why this matters for my portfolio
+
+I am not trying to *automate coding.* I am trying to build better projects faster while learning how these models actually behave in the real world. This workflow makes me slower for a day, but faster for the month. It makes the work more reliable. And it helps me build products that are more than just demos.
+
+Much love,
+Dillon
