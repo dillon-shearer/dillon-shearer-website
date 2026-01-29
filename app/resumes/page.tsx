@@ -54,7 +54,7 @@ export default function ResumesPage() {
 
                 {/* Preview skills */}
                 <div className="flex flex-wrap gap-2 mb-8">
-                  {variant.previewSkills.map((skill) => (
+                  {variant.skillsSpotlight.slice(0, 5).map((skill) => (
                     <span
                       key={skill}
                       className="px-2.5 py-1 text-xs bg-white/5 text-white/50 rounded-full border border-white/5 transition-colors duration-200 group-hover:text-white/70"

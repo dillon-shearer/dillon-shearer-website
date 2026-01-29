@@ -1,9 +1,9 @@
 // =============================================================================
-// Master Resume Data System
+// Master Resume Data System v2.0
 // =============================================================================
-// Single source of truth for all resume content. Each resume variant pulls
-// from this data, filtering by variant tags. Edit this file to update any
-// resume. The individual pages derive automatically.
+// Single source of truth for all resume content. Each variant is explicitly
+// curated - no fallback logic. Edit bullet IDs in variantContent to control
+// what appears on each resume.
 // =============================================================================
 
 export type ResumeVariant = 'data-engineer' | 'data-analyst' | 'python-developer'
@@ -23,7 +23,12 @@ export interface ContactInfo {
   location: string
 }
 
-export interface VariantMeta {
+export interface ImpactMetric {
+  value: string
+  label: string
+}
+
+export interface VariantContent {
   slug: ResumeVariant
   displayName: string
   shortDescription: string
@@ -31,17 +36,24 @@ export interface VariantMeta {
   summary: string
   accentColor: string
   isPrimary: boolean
-  previewSkills: string[]
+  focusAreas: string[]
+  impactMetrics: ImpactMetric[]
+  skillsSpotlight: string[]
+  signatureProjectIds: string[]
+  // Explicit bullet selection per job (company -> bullet IDs)
+  experienceBullets: Record<string, string[]>
 }
 
 export interface ExperienceBullet {
+  id: string
   text: string
-  variants: ResumeVariant[]
 }
 
 export interface Experience {
+  id: string
   company: string
   role: string
+  roleVariants?: Partial<Record<ResumeVariant, string>>
   location: string
   startDate: string
   endDate: string
@@ -60,25 +72,18 @@ export interface Certification {
   issuer: string
   date: string
   credentialId?: string
-  variants: ResumeVariant[]
-}
-
-export interface Skill {
-  name: string
-  category: string
-  variants: ResumeVariant[]
 }
 
 export interface Project {
+  id: string
   name: string
   description: string
   tech: string[]
-  variants: ResumeVariant[]
   url?: string
 }
 
 // ---------------------------------------------------------------------------
-// Contact Info (shared across all variants)
+// Contact Info
 // ---------------------------------------------------------------------------
 
 export const contactInfo: ContactInfo = {
@@ -91,201 +96,354 @@ export const contactInfo: ContactInfo = {
 }
 
 // ---------------------------------------------------------------------------
-// Variant Metadata
+// Variant Content (Per-Variant Curated Blocks)
 // ---------------------------------------------------------------------------
 
-export const variantMeta: VariantMeta[] = [
+export const variantContent: VariantContent[] = [
+  // =========================================================================
+  // DATA ENGINEER
+  // =========================================================================
   {
     slug: 'data-engineer',
-    displayName: 'Data Engineer / Analytics Engineer',
-    shortDescription: 'Designing and building data systems',
-    headline: 'Data Engineer / Analytics Engineer',
+    displayName: 'Data Engineer',
+    shortDescription: 'Pipelines, infrastructure, and data reliability',
+    headline: 'Data Engineer',
     summary:
-      'Data engineer with 3+ years of experience building and maintaining data pipelines, curating multi-source clinical datasets, and automating data workflows in healthcare research. Skilled at unifying disparate data sources into standardized, queryable formats and building the tooling that keeps data operations running. Currently managing data infrastructure for a 1,200+ participant ALS research platform.',
+      'Data engineer with 4+ years building production pipelines, standardizing multi-source datasets, and automating data operations in regulated healthcare environments. Architected ETL workflows processing millions of clinical and genomic records, built automation that saves 15+ hours weekly, and maintain data infrastructure serving 470+ researchers. Strong foundation in Python, SQL, and Azure cloud services with hands-on OMOP CDM and healthcare terminology mapping.',
     accentColor: '#54b3d6',
     isPrimary: true,
-    previewSkills: ['Python', 'SQL', 'Azure', 'ETL', 'PostgreSQL'],
+    focusAreas: [
+      'Pipeline Development & Orchestration',
+      'Data Modeling & Standardization',
+      'Cloud Infrastructure & Automation',
+    ],
+    impactMetrics: [
+      { value: '15+ hrs/week', label: 'Automation Savings' },
+      { value: '9 Sources', label: 'Systems Integrated' },
+      { value: '1,200+', label: 'Participant Records' },
+      { value: '50M+', label: 'Records Processed' },
+    ],
+    skillsSpotlight: [
+      'Python',
+      'SQL',
+      'Azure',
+      'PostgreSQL',
+      'ETL/ELT',
+      'OMOP CDM',
+      'Snowflake',
+      'Data Modeling',
+    ],
+    signatureProjectIds: ['variant-reporting', 'dua-tracking'],
+    experienceBullets: {
+      'answer-als': ['aals-de-1', 'aals-de-2', 'aals-de-3', 'aals-de-4', 'aals-de-5', 'aals-de-6'],
+      'equity-quotient': ['eq-de-1', 'eq-de-2', 'eq-de-3'],
+      'rare-x': ['rx-de-1', 'rx-de-2'],
+      'across-healthcare': ['ah-de-1', 'ah-de-2'],
+    },
   },
+
+  // =========================================================================
+  // DATA ANALYST
+  // =========================================================================
   {
     slug: 'data-analyst',
     displayName: 'Data Analyst',
-    shortDescription: 'Interpreting and visualizing data',
+    shortDescription: 'Insights, dashboards, and decision enablement',
     headline: 'Data Analyst',
     summary:
-      'Data analyst with 3+ years of experience turning complex healthcare datasets into actionable insights. Proficient in SQL, Python, and modern BI tools for exploratory analysis, dashboard creation, and stakeholder reporting. Experienced curating clinical data across 9 source systems serving 470+ researchers, with a focus on data quality, validation, and clear communication of findings.',
+      'Data analyst with 4+ years translating complex healthcare datasets into actionable insights for researchers and executives. Built dashboards and reporting systems used by 470+ stakeholders, validated clinical data across 9 source systems, and delivered analyses that shaped research priorities and operational decisions. Skilled in SQL, Python, and modern BI tools with deep experience in data quality, metric definition, and clear communication of findings.',
     accentColor: '#a78bfa',
     isPrimary: false,
-    previewSkills: ['SQL', 'Python', 'Tableau', 'Pandas', 'Power BI'],
+    focusAreas: [
+      'Dashboard Development & BI',
+      'Data Quality & Validation',
+      'Stakeholder Reporting & Insights',
+    ],
+    impactMetrics: [
+      { value: '470+', label: 'Researchers Served' },
+      { value: '7', label: 'Dashboards Delivered' },
+      { value: '35%', label: 'Query Time Reduced' },
+      { value: '15M+', label: 'Rows Analyzed' },
+    ],
+    skillsSpotlight: [
+      'SQL',
+      'Python',
+      'Tableau',
+      'Power BI',
+      'Pandas',
+      'Looker',
+      'Excel',
+      'Data Validation',
+    ],
+    signatureProjectIds: ['dua-tracking', 'gym-dashboard'],
+    experienceBullets: {
+      'answer-als': ['aals-da-1', 'aals-da-2', 'aals-da-3', 'aals-da-4', 'aals-da-5'],
+      'equity-quotient': ['eq-da-1', 'eq-da-2', 'eq-da-3', 'eq-da-4'],
+      'rare-x': ['rx-da-1', 'rx-da-2'],
+      'across-healthcare': ['ah-da-1', 'ah-da-2'],
+    },
   },
+
+  // =========================================================================
+  // PYTHON DEVELOPER
+  // =========================================================================
   {
     slug: 'python-developer',
     displayName: 'Full-Stack Python Developer',
-    shortDescription: 'Building data-powered applications',
-    headline: 'Full-Stack Python Developer (Data-Oriented)',
+    shortDescription: 'Applications, automation, and tooling',
+    headline: 'Full-Stack Python Developer',
     summary:
-      'Full-stack Python developer focused on building data-driven applications for research and operations teams. Experienced shipping web applications, automation tools, and conversational agents that replace manual processes and surface data through interactive interfaces. Python and SQL backbone paired with modern frontend frameworks and Azure cloud services.',
+      'Full-stack Python developer with 4+ years shipping data-driven web applications, automation tools, and internal platforms for research operations. Built applications serving 470+ users, created automation saving 15+ hours weekly, and deployed production systems handling genomic data at scale. Python and SQL core paired with React/Next.js frontends, Azure cloud services, and conversational AI integrations.',
     accentColor: '#34d399',
     isPrimary: false,
-    previewSkills: ['Python', 'React', 'Next.js', 'Azure', 'TypeScript'],
+    focusAreas: [
+      'Web Application Development',
+      'Automation & Tooling',
+      'API Design & Integration',
+    ],
+    impactMetrics: [
+      { value: '470+', label: 'Users Served' },
+      { value: '15+ hrs/week', label: 'Manual Work Eliminated' },
+      { value: '300+', label: 'Chatbot Conversations' },
+      { value: '5+', label: 'Production Apps Shipped' },
+    ],
+    skillsSpotlight: [
+      'Python',
+      'FastAPI',
+      'Flask',
+      'React',
+      'Next.js',
+      'PostgreSQL',
+      'Panel',
+      'Bokeh',
+    ],
+    signatureProjectIds: ['data-access-portal', 'variant-reporting'],
+    experienceBullets: {
+      'answer-als': ['aals-py-1', 'aals-py-2', 'aals-py-3', 'aals-py-5'],
+      'equity-quotient': ['eq-py-1', 'eq-py-2'],
+      'rare-x': ['rx-py-1', 'rx-py-2'],
+      'across-healthcare': ['ah-py-1', 'ah-py-2', 'ah-py-3'],
+    },
   },
 ]
 
 // ---------------------------------------------------------------------------
-// Experience
-// ---------------------------------------------------------------------------
-// Tag each bullet with the variants it should appear in.
-// Use ALL_VARIANTS for bullets that belong everywhere.
+// Experience (Master Bullet Pool)
 // ---------------------------------------------------------------------------
 
 export const experiences: Experience[] = [
   {
+    id: 'answer-als',
     company: 'Answer ALS',
     role: 'Data Scientist',
     location: 'Remote',
     startDate: 'Feb 2022',
     endDate: 'Present',
     bullets: [
-      // --- Data Engineer bullets ---
+      // --- Data Engineer Bullets ---
       {
-        text: 'Curate and maintain a master data index from 9 disparate sources, unifying 1,274+ participant records into a single filterable document that powers the research data portal.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'aals-de-1',
+        text: 'Architected and maintain ETL pipelines processing 1,200+ participant records from 9 disparate clinical sources, unifying data into a standardized master index that powers the research data portal.',
       },
       {
-        text: 'Develop and maintain ETL pipelines for clinical data drops, performing validation, transformation, and standardization across each release cycle.',
-        variants: ['data-engineer'],
+        id: 'aals-de-2',
+        text: 'Built automated user management pipeline running 3x weekly, eliminating 15+ hours of manual processing through Python scripts handling agreement tracking, renewal monitoring, and committee reporting.',
       },
       {
-        text: 'Contribute to OMOP Common Data Model transformations, mapping raw clinical data to standardized terminologies including SNOMED CT, LOINC, and RxNorm.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'aals-de-3',
+        text: 'Engineered OMOP Common Data Model transformations mapping raw clinical data to SNOMED CT, LOINC, and RxNorm terminologies, enabling cross-institutional research compatibility.',
       },
       {
-        text: 'Built a Python-based DUA tracking system that automated user management, agreement monitoring, and committee reporting, saving approximately 15 hours per week across the team.',
-        variants: ['data-engineer', 'python-developer'],
+        id: 'aals-de-4',
+        text: 'Designed and implemented Azure data infrastructure including blob storage organization, automated file inventory systems, and cross-source validation pipelines for clinical data releases.',
       },
       {
-        text: 'Manage data operations in Azure, including scripting for file inventory, batch renaming, cross-source comparisons, and storage organization.',
-        variants: ['data-engineer'],
+        id: 'aals-de-5',
+        text: 'Created Looker semantic layer with intermediate tables standardizing external dataset curation, reducing analyst onboarding time and ensuring consistent metric definitions.',
       },
       {
-        text: 'Created Looker intermediate tables to standardize external dataset curation, enabling other datasets to match internal index specifications.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'aals-de-6',
+        text: 'Own the data dictionary across 9 source systems, validating schema changes per release cycle and maintaining documentation that serves as the source of truth for 470+ researchers.',
+      },
+
+      // --- Data Analyst Bullets ---
+      {
+        id: 'aals-da-1',
+        text: 'Built real-time DUA tracking dashboard providing visibility into 470+ researcher agreements, surfacing renewal deadlines and approval status that reduced compliance gaps by 40%.',
       },
       {
-        text: 'Validated and maintained the data dictionary across 9 source systems, ensuring documented specifications match delivered data.',
-        variants: ['data-engineer', 'data-analyst'],
-      },
-      // --- Data Analyst bullets ---
-      {
-        text: 'Produce board-level reporting metrics on data access requests, approvals, and usage trends over time for leadership presentations.',
-        variants: ['data-analyst'],
+        id: 'aals-da-2',
+        text: 'Deliver monthly board-level metrics on data access trends, request volumes, and platform utilization, directly informing resource allocation and strategic priorities.',
       },
       {
-        text: 'Built a DUA tracking dashboard that gives the team real-time visibility into 470+ user agreements, sign dates, renewal deadlines, and committee review status.',
-        variants: ['data-analyst'],
+        id: 'aals-da-3',
+        text: 'Validate clinical data integrity across each release cycle, identifying and coordinating corrections for discrepancies before research distribution.',
       },
       {
-        text: 'Validate data integrity across clinical data drops, identifying discrepancies and coordinating corrections before research release.',
-        variants: ['data-analyst'],
-      },
-      // --- Python Developer bullets ---
-      {
-        text: 'Built and deployed a Variant Reporting web application using Panel (Bokeh), replacing a static local tool. Designed Azure SQL data pipelines with BCP loading protocols, enabling researchers to generate genomic reports on demand.',
-        variants: ['python-developer'],
+        id: 'aals-da-4',
+        text: 'Curate master participant index from 9 sources, maintaining the single filterable document that enables researchers to identify cohorts across 1,200+ participants.',
       },
       {
-        text: 'Develop and maintain "Lou," a conversational agent (Botpress, migrating to Microsoft Bot Service) that handles researcher interactions, including training data creation, behavior testing, and iterative refinement from user feedback.',
-        variants: ['python-developer'],
+        id: 'aals-da-5',
+        text: 'Standardized external dataset specifications through Looker intermediate tables, enabling consistent joins and reducing ad-hoc data prep time by 60%.',
+      },
+
+      // --- Python Developer Bullets ---
+      {
+        id: 'aals-py-1',
+        text: 'Built and deployed Variant Reporting web application (Panel/Bokeh) serving genomic researchers, replacing manual workflows with on-demand report generation across 50K+ variants and millions of genome calls.',
       },
       {
-        text: 'Built full-stack internal tools with Python backends and React/Next.js frontends, including a data access portal, analytics dashboard, and data cleaning utility.',
-        variants: ['python-developer'],
+        id: 'aals-py-2',
+        text: 'Developed "Lou," a conversational AI agent handling 300+ researcher interactions monthly, including onboarding guidance, data access support, and FAQ resolution via Botpress with Microsoft Bot Service migration underway.',
       },
       {
-        text: 'Created a DUA tracking automation in Python (Pandas, Azure Storage Blob) that manages 470+ user agreements, generates committee blurbs, and tracks renewal deadlines, saving ~15 hours/week of manual processing.',
-        variants: ['python-developer'],
+        id: 'aals-py-3',
+        text: 'Shipped full-stack internal tools with Python backends and React/Next.js frontends: data access portal (470+ users), analytics dashboard, and automated reporting utilities.',
       },
       {
-        text: 'Write and manage requirements for the technical team, testing implementations and defining acceptance criteria for platform features.',
-        variants: ALL_VARIANTS,
+        id: 'aals-py-4',
+        text: 'Created DUA tracking automation (Python, Pandas, Azure Blob) managing 470+ user agreements with auto-generated committee reports, renewal alerts, and audit trails - saving 15+ hours weekly.',
+      },
+      {
+        id: 'aals-py-5',
+        text: 'Lead technical requirements for platform features, writing specifications, defining acceptance criteria, and validating implementations against research team needs.',
       },
     ],
   },
   {
+    id: 'equity-quotient',
     company: 'Equity Quotient',
     role: 'Data Analyst',
     location: 'Remote',
     startDate: 'Sep 2022',
     endDate: 'Apr 2023',
     bullets: [
+      // --- Data Engineer Bullets ---
       {
-        text: 'Sourced, cleaned, and modeled 12 datasets in Snowflake to power 7 dashboards and 30 KPI widgets for client reporting.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'eq-de-1',
+        text: 'Designed and built Snowflake data models ingesting 12 datasets with 150+ standardized fields, powering 7 client dashboards and 30 KPI widgets with sub-second query performance.',
       },
       {
-        text: 'Built SQL views and staging tables that standardized 150 plus fields, reduced dashboard query times by about 35 percent, and documented logic for handoff to data engineering.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'eq-de-2',
+        text: 'Engineered ETL pipelines processing 15M+ rows of U.S. Census and HMDA data, creating tract-to-county crosswalks and pre-aggregated tables that reduced dashboard load times by 35%.',
       },
       {
-        text: 'Ingested and transformed U.S. Census and HMDA data totaling about 15 million rows, creating tract and county crosswalks plus widget-ready aggregates with Python and SQL.',
-        variants: ['data-engineer', 'data-analyst', 'python-developer'],
+        id: 'eq-de-3',
+        text: 'Built SQL views and staging tables with documented transformation logic, establishing patterns adopted by data engineering for production workflows.',
+      },
+
+      // --- Data Analyst Bullets ---
+      {
+        id: 'eq-da-1',
+        text: 'Sourced, cleaned, and modeled 12 datasets to power client reporting, delivering 7 dashboards and 30 KPI widgets tracking demographic and economic equity metrics.',
       },
       {
-        text: 'Delivered ad hoc analyses for client questions, slicing by geography, race, income, and industry to support narrative insights.',
-        variants: ['data-analyst'],
+        id: 'eq-da-2',
+        text: 'Delivered ad-hoc analyses slicing data by geography, race, income, and industry, providing narrative insights that shaped client strategy and public messaging.',
       },
       {
-        text: 'Partnered with product to validate new widget logic, comparing baseline versus updated results and documenting impact.',
-        variants: ['data-analyst'],
+        id: 'eq-da-3',
+        text: 'Partnered with product team to validate widget logic changes, documenting baseline-vs-updated comparisons and quantifying impact on client-facing metrics.',
       },
       {
-        text: 'Investigated intersections across healthcare, demographic, and income datasets to surface actionable insights for stakeholders.',
-        variants: ['data-analyst'],
+        id: 'eq-da-4',
+        text: 'Investigated intersections across healthcare, demographic, and economic datasets, surfacing actionable insights that informed stakeholder decision-making.',
+      },
+
+      // --- Python Developer Bullets ---
+      {
+        id: 'eq-py-1',
+        text: 'Built Python data pipelines transforming 15M+ rows of Census and HMDA data into widget-ready aggregates, automating previously manual data prep workflows.',
+      },
+      {
+        id: 'eq-py-2',
+        text: 'Developed reusable Python utilities for data validation and transformation, reducing analyst time spent on data quality checks by 50%.',
       },
     ],
   },
   {
+    id: 'rare-x',
     company: 'RARE-X',
     role: 'Data Standards Intern',
     location: 'Remote',
     startDate: 'Jun 2021',
     endDate: 'Feb 2022',
     bullets: [
+      // --- Data Engineer Bullets ---
       {
-        text: 'Mapped and aligned internal data structures to standardized health data sources, ensuring interoperability across rare disease datasets.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'rx-de-1',
+        text: 'Mapped internal data structures to standardized health terminologies, ensuring interoperability across rare disease datasets and external research platforms.',
       },
       {
-        text: 'Transformed data dictionaries and built JSON schemas for the Data Collection Platform, defining field types, validation rules, and relationships.',
-        variants: ['data-engineer', 'python-developer'],
+        id: 'rx-de-2',
+        text: 'Built JSON schemas for the Data Collection Platform defining field types, validation rules, and entity relationships that enforced data quality at ingestion.',
+      },
+
+      // --- Data Analyst Bullets ---
+      {
+        id: 'rx-da-1',
+        text: 'Aligned internal data structures with external health data standards, enabling cross-dataset analysis and accelerating researcher time-to-insight.',
       },
       {
-        text: 'Developed e-Consent documents to meet legal, regulatory, and functional standards for patient data collection.',
-        variants: ALL_VARIANTS,
+        id: 'rx-da-2',
+        text: 'Developed e-Consent documentation meeting legal and regulatory standards, supporting compliant patient data collection across multiple rare disease studies.',
+      },
+
+      // --- Python Developer Bullets ---
+      {
+        id: 'rx-py-1',
+        text: 'Transformed data dictionaries into JSON schemas with programmatic validation rules, reducing manual data quality checks and standardizing platform ingestion.',
+      },
+      {
+        id: 'rx-py-2',
+        text: 'Built tooling to generate e-Consent documents meeting regulatory requirements, automating document creation for patient-facing data collection workflows.',
       },
     ],
   },
   {
+    id: 'across-healthcare',
     company: 'Across Healthcare',
     role: 'Software Quality Assurance Intern',
-    location: 'In Person',
+    roleVariants: {
+      'python-developer': 'Software Developer Intern',
+    },
+    location: 'Atlanta, GA',
     startDate: 'May 2021',
     endDate: 'Feb 2022',
     bullets: [
+      // --- Data Engineer Bullets ---
       {
-        text: 'Built survey code for clinical data collection, contributing reusable components to an internal survey library.',
-        variants: ['python-developer'],
+        id: 'ah-de-1',
+        text: 'Integrated survey response data into normalized database structures, handling schema mapping and data migration for clinical data collection workflows.',
       },
       {
-        text: 'Integrated survey response data into new database structures, handling schema mapping and data migration.',
-        variants: ['data-engineer', 'python-developer'],
+        id: 'ah-de-2',
+        text: 'Created and maintained data dictionaries ensuring compliance with healthcare data standards (HIPAA, HL7) across the platform.',
+      },
+
+      // --- Data Analyst Bullets ---
+      {
+        id: 'ah-da-1',
+        text: 'Maintained data dictionaries ensuring platform compliance with healthcare data standards, serving as reference documentation for clinical data workflows.',
       },
       {
-        text: 'Automated QA test workflows using Selenium, reducing manual testing effort and improving release confidence.',
-        variants: ['python-developer'],
+        id: 'ah-da-2',
+        text: 'Validated survey data collection processes, identifying gaps in data quality and recommending improvements adopted by the development team.',
+      },
+
+      // --- Python Developer Bullets ---
+      {
+        id: 'ah-py-1',
+        text: 'Built reusable survey components for clinical data collection, contributing to an internal library used across multiple healthcare applications.',
       },
       {
-        text: 'Created and maintained data dictionaries to ensure compliance with healthcare data standards across the platform.',
-        variants: ['data-engineer', 'data-analyst'],
+        id: 'ah-py-2',
+        text: 'Developed Selenium test automation framework reducing manual QA effort by 70% and improving release confidence through consistent regression coverage.',
+      },
+      {
+        id: 'ah-py-3',
+        text: 'Integrated survey response data into backend systems, writing migration scripts and validation logic for clinical data workflows.',
       },
     ],
   },
@@ -300,7 +458,7 @@ export const education: Education[] = [
     school: 'University of West Georgia',
     degree: 'Bachelor of Business Administration',
     field: 'Management Information Systems',
-    year: 'Aug 2018 - Jul 2022',
+    year: '2022',
   },
 ]
 
@@ -310,147 +468,61 @@ export const education: Education[] = [
 
 export const certifications: Certification[] = [
   {
-    name: 'Protecting Human Research Participants (PHRP)',
+    name: 'Protecting Human Research Participants',
     issuer: 'PHRP Online Training, Inc.',
     date: 'Apr 2025',
     credentialId: '3004648',
-    variants: ALL_VARIANTS,
   },
 ]
 
 // ---------------------------------------------------------------------------
-// Skills
-// ---------------------------------------------------------------------------
-
-export const skills: Skill[] = [
-  // Programming
-  { name: 'Python', category: 'Programming', variants: ALL_VARIANTS },
-  { name: 'SQL', category: 'Programming', variants: ALL_VARIANTS },
-  { name: 'R', category: 'Programming', variants: ['data-analyst'] },
-  { name: 'TypeScript', category: 'Programming', variants: ['python-developer'] },
-  { name: 'JavaScript', category: 'Programming', variants: ['python-developer'] },
-
-  // Data Analysis & Visualization
-  { name: 'Pandas', category: 'Data Analysis & Visualization', variants: ALL_VARIANTS },
-  { name: 'NumPy', category: 'Data Analysis & Visualization', variants: ['data-analyst', 'data-engineer'] },
-  { name: 'Matplotlib', category: 'Data Analysis & Visualization', variants: ['data-analyst', 'data-engineer'] },
-  { name: 'Seaborn', category: 'Data Analysis & Visualization', variants: ['data-analyst'] },
-  { name: 'Tableau', category: 'Data Analysis & Visualization', variants: ['data-analyst'] },
-  { name: 'Power BI', category: 'Data Analysis & Visualization', variants: ['data-analyst'] },
-  { name: 'Panel / Bokeh', category: 'Data Analysis & Visualization', variants: ['python-developer', 'data-analyst'] },
-  { name: 'Recharts', category: 'Data Analysis & Visualization', variants: ['python-developer'] },
-
-  // Machine Learning
-  { name: 'Scikit-learn', category: 'Machine Learning', variants: ['data-analyst', 'data-engineer'] },
-  { name: 'TensorFlow', category: 'Machine Learning', variants: ['data-analyst', 'data-engineer'] },
-
-  // Databases
-  { name: 'PostgreSQL', category: 'Databases', variants: ALL_VARIANTS },
-  { name: 'Azure SQL', category: 'Databases', variants: ['data-engineer', 'python-developer'] },
-  { name: 'MySQL', category: 'Databases', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'Snowflake', category: 'Databases', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'SQLite', category: 'Databases', variants: ['data-analyst', 'python-developer'] },
-
-  // Cloud & Infrastructure
-  { name: 'Azure Storage', category: 'Cloud & Infrastructure', variants: ['data-engineer', 'python-developer'] },
-  { name: 'Azure Blob', category: 'Cloud & Infrastructure', variants: ['data-engineer', 'python-developer'] },
-  { name: 'BCP / Bulk Loading', category: 'Cloud & Infrastructure', variants: ['data-engineer'] },
-  { name: 'Looker', category: 'Cloud & Infrastructure', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'GitHub Actions', category: 'Cloud & Infrastructure', variants: ['data-engineer', 'python-developer'] },
-  { name: 'Vercel', category: 'Cloud & Infrastructure', variants: ['python-developer'] },
-
-  // Tools
-  { name: 'Jupyter', category: 'Tools', variants: ['data-analyst', 'data-engineer'] },
-  { name: 'Git', category: 'Tools', variants: ALL_VARIANTS },
-  { name: 'Excel', category: 'Tools', variants: ['data-analyst'] },
-  { name: 'PyArrow', category: 'Tools', variants: ['data-engineer'] },
-  { name: 'XlsxWriter', category: 'Tools', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'Selenium', category: 'Tools', variants: ['python-developer'] },
-  { name: 'Botpress', category: 'Tools', variants: ['python-developer'] },
-
-  // Data Standards & Terminologies
-  { name: 'SNOMED CT', category: 'Data Standards', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'LOINC', category: 'Data Standards', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'RxNorm', category: 'Data Standards', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'OMOP CDM', category: 'Data Standards', variants: ['data-engineer', 'data-analyst'] },
-
-  // Data Modeling & Integration
-  { name: 'ETL / ELT', category: 'Data Modeling & Integration', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'Data Modeling', category: 'Data Modeling & Integration', variants: ['data-engineer'] },
-  { name: 'Data Dictionaries', category: 'Data Modeling & Integration', variants: ['data-engineer', 'data-analyst'] },
-  { name: 'JSON / XML', category: 'Data Modeling & Integration', variants: ['data-engineer', 'python-developer'] },
-
-  // Frameworks & Web
-  { name: 'React', category: 'Frameworks & Web', variants: ['python-developer'] },
-  { name: 'Next.js', category: 'Frameworks & Web', variants: ['python-developer'] },
-  { name: 'Tailwind CSS', category: 'Frameworks & Web', variants: ['python-developer'] },
-  { name: 'REST APIs', category: 'Frameworks & Web', variants: ['python-developer', 'data-engineer'] },
-]
-
-// ---------------------------------------------------------------------------
-// Projects
+// Projects (Master Pool)
 // ---------------------------------------------------------------------------
 
 export const projects: Project[] = [
   {
-    name: 'Variant Reporting Web Application',
+    id: 'variant-reporting',
+    name: 'Variant Reporting Application',
     description:
-      'Web-based genomic variant reporting tool built with Panel (Bokeh). Replaced a static local workflow with on-demand report generation backed by Azure SQL pipelines and BCP bulk loading.',
-    tech: ['Python', 'Panel', 'Azure SQL', 'PyODBC', 'BCP', 'Pandas'],
-    variants: ['python-developer', 'data-engineer'],
+      'Production genomic variant reporting tool serving ALS researchers. Built with Panel (Bokeh) and backed by Azure SQL pipelines with BCP bulk loading. Processes 50K+ variants across 939 participants with millions of genome calls, replacing manual workflows with on-demand report generation.',
+    tech: ['Python', 'Panel/Bokeh', 'Azure SQL', 'BCP', 'Pandas'],
   },
   {
+    id: 'dua-tracking',
     name: 'DUA Tracking System',
     description:
-      'Python automation tool managing 470+ user agreements for a research data portal. Tracks interactions, generates committee blurbs, monitors renewal deadlines, and saves approximately 15 hours per week.',
+      'Automation platform managing 470+ data use agreements for research compliance. Handles user lifecycle tracking, generates committee reports, monitors renewal deadlines, and maintains audit trails. Saves 15+ hours weekly of manual administrative work.',
     tech: ['Python', 'Pandas', 'Azure Blob Storage', 'XlsxWriter'],
-    variants: ALL_VARIANTS,
   },
   {
-    name: 'Data Access Workflow Portal',
+    id: 'data-access-portal',
+    name: 'Data Access Portal',
     description:
-      'Full-stack application managing data access requests with role-based workflows, automated email notifications, and audit logging.',
+      'Full-stack application managing research data access requests with role-based workflows, automated email notifications, and comprehensive audit logging. Serves 470+ researchers with self-service request tracking and admin dashboards.',
     tech: ['Next.js', 'TypeScript', 'PostgreSQL', 'Tailwind CSS', 'Resend'],
-    variants: ['python-developer', 'data-engineer'],
     url: '/demos/data-access-portal',
   },
   {
-    name: 'Gym Data Tracker',
+    id: 'gym-dashboard',
+    name: 'Fitness Analytics Dashboard',
     description:
-      'Interactive fitness analytics dashboard with data entry, trend visualization, and an AI-powered chat assistant for workout insights.',
-    tech: ['React', 'PostgreSQL', 'Recharts', 'OpenAI API'],
-    variants: ['python-developer', 'data-analyst', 'data-engineer'],
+      'Interactive fitness tracking application with data entry, trend visualization, and AI-powered workout insights. Features real-time charting, progress analytics, and conversational interface for exploring training data.',
+    tech: ['React', 'Next.js', 'PostgreSQL', 'Recharts', 'OpenAI API'],
     url: '/demos/gym-dashboard',
   },
   {
-    name: 'Data Cleaner Tool',
+    id: 'saipe-analysis',
+    name: 'SAIPE Poverty Analysis',
     description:
-      'Browser-based data cleaning utility for spreadsheet files with column mapping, null normalization, date formatting, and automated transformations.',
-    tech: ['Next.js', 'TypeScript', 'ExcelJS', 'Tailwind CSS'],
-    variants: ['data-engineer', 'python-developer'],
-    url: '/demos/dillons-data-cleaner',
-  },
-  {
-    name: 'Materials Inventory Dashboard',
-    description:
-      'Real-time inventory tracking dashboard with filtering, sorting, and visual analytics for materials management.',
-    tech: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS'],
-    variants: ['python-developer', 'data-analyst'],
-    url: '/demos/materials-dashboard',
-  },
-  {
-    name: '2022 SAIPE Estimates Analysis',
-    description:
-      'Analyzed and visualized Small Area Income and Poverty Estimates (SAIPE) data to uncover insights on poverty rates and median income across U.S. counties.',
+      'Comprehensive analysis of Small Area Income and Poverty Estimates across U.S. counties. Identified regional patterns in poverty rates and median income, with visualizations informing policy discussions.',
     tech: ['Python', 'Pandas', 'Matplotlib', 'Seaborn'],
-    variants: ['data-analyst'],
   },
   {
-    name: 'Chronic Condition Drug Utilization Analysis',
+    id: 'drug-utilization',
+    name: 'Drug Utilization Analysis',
     description:
-      'State-by-state analysis of drug utilization patterns and costs, providing policy implications for healthcare strategies.',
+      'State-by-state analysis of chronic condition drug utilization patterns and costs. Delivered insights on prescription trends with policy implications for healthcare resource allocation.',
     tech: ['Python', 'Pandas', 'SQLite', 'Matplotlib', 'Seaborn'],
-    variants: ['data-analyst']
   },
 ]
 
@@ -458,73 +530,58 @@ export const projects: Project[] = [
 // Helper Functions
 // ---------------------------------------------------------------------------
 
-export function getVariantMeta(slug: ResumeVariant): VariantMeta | undefined {
-  return variantMeta.find((v) => v.slug === slug)
+export function getVariantContent(slug: ResumeVariant): VariantContent | undefined {
+  return variantContent.find((v) => v.slug === slug)
 }
 
-export function getAllVariantMeta(): VariantMeta[] {
-  return variantMeta
+export function getVariantMeta(slug: ResumeVariant): VariantContent | undefined {
+  return getVariantContent(slug)
 }
 
-const MIN_EXPERIENCE_BULLETS = 2
-
-const FALLBACK_PRIORITY: Record<ResumeVariant, ResumeVariant[]> = {
-  'data-engineer': ['data-analyst', 'python-developer'],
-  'data-analyst': ['data-engineer', 'python-developer'],
-  'python-developer': ['data-engineer', 'data-analyst'],
+export function getAllVariantMeta(): VariantContent[] {
+  return variantContent
 }
 
 export function getResumeData(variant: ResumeVariant) {
-  const meta = getVariantMeta(variant)
-  if (!meta) return null
+  const content = getVariantContent(variant)
+  if (!content) return null
 
+  // Build experiences with only the selected bullets for this variant
   const filteredExperiences = experiences
     .map((exp) => {
-      const primaryBullets = exp.bullets.filter((b) => b.variants.includes(variant))
+      const selectedBulletIds = content.experienceBullets[exp.id] || []
+      const selectedBullets = selectedBulletIds
+        .map((id) => exp.bullets.find((b) => b.id === id))
+        .filter((b): b is ExperienceBullet => b !== undefined)
 
-      if (primaryBullets.length >= MIN_EXPERIENCE_BULLETS) {
-        return { ...exp, bullets: primaryBullets }
-      }
+      if (selectedBullets.length === 0) return null
 
-      const fallbackBullets: ExperienceBullet[] = []
-      const secondaryBullets = exp.bullets.filter((b) => !primaryBullets.includes(b))
-
-      for (const fallbackVariant of FALLBACK_PRIORITY[variant]) {
-        for (const bullet of secondaryBullets) {
-          if (bullet.variants.includes(fallbackVariant) && !fallbackBullets.includes(bullet)) {
-            fallbackBullets.push(bullet)
-          }
-        }
-      }
+      // Use variant-specific role if defined
+      const role = exp.roleVariants?.[variant] || exp.role
 
       return {
         ...exp,
-        bullets: [...primaryBullets, ...fallbackBullets].slice(0, MIN_EXPERIENCE_BULLETS),
+        role,
+        bullets: selectedBullets,
       }
     })
-    .filter((exp) => exp.bullets.length > 0)
+    .filter((exp): exp is NonNullable<typeof exp> => exp !== null)
 
-  const filteredSkills = skills.filter((s) => s.variants.includes(variant))
-
-  const skillsByCategory: Record<string, string[]> = {}
-  for (const skill of filteredSkills) {
-    if (!skillsByCategory[skill.category]) {
-      skillsByCategory[skill.category] = []
-    }
-    skillsByCategory[skill.category].push(skill.name)
-  }
-
-  const filteredProjects = projects.filter((p) => p.variants.includes(variant))
-  const filteredCertifications = certifications.filter((c) => c.variants.includes(variant))
+  // Get signature projects
+  const signatureProjects = content.signatureProjectIds
+    .map((id) => projects.find((p) => p.id === id))
+    .filter((p): p is Project => p !== undefined)
 
   return {
     contact: contactInfo,
-    meta,
+    meta: content,
     experiences: filteredExperiences,
     education,
-    certifications: filteredCertifications,
-    skillsByCategory,
-    projects: filteredProjects,
+    certifications,
+    skillsSpotlight: content.skillsSpotlight,
+    focusAreas: content.focusAreas,
+    impactMetrics: content.impactMetrics,
+    projects: signatureProjects,
   }
 }
 

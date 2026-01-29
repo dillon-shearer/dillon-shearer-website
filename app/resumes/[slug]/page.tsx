@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!meta) return {}
 
   return {
-    title: `${meta.displayName} Resume | DWD`,
+    title: `${meta.displayName} Resume | Dillon Shearer`,
     description: meta.summary,
     openGraph: {
       title: `${meta.displayName} Resume | Data With Dillon`,
@@ -43,8 +43,8 @@ export default async function ResumePage({ params }: Props) {
   if (!data) notFound()
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-4xl mx-auto px-6 py-10">
+    <div className="min-h-screen bg-black text-white print:bg-white print:text-black">
+      <div className="max-w-4xl mx-auto px-6 py-10 print:px-0 print:py-0 print:max-w-none">
         {/* Top bar — hidden in print */}
         <div className="flex items-center justify-between mb-10 print:hidden">
           <Link
