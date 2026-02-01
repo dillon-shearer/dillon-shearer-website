@@ -13,7 +13,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
 
   const isInProgress = demo.status !== 'live'
-  const exploreHref = demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`
+  const exploreHref = demo.demoUrl ?? (demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`)
 
   // Close on Escape key
   useEffect(() => {
@@ -71,10 +71,12 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
               className={`rounded-full px-2.5 py-1 ${
                 demo.status === 'live'
                   ? 'bg-green-100/10 text-green-300'
-                  : 'bg-yellow-100/10 text-yellow-200'
+                  : demo.status === 'ongoing'
+                    ? 'bg-blue-100/10 text-blue-300'
+                    : 'bg-yellow-100/10 text-yellow-200'
               }`}
             >
-              {demo.status === 'live' ? '✓ Live' : '⏳ In Progress'}
+              {demo.status === 'live' ? '✓ Live' : demo.status === 'ongoing' ? '↻ Ongoing' : '⏳ In Progress'}
             </span>
             {demo.featured && (
               <span className="rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 px-2.5 py-1 text-white">

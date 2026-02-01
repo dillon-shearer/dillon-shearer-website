@@ -8,7 +8,7 @@ export interface Demo {
   category: 'frontend' | 'fullstack' | 'data-viz' | 'component' | 'api'
   complexity: 'beginner' | 'intermediate' | 'advanced'
   buildTime: string
-  status: 'live' | 'in-progress'
+  status: 'live' | 'in-progress' | 'ongoing'
   featured: boolean
   githubUrl?: string
   liveUrl?: string

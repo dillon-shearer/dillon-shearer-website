@@ -88,8 +88,8 @@ export default function DemoCard({ demo, onSeeMore, index }: DemoCardProps) {
   }, [markAsLoaded])
 
   const mobileOrderClass = demo.mobileReady ? 'order-first md:order-none' : ''
-  const exploreHref = demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`
-  const previewBase = demo.demoUrl ?? exploreHref
+  const exploreHref = demo.demoUrl ?? (demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`)
+  const previewBase = exploreHref
   const queryJoiner = previewBase.includes('?') ? '&' : '?'
   const previewSrc = `${previewBase}${queryJoiner}embed=1&nosplash=1`
   const mobileBlocked = !demo.mobileReady && isMobileViewport
@@ -150,10 +150,12 @@ export default function DemoCard({ demo, onSeeMore, index }: DemoCardProps) {
                 className={`rounded-full px-2.5 py-1 ${
                   demo.status === 'live'
                     ? 'bg-green-100/10 text-green-300'
-                    : 'bg-yellow-100/10 text-yellow-200'
+                    : demo.status === 'ongoing'
+                      ? 'bg-blue-100/10 text-blue-300'
+                      : 'bg-yellow-100/10 text-yellow-200'
                 }`}
               >
-                {demo.status === 'live' ? '✓ Live' : '⏳ In Progress'}
+                {demo.status === 'live' ? '✓ Live' : demo.status === 'ongoing' ? '↻ Ongoing' : '⏳ In Progress'}
               </span>
               {demo.featured && (
                 <span className="rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 px-2.5 py-1 text-white">

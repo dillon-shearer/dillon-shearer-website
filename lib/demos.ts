@@ -113,6 +113,31 @@ const demos: Demo[] = [
       'Preview transformations instantly and export the cleaned data back to CSV/XLSX.',
       'All processing runs client-side for privacy.'
     ]
+  },
+  {
+    slug: 'certification-trainer',
+    title: 'Certification Training Platform',
+    description:
+      'Interactive study platform for IT certification prep. Practice with multiple question types, track your progress, and review explanations. Currently featuring Microsoft PL-300 Power BI Data Analyst materials.',
+    image: '/images/demos/certification-trainer-preview.svg',
+    techStack: ['Next.js', 'TypeScript', 'Tailwind CSS', 'localStorage'],
+    category: 'frontend',
+    complexity: 'intermediate',
+    buildTime: '1 week',
+    status: 'ongoing',
+    featured: true,
+    githubUrl:
+      'https://github.com/dillon-shearer/dillon-shearer-website/tree/main/app/certifications',
+    liveUrl: '/certifications',
+    demoUrl: '/certifications',
+    highlights: [
+      'Multiple question types: True/False, Multiple Choice, Drag & Drop, and more.',
+      'Client-side progress tracking with localStorage - works offline.',
+      'Score tracking with detailed answer explanations for learning.',
+      'Filter questions by status: all, incomplete, or retry incorrects.',
+      'Topic-based organization aligned with official exam objectives.',
+      'Expandable platform supporting multiple certifications over time.'
+    ]
   }
 ]
 
