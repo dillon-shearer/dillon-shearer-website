@@ -90,6 +90,22 @@ Located in `app/demos/data-access-portal/`:
 - **Embedded mode** via `?embed=1` query parameter for visualization embedding
 - **Marketing components** (hero, about, contact) in `app/components/`
 - **3D visualizations** using `@react-three/fiber` and Three.js
+- **Custom hooks** in `app/components/hooks/` for reusable UI logic
+- **Interactive components**: MagneticButton, animated cards, scroll-based reveals
+
+### UI Conventions
+
+**Header/Navigation (`app/components/nav.tsx`):**
+- Fixed positioning with hide-on-scroll (down) / show-on-scroll (up) behavior
+- Mobile overlay is full-screen with close button in top-right
+- Main layout requires `pt-20` spacing to account for fixed header
+- Color scheme: `#54b3d6` (cyan accent), dark background, white/60 for secondary text
+
+**Professional Styling Standards:**
+- Text opacity levels: `white` (primary), `white/60` (secondary), `white/50` (tertiary), `white/40` (muted)
+- Subtle backgrounds: `white/[0.03]` for hover states, `white/10` for borders
+- Spacing follows Tailwind's refined scale: `gap-2.5`, `py-3.5`, `space-y-3.5`
+- Transitions: 200-300ms for hovers, 300-400ms for layout shifts
 
 ## AI Agent Workflow
 
@@ -149,6 +165,12 @@ When working on gym chat queries:
 
 - Runs on **port 3001** (not 3000) - check `package.json`
 - Allowed dev origins: `localhost:3000` and `192.168.1.207:3000`
+
+### Layout & Spacing
+
+- Header uses `fixed` positioning (not `sticky`) with hide-on-scroll behavior
+- Main content requires `pt-20` to prevent overlap with fixed header
+- Footer spacing: `mt-32` for generous separation from content
 
 ## Key Technologies
 
