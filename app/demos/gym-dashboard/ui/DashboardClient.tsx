@@ -913,7 +913,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         style={{ transform: `translate(${bubbleOffset.x}px, ${bubbleOffset.y}px)` }}
       >
         {isChatOpen ? (
-          <div className="h-[calc(100vh-120px)] sm:h-[75vh] max-h-[640px] w-[calc(100vw-32px)] sm:w-[min(460px,94vw)] overflow-hidden rounded-2xl bg-[#0d1117] border border-white/10 shadow-2xl backdrop-blur">
+          <div className="h-[500px] sm:h-[600px] w-[min(380px,calc(100vw-32px))] sm:w-[420px] overflow-hidden rounded-2xl bg-black/95 border border-white/20 shadow-2xl backdrop-blur-sm">
             <ChatClient embedded onClose={() => setIsChatOpen(false)} />
           </div>
         ) : null}
