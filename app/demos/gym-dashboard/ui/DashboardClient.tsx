@@ -158,7 +158,7 @@ function StatChip({ label, value, sub, className }: {
   label: string; value: number | string; sub?: string; className?: string
 }) {
   return (
-    <div className={['rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3.5 flex flex-col gap-2 hover:border-white/20 transition-colors', className].join(' ')}>
+    <div className={['rounded-xl border border-white/12 bg-white/[0.02] px-4 py-3.5 flex flex-col gap-2 hover:border-[#54b3d6]/30 transition-all', className].join(' ')}>
       <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">{label}</div>
       <div className="text-2xl font-bold leading-none font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
         {typeof value === 'number' ? value.toLocaleString() : value}
@@ -510,85 +510,82 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const backVisible = mode === 'day' && !!prevMode
 
   const Filters = (
-    <div className="flex flex-col items-stretch gap-3 w-full" aria-label="Dashboard filters">
-      {/* Range selector buttons - Mobile optimized with 2x2 grid on small screens */}
-      <div className="flex-1 min-w-0">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {(['day','week','month','year'] as RangeMode[]).map(k => {
-            const active = mode === k
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setMode(k)}
-                aria-pressed={active}
-                className={[
-                  'h-11 sm:h-10 px-3 rounded-lg border text-sm font-semibold tracking-wide transition-all touch-target',
-                  'focus:outline-none focus:ring-2 focus:ring-[#54b3d6]/40 active:scale-95',
-                  active
-                    ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
-                    : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20 hover:text-white'
-                ].join(' ')}
-              >
-                {k === 'day' ? 'Day' : k === 'week' ? '7d' : k === 'month' ? '30d' : 'YTD'}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Date navigation - Mobile optimized spacing */}
-      {mode === 'day' || mode === 'year' ? (
-        <div className="flex items-center gap-2 justify-center">
-          {backVisible && mode === 'day' && (
+    <div className="w-full" aria-label="Dashboard filters">
+      {/* Range selector buttons */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {(['day','week','month','year'] as RangeMode[]).map(k => {
+          const active = mode === k
+          return (
             <button
+              key={k}
               type="button"
-              title={`Back to ${prevMode}`}
-              aria-label="Back"
-              onClick={() => {
-                if (!prevMode) return
-                setMode(prevMode)
-                setPrevMode(null)
-                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
-              }}
-              className="h-11 sm:h-10 px-3 sm:px-4 rounded-lg border text-sm font-medium bg-white/[0.03] border-white/10 text-white/80 hover:bg-white/[0.06] hover:border-white/20 transition-all active:scale-95 touch-target"
+              onClick={() => setMode(k)}
+              aria-pressed={active}
+              className={[
+                'h-11 sm:h-10 px-3 rounded-lg border text-sm font-semibold tracking-wide transition-all touch-target',
+                'focus:outline-none focus:ring-2 focus:ring-[#54b3d6]/40 active:scale-95',
+                active
+                  ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
+                  : 'bg-white/[0.05] border-white/15 text-white/80 hover:bg-white/[0.08] hover:border-[#54b3d6]/30 hover:text-white'
+              ].join(' ')}
             >
-              <span className="hidden sm:inline">← Back</span>
-              <span className="sm:hidden">←</span>
+              {k === 'day' ? 'Day' : k === 'week' ? '7d' : k === 'month' ? '30d' : 'YTD'}
             </button>
-          )}
-          <button
-            className="h-11 sm:h-10 w-11 sm:w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 touch-target"
-            onClick={mode === 'day' ? () => setDayDate(d => shiftYMD(d, -1)) : decYear}
-            aria-label={mode === 'day' ? 'Previous Day' : 'Previous Year'}
-            disabled={mode === 'day' && datasetMinDate ? dayDate <= datasetMinDate : false}
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-              <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
-            </svg>
-          </button>
-          <div className="flex-1 max-w-[200px] text-center text-sm font-medium text-white/80 font-mono px-2">
-            {mode === 'day' ? formatLongDate(dayDate) : year}
-          </div>
-          <button
-            className="h-11 sm:h-10 w-11 sm:w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 touch-target"
-            onClick={mode === 'day' ? () => setDayDate(d => clampToToday(shiftYMD(d, +1))) : incYear}
-            aria-label={mode === 'day' ? 'Next Day' : 'Next Year'}
-            disabled={mode === 'day' ? dayDate >= todayUTCKey() : year >= currentYear}
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-              <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
-            </svg>
-          </button>
-        </div>
-      ) : null}
+          )
+        })}
+      </div>
     </div>
   )
+
+  const DateNavigation = mode === 'day' || mode === 'year' ? (
+    <div className="flex items-center gap-2">
+      {backVisible && mode === 'day' && (
+        <button
+          type="button"
+          title={`Back to ${prevMode}`}
+          aria-label="Back"
+          onClick={() => {
+            if (!prevMode) return
+            setMode(prevMode)
+            setPrevMode(null)
+            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+          }}
+          className="h-11 sm:h-10 px-3 sm:px-4 rounded-lg border text-sm font-medium bg-white/[0.05] border-white/15 text-white/80 hover:bg-white/[0.08] hover:border-[#54b3d6]/30 transition-all active:scale-95 touch-target"
+        >
+          <span className="hidden sm:inline">← Back</span>
+          <span className="sm:hidden">←</span>
+        </button>
+      )}
+      <button
+        className="h-11 sm:h-10 w-11 sm:w-10 flex items-center justify-center rounded-lg border bg-white/[0.05] hover:bg-white/[0.08] border-white/15 hover:border-[#54b3d6]/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 touch-target"
+        onClick={mode === 'day' ? () => setDayDate(d => shiftYMD(d, -1)) : decYear}
+        aria-label={mode === 'day' ? 'Previous Day' : 'Previous Year'}
+        disabled={mode === 'day' && datasetMinDate ? dayDate <= datasetMinDate : false}
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+          <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
+        </svg>
+      </button>
+      <div className="flex-1 min-w-[160px] max-w-[200px] text-center text-sm font-medium text-white/80 font-mono px-2">
+        {mode === 'day' ? formatLongDate(dayDate) : year}
+      </div>
+      <button
+        className="h-11 sm:h-10 w-11 sm:w-10 flex items-center justify-center rounded-lg border bg-white/[0.05] hover:bg-white/[0.08] border-white/15 hover:border-[#54b3d6]/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 touch-target"
+        onClick={mode === 'day' ? () => setDayDate(d => clampToToday(shiftYMD(d, +1))) : incYear}
+        aria-label={mode === 'day' ? 'Next Day' : 'Next Year'}
+        disabled={mode === 'day' ? dayDate >= todayUTCKey() : year >= currentYear}
+      >
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+          <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
+        </svg>
+      </button>
+    </div>
+  ) : null
 
   const DownloadButton = (
     <button
       onClick={() => setShowDownload(true)}
-      className="h-10 px-4 text-sm font-medium bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg transition-all flex items-center gap-2"
+      className="w-full sm:w-auto h-11 sm:h-10 px-4 text-sm font-semibold bg-white/[0.05] hover:bg-white/[0.08] border border-white/15 hover:border-[#54b3d6]/30 rounded-lg transition-all flex items-center justify-center gap-2 touch-target active:scale-95"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -648,13 +645,14 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         <div className="mt-6 sm:mt-8 mb-6 sm:mb-8">
           <UtilityCard
             filters={Filters}
+            dateNavigation={DateNavigation}
             downloadButton={DownloadButton}
             insightContext={{ scope: insightScope, selectedExercises, dateFrom, dateTo }}
           />
         </div>
 
         {!hasData ? (
-          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-8 sm:p-12 text-center">
+          <div className="bg-white/[0.02] border border-white/12 rounded-xl p-8 sm:p-12 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/5 mb-3 sm:mb-4">
               <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -672,7 +670,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               {/* KPI Cards - Stack on mobile, grid on tablet+ - CENTERED TEXT */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {/* TOTAL VOLUME */}
-                <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                <div className="group relative bg-white/[0.02] border border-white/12 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="relative text-center">
                     <div className="dashboard-stat-label mb-3">Total Volume</div>
@@ -682,7 +680,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 </div>
 
                 {/* GYM DAYS */}
-                <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                <div className="group relative bg-white/[0.02] border border-white/12 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="relative text-center">
                     <div className="dashboard-stat-label mb-3">Gym Days</div>
@@ -695,7 +693,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 </div>
 
                 {/* EXERCISE VARIETY */}
-                <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden sm:col-span-2 lg:col-span-1">
+                <div className="group relative bg-white/[0.02] border border-white/12 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden sm:col-span-2 lg:col-span-1">
                   <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <div className="relative text-center">
                     <div className="dashboard-stat-label mb-3">Exercise Variety</div>
@@ -709,7 +707,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 {/* Left column: Chart + Stats */}
                 <div className="space-y-4 min-w-0">
                   {/* Daily Volume Chart */}
-                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6">
+                  <div className="bg-white/[0.02] border border-white/12 rounded-xl p-4 sm:p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-base sm:text-lg font-bold tracking-tight text-center sm:text-left w-full">Daily Volume</h2>
                     </div>
@@ -719,7 +717,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                   {/* Split & Body-part frequency - Stack on mobile, side-by-side on tablet+ */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Split Frequency */}
-                    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 flex flex-col min-h-[180px]">
+                    <div className="bg-white/[0.02] border border-white/12 rounded-xl p-4 sm:p-5 flex flex-col min-h-[180px]">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                         <h2 className="text-base font-bold tracking-tight text-center sm:text-left">Split Frequency</h2>
                         <div className="text-[10px] font-mono text-white/40 truncate text-center sm:text-right">
@@ -734,7 +732,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     </div>
 
                     {/* Body-part Frequency */}
-                    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 flex flex-col min-h-[180px]">
+                    <div className="bg-white/[0.02] border border-white/12 rounded-xl p-4 sm:p-5 flex flex-col min-h-[180px]">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-base font-bold tracking-tight text-center sm:text-left flex-1">Body Part Frequency</h2>
                         <span className="text-[10px] font-mono text-white/40 flex-shrink-0">
@@ -777,7 +775,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             {/* PRs + Heatmap - Stack on mobile, side-by-side on desktop */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
               {/* Exercise PRs Table - Mobile optimized with horizontal scroll */}
-              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6">
+              <div className="bg-white/[0.02] border border-white/12 rounded-xl p-4 sm:p-6">
                 <div className="flex items-center justify-center sm:justify-start gap-2 mb-4 sm:mb-5">
                   <h2 className="text-base sm:text-lg font-bold tracking-tight leading-none">Exercise PRs</h2>
                   <Tooltip text={e1RMTooltip}>
@@ -831,7 +829,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               </div>
 
               {/* Volume Heatmap - Mobile optimized with min-width to prevent disappearing */}
-              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6 flex flex-col min-h-[280px]">
+              <div className="bg-white/[0.02] border border-white/12 rounded-xl p-4 sm:p-6 flex flex-col min-h-[280px]">
                 <div className="flex items-center gap-2 mb-4 sm:mb-5 justify-center sm:justify-start">
                   <h2 className="text-base sm:text-lg font-bold tracking-tight leading-none">Volume Heatmap</h2>
                   <Tooltip text={heatmapTooltip}>
@@ -847,7 +845,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             </section>
 
             {/* Recent sessions - Mobile optimized cards */}
-            <section className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6 mb-8">
+            <section className="bg-white/[0.02] border border-white/12 rounded-xl p-4 sm:p-6 mb-8">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-5 sm:mb-6">
                 <h2 className="text-base sm:text-lg font-bold tracking-tight text-center sm:text-left w-full sm:w-auto">Recent Sessions</h2>
                 <Pager
@@ -864,7 +862,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                   <Tooltip key={s.date} text="Click to view detailed breakdown">
                     <button
                       onClick={() => jumpToDay(s.date)}
-                      className="group relative text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 hover:border-[#54b3d6]/40 transition-all rounded-lg p-4 w-full overflow-hidden active:scale-98 touch-target"
+                      className="group relative text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/12 hover:border-[#54b3d6]/40 transition-all rounded-lg p-4 w-full overflow-hidden active:scale-98 touch-target"
                       aria-label={`Open daily view for ${s.date}`}
                     >
                       <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/0 to-[#54b3d6]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -941,11 +939,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
       {showDownload && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={() => setShowDownload(false)}>
           <div
-            className="bg-[#0a0a0a] border border-white/10 rounded-t-2xl sm:rounded-xl max-w-md w-full shadow-2xl animate-slide-up sm:animate-none max-h-[90vh] sm:max-h-none overflow-auto"
+            className="bg-black/95 border border-white/20 rounded-t-2xl sm:rounded-xl max-w-md w-full shadow-2xl animate-slide-up sm:animate-none max-h-[90vh] sm:max-h-none overflow-auto backdrop-blur-sm"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 sm:px-6 py-4 sm:py-5 border-b border-white/10 sticky top-0 bg-[#0a0a0a] z-10">
+            <div className="flex items-center justify-between px-5 sm:px-6 py-4 sm:py-5 border-b border-white/10 sticky top-0 bg-black/95 backdrop-blur-sm z-10">
               <h3 className="text-base sm:text-lg font-bold tracking-tight">Download Dataset</h3>
               <button
                 onClick={() => setShowDownload(false)}
@@ -968,7 +966,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     className={`px-3 sm:px-4 py-3 rounded-lg border text-sm font-semibold transition-all touch-target active:scale-95 ${
                       dlRange === 'current'
                         ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
-                        : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20'
+                        : 'bg-white/[0.05] border-white/15 text-white/80 hover:bg-white/[0.08] hover:border-[#54b3d6]/30'
                     }`}
                     onClick={() => setDlRange('current')}
                   >
@@ -978,7 +976,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     className={`px-3 sm:px-4 py-3 rounded-lg border text-sm font-semibold transition-all touch-target active:scale-95 ${
                       dlRange === 'all'
                         ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
-                        : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20'
+                        : 'bg-white/[0.05] border-white/15 text-white/80 hover:bg-white/[0.08] hover:border-[#54b3d6]/30'
                     }`}
                     onClick={() => setDlRange('all')}
                   >
@@ -1019,7 +1017,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             <div className="px-5 sm:px-6 py-4 sm:py-5 border-t border-white/10 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 sticky bottom-0 bg-[#0a0a0a]">
               <button
                 onClick={() => setShowDownload(false)}
-                className="w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg text-sm font-semibold transition-all touch-target active:scale-95"
+                className="w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-white/[0.05] hover:bg-white/[0.08] border border-white/15 hover:border-white/20 rounded-lg text-sm font-semibold transition-all touch-target active:scale-95"
               >
                 Cancel
               </button>

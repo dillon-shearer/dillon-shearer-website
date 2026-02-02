@@ -405,13 +405,13 @@ useEffect(() => {
     if (!open) return null
     return (
       <div className="fixed inset-0 z-50" aria-modal="true" role="dialog" aria-label={title}>
-        <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-        <div className="absolute inset-x-0 bottom-0 md:inset-y-0 md:right-0 md:left-auto md:w-[420px] bg-gray-900 border-t md:border-l border-gray-700 rounded-t-2xl md:rounded-l-2xl shadow-xl">
-          <div className="flex items-center justify-between p-4 border-b border-gray-800">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+        <div className="absolute inset-x-0 bottom-0 md:inset-y-0 md:right-0 md:left-auto md:w-[420px] bg-black/95 border-t md:border-l border-white/20 rounded-t-2xl md:rounded-l-2xl shadow-xl backdrop-blur-sm">
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
             <h3 className="text-white font-semibold">{title}</h3>
             <button
               onClick={onClose}
-              className="px-2 py-1 text-gray-300 hover:text-white rounded"
+              className="px-2 py-1 text-white/60 hover:text-white rounded transition-colors"
               aria-label="Close"
             >
               Close
@@ -442,38 +442,41 @@ useEffect(() => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-gray-900 rounded-lg border border-gray-700 p-8 max-w-md w-full text-center">
-          <h1 className="text-2xl font-bold text-white mb-6">Gym Tracker Access</h1>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault()
-              const ok = await verifyLiftPassword(password)
-              if (ok) {
-                setIsAuthenticated(true)
-                localStorage.setItem('gymAuth', 'true')
-                bootstrap()
-              } else {
-                alert('Incorrect password')
-                setPassword('')
-              }
-            }}
-          >
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
-              autoFocus
-            />
-            <button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors"
+        <div className="bg-white/[0.02] rounded-xl border border-white/10 p-8 max-w-md w-full text-center relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold text-white mb-6">Gym Tracker Access</h1>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault()
+                const ok = await verifyLiftPassword(password)
+                if (ok) {
+                  setIsAuthenticated(true)
+                  localStorage.setItem('gymAuth', 'true')
+                  bootstrap()
+                } else {
+                  alert('Incorrect password')
+                  setPassword('')
+                }
+              }}
             >
-              Access Tracker
-            </button>
-          </form>
-          <p className="text-gray-500 text-xs mt-4">This page is password protected</p>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-4 py-3 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 mb-4 transition-all"
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="w-full bg-[#54b3d6] hover:bg-[#6dc5e8] text-black font-medium py-3 rounded-lg transition-all hover:shadow-[0_0_20px_rgba(84,179,214,0.3)]"
+              >
+                Access Tracker
+              </button>
+            </form>
+            <p className="text-white/40 text-xs mt-4">This page is password protected</p>
+          </div>
         </div>
       </div>
     )
@@ -483,8 +486,9 @@ useEffect(() => {
     <div className="min-h-screen bg-black p-6">
       <div className="max-w-2xl mx-auto flex flex-col items-center">
         {/* Title */}
-        <div className="mb-4 w-full">
-          <h1 className="text-3xl font-bold text-white text-center">Gym Tracker</h1>
+        <div className="mb-6 w-full">
+          <h1 className="text-3xl font-bold text-white text-center tracking-tight">Gym Tracker</h1>
+          <p className="text-center text-white/40 text-sm mt-2">Track your lifts with precision</p>
         </div>
 
         {/* Top buttons — two clear groups with divider; mobile-friendly */}
@@ -494,13 +498,13 @@ useEffect(() => {
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 onClick={() => setShowDayInfo(true)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg border border-gray-700 text-sm"
+                className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.06] text-white rounded-lg border border-white/10 hover:border-[#54b3d6]/30 text-sm transition-all"
               >
                 Day Info
               </button>
               <button
                 onClick={() => setShowBodyParts(true)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg border border-gray-700 text-sm"
+                className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.06] text-white rounded-lg border border-white/10 hover:border-[#54b3d6]/30 text-sm transition-all"
               >
                 Body Parts
               </button>
@@ -508,15 +512,15 @@ useEffect(() => {
 
             {/* Divider: horizontal on mobile, vertical on desktop */}
             <div className="my-2 md:my-0">
-              <div className="block md:hidden h-px w-full bg-gray-800" />
-              <div className="hidden md:block w-px h-8 bg-gray-800 mx-2" />
+              <div className="block md:hidden h-px w-full bg-white/10" />
+              <div className="hidden md:block w-px h-8 bg-white/10 mx-2" />
             </div>
 
             {/* Group B: View Dashboard / Logout */}
             <div className="flex flex-wrap items-center justify-center gap-2">
               <a
                 href="/demos/gym-dashboard"
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm text-center"
+                className="px-4 py-2 bg-[#54b3d6] text-black rounded-lg hover:bg-[#6dc5e8] transition-all text-sm text-center font-medium"
               >
                 View Dashboard
               </a>
@@ -525,7 +529,7 @@ useEffect(() => {
                   localStorage.removeItem('gymAuth')
                   setIsAuthenticated(false)
                 }}
-                className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+                className="px-4 py-2 bg-white/[0.03] text-white/60 rounded-lg hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 border border-white/10 transition-all text-sm"
               >
                 Logout
               </button>
@@ -534,190 +538,193 @@ useEffect(() => {
         </div>
 
         {status === 'success' && (
-          <div className="bg-green-900/20 border border-green-800 rounded-lg p-4 mb-6 w-full text-center">
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 mb-6 w-full text-center backdrop-blur-sm">
             <p className="text-green-400">Set saved. Add another or change exercise.</p>
           </div>
         )}
         {status === 'error' && (
-          <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 mb-6 w-full text-center">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6 w-full text-center backdrop-blur-sm">
             <p className="text-red-400">Error saving data. Check your setup and console logs.</p>
           </div>
         )}
 
         {/* ===================== Add New Set (centered card) ===================== */}
-        <form onSubmit={handleSubmit} className="bg-gray-900 rounded-lg border border-gray-700 p-8 mb-6 w-full text-center flex flex-col items-center">
-          {/* Title */}
-          <h2 className="text-xl font-semibold text-white">Add New Set</h2>
+        <form onSubmit={handleSubmit} className="bg-white/[0.02] rounded-xl border border-white/10 p-8 mb-6 w-full text-center flex flex-col items-center relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          <div className="relative z-10 w-full flex flex-col items-center">
+            {/* Title */}
+            <h2 className="text-xl font-semibold text-white">Add New Set</h2>
 
-          {/* Date + chip row */}
-          <div className="mt-2 text-xs text-gray-400 flex items-center justify-center gap-2">
-            <span className="text-gray-500">Date:</span>
-            <span className="text-gray-200">{formData.date}</span>
-            {dayTagForSelectedDate && (
-              <>
-                <span className="text-gray-600">•</span>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-gray-800 text-gray-100 border border-gray-700">
-                  {dayTagForSelectedDate}
-                </span>
-              </>
-            )}
-          </div>
+            {/* Date + chip row */}
+            <div className="mt-2 text-xs text-white/40 flex items-center justify-center gap-2">
+              <span className="text-white/50">Date:</span>
+              <span className="text-white/90 font-mono">{formData.date}</span>
+              {dayTagForSelectedDate && (
+                <>
+                  <span className="text-white/20">•</span>
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-[#54b3d6]/10 text-[#54b3d6] border border-[#54b3d6]/30 font-medium">
+                    {dayTagForSelectedDate}
+                  </span>
+                </>
+              )}
+            </div>
 
-          <div className="space-y-6 mt-4 w-full max-w-xl">
-            {/* Exercise */}
-            <div className="w-full">
-              <label className="block text-sm font-medium text-gray-300 mb-1 text-center">Exercise *</label>
-              {/* Manage button (under the select & count) */}
-              <div className="mt-2 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMgrTab('filtered')
-                    setShowManageEx(true)
-                  }}
-                  className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 text-gray-100 hover:bg-gray-700"
-                  title="Manage your exercise catalog"
+            <div className="space-y-6 mt-4 w-full max-w-xl">
+              {/* Exercise */}
+              <div className="w-full">
+                <label className="block text-sm font-medium text-white/60 mb-1 text-center">Exercise *</label>
+                {/* Manage button (under the select & count) */}
+                <div className="mt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMgrTab('filtered')
+                      setShowManageEx(true)
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-white/[0.03] border border-white/10 text-white/90 hover:bg-white/[0.06] hover:border-[#54b3d6]/30 transition-all"
+                    title="Manage your exercise catalog"
+                  >
+                    Manage Exercises
+                  </button>
+                </div>
+              </div>
+                <select
+                  value={formData.exercise}
+                  onChange={(e) => setFormData({ ...formData, exercise: e.target.value, weight: '' })}
+                  className="w-full px-4 py-3 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
+                  required
                 >
-                  Manage Exercises
-                </button>
+                  <option value="">
+                    {exerciseOptions.length === 0 ? 'No exercises for current selection' : 'Select exercise'}
+                  </option>
+                  {exerciseOptions.map(exercise => (
+                    <option key={exercise} value={exercise}>{exercise}</option>
+                  ))}
+                </select>
+
+                {/* Count (separate line) */}
+                <div className="text-xs text-white/40 mt-2 text-center">
+                  {exerciseOptions.length} available
+                </div>
+
+              {/* Equipment (own row, required) */}
+              <div className="w-full">
+                <label className="block text-sm font-medium text-white/60 mb-1 text-center">Equipment *</label>
+                <select
+                  value={formData.equipment}
+                  onChange={(e) => setFormData({ ...formData, equipment: e.target.value as Equipment })}
+                  required
+                  className="w-full px-4 py-3 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
+                >
+                  <option value="">Select equipment</option>
+                  {EQUIPMENT_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
               </div>
-            </div>
-              <select
-                value={formData.exercise}
-                onChange={(e) => setFormData({ ...formData, exercise: e.target.value, weight: '' })}
-                className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              >
-                <option value="">
-                  {exerciseOptions.length === 0 ? 'No exercises for current selection' : 'Select exercise'}
-                </option>
-                {exerciseOptions.map(exercise => (
-                  <option key={exercise} value={exercise}>{exercise}</option>
-                ))}
-              </select>
 
-              {/* Count (separate line) */}
-              <div className="text-xs text-gray-500 mt-2 text-center">
-                {exerciseOptions.length} available
+              {/* Unilateral (own row) */}
+              <div className="w-full flex items-center justify-center gap-2">
+                <input
+                  id="unilateral"
+                  type="checkbox"
+                  checked={formData.isUnilateral}
+                  onChange={(e) => setFormData({ ...formData, isUnilateral: e.target.checked })}
+                  className="accent-[#54b3d6]"
+                />
+                <label htmlFor="unilateral" className="text-sm text-white/60">
+                  Unilateral set
+                </label>
+                <span className="text-xs text-white/40">(Flag only)</span>
               </div>
 
-            {/* Equipment (own row, required) */}
-            <div className="w-full">
-              <label className="block text-sm font-medium text-gray-300 mb-1 text-center">Equipment *</label>
-              <select
-                value={formData.equipment}
-                onChange={(e) => setFormData({ ...formData, equipment: e.target.value as Equipment })}
-                required
-                className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              {/* Weight */}
+              <div className="w-full">
+                <label className="block text-sm font-medium text-white/60 mb-2 text-center">Weight (lbs) *</label>
+                <input
+                  type="number"
+                  value={formData.weight}
+                  onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
+                  min="0"
+                  max="1500"
+                  step="2.5"
+                  required
+                />
+              </div>
+
+              {/* Reps */}
+              <div className="w-full">
+                <label className="block text-sm font-medium text-white/60 mb-2 text-center">Reps *</label>
+                <input
+                  type="number"
+                  value={formData.reps}
+                  onChange={(e) => setFormData({ ...formData, reps: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
+                  min="1"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={status === 'submitting'}
+                className="w-full bg-[#54b3d6] hover:bg-[#6dc5e8] disabled:bg-white/10 disabled:text-white/40 text-black font-semibold py-3 rounded-lg transition-all text-lg hover:shadow-[0_0_20px_rgba(84,179,214,0.3)]"
               >
-                <option value="">Select equipment</option>
-                {EQUIPMENT_OPTIONS.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
+                {status === 'submitting' ? 'Saving…' : 'Add Set'}
+              </button>
             </div>
-
-            {/* Unilateral (own row) */}
-            <div className="w-full flex items-center justify-center gap-2">
-              <input
-                id="unilateral"
-                type="checkbox"
-                checked={formData.isUnilateral}
-                onChange={(e) => setFormData({ ...formData, isUnilateral: e.target.checked })}
-                className="accent-blue-500"
-              />
-              <label htmlFor="unilateral" className="text-sm text-gray-300">
-                Unilateral set
-              </label>
-              <span className="text-xs text-gray-500">(Flag only)</span>
-            </div>
-
-            {/* Weight */}
-            <div className="w-full">
-              <label className="block text-sm font-medium text-gray-300 mb-2 text-center">Weight (lbs) *</label>
-              <input
-                type="number"
-                value={formData.weight}
-                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min="0"
-                max="1500"
-                step="2.5"
-                required
-              />
-            </div>
-
-            {/* Reps */}
-            <div className="w-full">
-              <label className="block text-sm font-medium text-gray-300 mb-2 text-center">Reps *</label>
-              <input
-                type="number"
-                value={formData.reps}
-                onChange={(e) => setFormData({ ...formData, reps: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg"
-                min="1"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={status === 'submitting'}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium py-3 rounded-lg transition-colors text-lg"
-            >
-              {status === 'submitting' ? 'Saving…' : 'Add Set'}
-            </button>
           </div>
         </form>
 
         {/* ===================== Workout History (newest exercise group first) ===================== */}
-        <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full">
+        <div className="bg-white/[0.02] rounded-xl border border-white/10 p-6 w-full">
           {/* Centered header + subheader */}
           <h3 className="text-lg font-semibold text-white mb-2 text-center">
-            Workout History for {formData.date}
+            Workout History for <span className="font-mono text-[#54b3d6]">{formData.date}</span>
           </h3>
           <div className="flex flex-col items-center justify-center mb-4">
             <div className="flex items-center gap-2">
               {dayTagForSelectedDate && (
-                <span className="text-[11px] px-2 py-0.5 rounded bg-gray-800 text-gray-100 border border-gray-700">
+                <span className="text-[11px] px-2 py-0.5 rounded bg-[#54b3d6]/10 text-[#54b3d6] border border-[#54b3d6]/30 font-medium">
                   {dayTagForSelectedDate}
                 </span>
               )}
-              <span className="text-gray-400 text-sm">
+              <span className="text-white/40 text-sm">
                 {Object.keys(liftsByExerciseForSelectedDate).length} exercise
                 {Object.keys(liftsByExerciseForSelectedDate).length !== 1 ? 's' : ''} ·{' '}
-                {totalVolumeForSelectedDate.toLocaleString()} lbs total
+                <span className="font-mono text-white/60">{totalVolumeForSelectedDate.toLocaleString()}</span> lbs total
               </span>
             </div>
           </div>
 
           {liftsForSelectedDate.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center">No sets yet for this date.</p>
+            <p className="text-white/40 text-sm text-center">No sets yet for this date.</p>
           ) : (
             <div className="space-y-3">
               {exerciseGroupsChrono.map(({ exercise, sets, exerciseVolume }) => (
-                <div key={exercise} className="bg-gray-850 rounded-lg p-3">
+                <div key={exercise} className="bg-white/[0.03] rounded-lg p-3 border border-white/10 hover:border-[#54b3d6]/30 transition-all group">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-white font-medium">{exercise}</span>
-                    <span className="text-gray-400 text-sm">{exerciseVolume.toLocaleString()} lbs</span>
+                    <span className="text-white/40 text-sm font-mono">{exerciseVolume.toLocaleString()} lbs</span>
                   </div>
                   <div className="space-y-1">
                     {sets.map((set) => (
                       <div
                         key={set.id}
-                        className="flex justify-between items-center text-sm bg-gray-800 rounded px-3 py-2"
+                        className="flex justify-between items-center text-sm bg-white/[0.02] rounded px-3 py-2 border border-white/5"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-300">
-                            Set {set.setNumber}: {set.weight} lbs × {set.reps} reps
+                          <span className="text-white/60 font-mono">
+                            Set {set.setNumber}: <span className="text-white/90">{set.weight} lbs × {set.reps} reps</span>
                           </span>
                           {set.equipment ? (
-                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-700">
+                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/[0.05] text-white/60 border border-white/10">
                               {set.equipment}
                             </span>
                           ) : null}
                           {set.isUnilateral ? (
-                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-700 uppercase tracking-wide">
+                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-[#54b3d6]/10 text-[#54b3d6] border border-[#54b3d6]/30 uppercase tracking-wide font-semibold">
                               UNI
                             </span>
                           ) : null}
@@ -725,7 +732,7 @@ useEffect(() => {
                         <div className="flex gap-2">
                           <button
                             onClick={() => setEditingLift(set)}
-                            className="text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-[#54b3d6] hover:text-[#6dc5e8] transition-colors"
                             title="Edit"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -734,7 +741,7 @@ useEffect(() => {
                           </button>
                           <button
                             onClick={() => handleDelete(set.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors"
+                            className="text-red-400 hover:text-red-500 transition-colors"
                             title="Delete"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -789,7 +796,7 @@ useEffect(() => {
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full px-4 py-3 bg-gray-800 text-white border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
               required
             />
           </div>
@@ -804,10 +811,10 @@ useEffect(() => {
                   type="button"
                   onClick={() => setFormData(fd => ({ ...fd, dayTag: t }))}
                   className={[
-                    'px-3 py-1.5 rounded-lg border text-sm',
+                    'px-3 py-1.5 rounded-lg border text-sm transition-all',
                     (formData.dayTag.trim().toLowerCase() === t.toLowerCase())
-                      ? 'bg-blue-900/30 border-blue-700 text-blue-200'
-                      : 'bg-gray-850 border-gray-700 text-gray-200 hover:bg-gray-800'
+                      ? 'bg-[#54b3d6]/10 border-[#54b3d6]/30 text-[#54b3d6]'
+                      : 'bg-white/[0.02] border-white/10 text-white/90 hover:bg-white/[0.05] hover:border-white/20'
                   ].join(' ')}
                 >
                   {t}
@@ -819,7 +826,7 @@ useEffect(() => {
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors"
+              className="w-full bg-[#54b3d6] hover:bg-[#6dc5e8] text-black font-semibold py-2.5 rounded-lg transition-all hover:shadow-[0_0_20px_rgba(84,179,214,0.3)]"
             >
               Save
             </button>
@@ -830,17 +837,17 @@ useEffect(() => {
       {/* ===== Body Parts Sheet ===== */}
       <Sheet open={showBodyParts} onClose={handleCloseBodyParts} title="Target Body Parts">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm text-gray-400">Check the muscle groups you’re targeting today.</div>
+          <div className="text-sm text-white/60">Check the muscle groups you're targeting today.</div>
           <div className="flex gap-2">
             <button
-              className="px-3 py-1 text-xs bg-gray-800 border border-gray-700 rounded hover:bg-gray-750 text-gray-200"
+              className="px-3 py-1 text-xs bg-white/[0.03] border border-white/10 rounded hover:bg-white/[0.06] hover:border-[#54b3d6]/30 text-white/90 transition-all"
               onClick={() => setSelectedBodyParts(ALL_BODY_PARTS)}
               title="Select all"
             >
               Select All
             </button>
             <button
-              className="px-3 py-1 text-xs bg-gray-800 border border-gray-700 rounded hover:bg-gray-750 text-gray-200"
+              className="px-3 py-1 text-xs bg-white/[0.03] border border-white/10 rounded hover:bg-white/[0.06] hover:border-[#54b3d6]/30 text-white/90 transition-all"
               onClick={() => setSelectedBodyParts([])}
               title="Clear selection"
             >
@@ -858,10 +865,10 @@ useEffect(() => {
                 type="button"
                 onClick={() => toggleBodyPart(bp)}
                 className={[
-                  'flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors',
+                  'flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition-all',
                   active
-                    ? 'bg-blue-900/30 border-blue-700 text-blue-200'
-                    : 'bg-gray-850 border-gray-700 text-gray-200 hover:bg-gray-800'
+                    ? 'bg-[#54b3d6]/10 border-[#54b3d6]/30 text-[#54b3d6]'
+                    : 'bg-white/[0.02] border-white/10 text-white/90 hover:bg-white/[0.05] hover:border-white/20'
                 ].join(' ')}
               >
                 <span className="capitalize">{bp}</span>
@@ -869,7 +876,7 @@ useEffect(() => {
                   type="checkbox"
                   checked={active}
                   onChange={() => toggleBodyPart(bp)}
-                  className="accent-blue-500"
+                  className="accent-[#54b3d6]"
                   aria-label={`Toggle ${bp}`}
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -880,7 +887,7 @@ useEffect(() => {
 
         <div className="pt-4 space-y-2">
           <button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors"
+            className="w-full bg-[#54b3d6] hover:bg-[#6dc5e8] text-black font-semibold py-2.5 rounded-lg transition-all hover:shadow-[0_0_20px_rgba(84,179,214,0.3)]"
             onClick={async () => {
               try {
                 await setBodyPartsForDate(formData.date, selectedBodyParts)
@@ -894,7 +901,7 @@ useEffect(() => {
             Save Body Parts
           </button>
           <button
-            className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-2.5 rounded-lg transition-colors"
+            className="w-full bg-white/[0.03] hover:bg-white/[0.06] text-white border border-white/10 hover:border-white/20 font-medium py-2.5 rounded-lg transition-all"
             onClick={handleCloseBodyParts}
           >
             Done
@@ -903,33 +910,33 @@ useEffect(() => {
       </Sheet>
 
       {showAddEx && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-black/95 border border-white/20 rounded-xl max-w-md w-full backdrop-blur-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
               <h3 className="text-lg font-semibold">Add Exercise</h3>
-              <button onClick={() => setShowAddEx(false)} className="text-gray-400 hover:text-gray-200" aria-label="Close">
+              <button onClick={() => setShowAddEx(false)} className="text-white/60 hover:text-white transition-colors" aria-label="Close">
                 ✕
               </button>
             </div>
 
             <div className="p-5 space-y-4 text-sm">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Name *</label>
+                <label className="block text-sm font-medium text-white/60 mb-1">Name *</label>
                 <input
                   value={newExName}
                   onChange={(e) => setNewExName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
                   placeholder="e.g., Cable Fly"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Body Part *</label>
+                <label className="block text-sm font-medium text-white/60 mb-1">Body Part *</label>
                 <select
                   value={newExBP}
                   onChange={(e) => setNewExBP(e.target.value as BodyPart)}
-                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
                 >
                   {ALL_BODY_PARTS.map(bp => (
                     <option key={bp} value={bp}>{bp.charAt(0).toUpperCase() + bp.slice(1)}</option>
@@ -938,20 +945,20 @@ useEffect(() => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Aliases (comma-separated)</label>
+                <label className="block text-sm font-medium text-white/60 mb-1">Aliases (comma-separated)</label>
                 <input
                   value={newExAliases}
                   onChange={(e) => setNewExAliases(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
                   placeholder="RDL, Pull Up…"
                 />
               </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-gray-800 flex justify-end gap-2">
+            <div className="px-5 py-4 border-t border-white/10 flex justify-end gap-2">
               <button
                 onClick={() => setShowAddEx(false)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+                className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg transition-all"
               >
                 Cancel
               </button>
@@ -980,7 +987,7 @@ useEffect(() => {
                     setAddExBusy(false)
                   }
                 }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg disabled:bg-gray-600"
+                className="px-4 py-2 bg-[#54b3d6] hover:bg-[#6dc5e8] rounded-lg disabled:bg-white/10 disabled:text-white/40 transition-all hover:shadow-[0_0_20px_rgba(84,179,214,0.3)] text-black font-semibold"
               >
                 {addExBusy ? 'Saving…' : 'Save'}
               </button>
@@ -992,13 +999,13 @@ useEffect(() => {
       {showManageEx && (
   <div className="fixed inset-0 z-50">
     {/* Backdrop */}
-    <div className="absolute inset-0 bg-black/70" onClick={() => setShowManageEx(false)} />
+    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowManageEx(false)} />
 
     {/* Modal frame: full height on mobile, ~90vh on desktop */}
     <div className="absolute inset-0 flex items-stretch justify-center">
       <div
         className={[
-          'bg-gray-900 border border-gray-800 w-full h-full',
+          'bg-black/95 border border-white/20 w-full h-full backdrop-blur-sm',
           'sm:h-[90vh] sm:my-6 sm:max-w-3xl sm:rounded-xl',
           'flex flex-col'
         ].join(' ')}
@@ -1007,11 +1014,11 @@ useEffect(() => {
         aria-label="Manage Exercises"
       >
         {/* Header (fixed) */}
-        <div className="shrink-0 px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+        <div className="shrink-0 px-5 py-4 border-b border-white/10 flex items-center justify-between">
           <h3 className="text-lg font-semibold">Manage Exercises</h3>
           <button
             onClick={() => setShowManageEx(false)}
-            className="text-gray-400 hover:text-gray-200"
+            className="text-white/60 hover:text-white transition-colors"
             aria-label="Close"
           >
             ✕
@@ -1023,7 +1030,7 @@ useEffect(() => {
           <div className="px-5 py-4 w-full max-w-2xl mx-auto">
             {/* ===== Add New Exercise (moved to top) ===== */}
             <div className="mb-6">
-              <div className="text-sm text-gray-400 mb-2">Add a new exercise to your catalog.</div>
+              <div className="text-sm text-white/60 mb-2">Add a new exercise to your catalog.</div>
               <AddExerciseInline
                 allParts={ALL_BODY_PARTS}
                 onAdd={async ({ name, bodyPartKey }) => {
@@ -1041,24 +1048,24 @@ useEffect(() => {
             </div>
 
             {/* Divider */}
-            <div className="border-t border-gray-800 my-6" />
+            <div className="border-t border-white/10 my-6" />
 
             {/* ===== Modify Existing Exercises ===== */}
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-sm font-medium text-gray-200">Modify Existing Exercises</div>
-                <div className="text-xs text-gray-400">Edit names or body parts.</div>
+                <div className="text-sm font-medium text-white">Modify Existing Exercises</div>
+                <div className="text-xs text-white/60">Edit names or body parts.</div>
               </div>
               {/* Tabs */}
-              <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
+              <div className="inline-flex rounded-lg overflow-hidden border border-white/10">
                 <button
-                  className={`px-3 py-1.5 text-sm ${mgrTab === 'filtered' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                  className={`px-3 py-1.5 text-sm transition-all ${mgrTab === 'filtered' ? 'bg-[#54b3d6] text-black font-semibold' : 'bg-white/[0.02] hover:bg-white/[0.05] text-white/90'}`}
                   onClick={() => setMgrTab('filtered')}
                 >
                   Filtered ({exerciseRows.length})
                 </button>
                 <button
-                  className={`px-3 py-1.5 text-sm ${mgrTab === 'all' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                  className={`px-3 py-1.5 text-sm transition-all ${mgrTab === 'all' ? 'bg-[#54b3d6] text-black font-semibold' : 'bg-white/[0.02] hover:bg-white/[0.05] text-white/90'}`}
                   onClick={() => setMgrTab('all')}
                 >
                   All ({allExRows.length})
@@ -1125,17 +1132,17 @@ useEffect(() => {
               ))}
 
               {((mgrTab === 'filtered' ? exerciseRows : allExRows).length === 0) && (
-                <div className="text-gray-400 text-sm">No exercises to show.</div>
+                <div className="text-white/40 text-sm">No exercises to show.</div>
               )}
             </div>
           </div>
         </div>
 
         {/* Footer (fixed) */}
-        <div className="shrink-0 px-5 py-4 border-t border-gray-800 flex justify-end">
+        <div className="shrink-0 px-5 py-4 border-t border-white/10 flex justify-end">
           <button
             onClick={() => setShowManageEx(false)}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+            className="px-4 py-2 bg-[#54b3d6] hover:bg-[#6dc5e8] text-black font-semibold rounded-lg transition-all hover:shadow-[0_0_20px_rgba(84,179,214,0.3)]"
           >
             Done
           </button>
@@ -1149,25 +1156,25 @@ useEffect(() => {
 
       {/* Edit Modal */}
       {editingLift && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-lg border border-gray-700 max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-black/95 rounded-xl border border-white/20 max-w-md w-full p-6 backdrop-blur-sm">
             <h3 className="text-xl font-semibold text-white mb-4">Edit Set</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Date</label>
+                <label className="block text-sm font-medium text-white/60 mb-2">Date</label>
                 <input
                   type="date"
                   value={editingLift.date}
                   onChange={(e) => setEditingLift({ ...editingLift, date: e.target.value })}
-                  className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-4 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Exercise</label>
+                <label className="block text-sm font-medium text-white/60 mb-2">Exercise</label>
                  <select
                   value={editingLift.exercise}
                   onChange={(e) => setEditingLift({ ...editingLift, exercise: e.target.value })}
-                  className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-4 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
                 >
                   {allExOptions.map(exercise => (
                     <option key={exercise} value={exercise}>{exercise}</option>
@@ -1177,11 +1184,11 @@ useEffect(() => {
 
               {/* Equipment (row) */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Equipment</label>
+                <label className="block text-sm font-medium text-white/60 mb-1">Equipment</label>
                 <select
                   value={editingLift.equipment ?? ''}
                   onChange={(e) => setEditingLift({ ...editingLift, equipment: (e.target.value || null) as Equipment | null })}
-                  className="w-full px-3 py-2.5 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-3 py-2.5 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
                 >
                   <option value="">Select equipment</option>
                   {EQUIPMENT_OPTIONS.map(opt => (
@@ -1197,21 +1204,21 @@ useEffect(() => {
                   type="checkbox"
                   checked={!!editingLift.isUnilateral}
                   onChange={(e) => setEditingLift({ ...editingLift, isUnilateral: e.target.checked })}
-                  className="accent-blue-500"
+                  className="accent-[#54b3d6]"
                 />
-                <label htmlFor="edit-unilateral" className="text-sm text-gray-300">
+                <label htmlFor="edit-unilateral" className="text-sm text-white/60">
                   Unilateral set
                 </label>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Weight (lbs)</label>
+                  <label className="block text-sm font-medium text-white/60 mb-2">Weight (lbs)</label>
                   <input
                     type="number"
                     value={editingLift.weight}
                     onChange={(e) => setEditingLift({ ...editingLift, weight: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                    className="w-full px-4 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
                     min="0"
                     max="1500"
                     step="2.5"
@@ -1219,33 +1226,33 @@ useEffect(() => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Reps</label>
+                  <label className="block text-sm font-medium text-white/60 mb-2">Reps</label>
                   <input
                     type="number"
                     value={editingLift.reps}
                     onChange={(e) => setEditingLift({ ...editingLift, reps: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                    className="w-full px-4 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
                     min="1"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Set Number</label>
+                <label className="block text-sm font-medium text-white/60 mb-2">Set Number</label>
                 <input
                   type="number"
                   value={editingLift.setNumber}
                   onChange={(e) => setEditingLift({ ...editingLift, setNumber: parseInt(e.target.value, 10) || 1 })}
-                  className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-4 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
                   min="1"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Day Tag</label>
+                <label className="block text-sm font-medium text-white/60 mb-2">Day Tag</label>
                 <input
                   type="text"
                   value={editingLift.dayTag ?? ''}
                   onChange={(e) => setEditingLift({ ...editingLift, dayTag: e.target.value })}
-                  className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-700 rounded-lg"
+                  className="w-full px-4 py-2 bg-white/[0.03] text-white border border-white/10 rounded-lg focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all font-mono"
                   placeholder="e.g., Push Day"
                   autoComplete="off"
                   autoCorrect="off"
@@ -1257,13 +1264,13 @@ useEffect(() => {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleUpdate}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors"
+                className="flex-1 bg-[#54b3d6] hover:bg-[#6dc5e8] text-black font-semibold py-2 rounded-lg transition-all hover:shadow-[0_0_20px_rgba(84,179,214,0.3)]"
               >
                 Save Changes
               </button>
               <button
                 onClick={() => setEditingLift(null)}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg transition-colors"
+                className="flex-1 bg-white/[0.03] hover:bg-white/[0.06] text-white border border-white/10 hover:border-white/20 py-2 rounded-lg transition-all"
               >
                 Cancel
               </button>
@@ -1292,19 +1299,19 @@ function ManageExerciseRow({
   const [bp, setBp] = useState<BodyPart>((row.bodyPartKey as BodyPart) ?? 'chest')
 
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 p-3">
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 hover:border-[#54b3d6]/30 transition-all">
       {/* Row 1: Exercise | Body Part (on one line) */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px]">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          className="w-full px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
           placeholder="Exercise name"
         />
         <select
           value={bp}
           onChange={(e) => setBp(e.target.value as BodyPart)}
-          className="w-full px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          className="w-full px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
         >
           {allParts.map(p => (
             <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -1318,14 +1325,14 @@ function ManageExerciseRow({
           <button
             disabled={busy || !name.trim()}
             onClick={() => onSave({ name, bodyPartKey: bp })}
-            className="px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600"
+            className="px-3 py-1.5 text-sm rounded bg-[#54b3d6] hover:bg-[#6dc5e8] disabled:bg-white/10 disabled:text-white/40 text-black font-semibold transition-all hover:shadow-[0_0_15px_rgba(84,179,214,0.3)]"
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
           <button
             disabled={busy}
             onClick={onDelete}
-            className="px-3 py-1.5 text-sm rounded bg-red-700 hover:bg-red-600 disabled:bg-gray-600"
+            className="px-3 py-1.5 text-sm rounded bg-red-500/10 hover:bg-red-500/20 disabled:bg-white/10 disabled:text-white/40 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 transition-all"
           >
             {busy ? '…' : 'Delete'}
           </button>
@@ -1347,18 +1354,18 @@ function AddExerciseInline({
   const [busy, setBusy] = useState(false)
 
   return (
-    <div className="rounded-lg border border-gray-800 p-3 bg-gray-900">
+    <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02]">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_auto]">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g., Cable Fly"
-          className="px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          className="px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
         />
         <select
           value={bp}
           onChange={(e) => setBp(e.target.value as BodyPart)}
-          className="px-3 py-2 bg-gray-850 text-gray-100 border border-gray-700 rounded"
+          className="px-3 py-2 bg-white/[0.03] text-white border border-white/10 rounded focus:ring-2 focus:ring-[#54b3d6]/50 focus:border-[#54b3d6]/30 transition-all"
         >
           {allParts.map(p => (
             <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -1376,7 +1383,7 @@ function AddExerciseInline({
               setBusy(false)
             }
           }}
-          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:bg-gray-600 text-sm"
+          className="px-3 py-2 bg-[#54b3d6] hover:bg-[#6dc5e8] rounded disabled:bg-white/10 disabled:text-white/40 text-sm text-black font-semibold transition-all hover:shadow-[0_0_15px_rgba(84,179,214,0.3)]"
         >
           {busy ? 'Adding…' : 'Add'}
         </button>
