@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash(timeout /t 8 /nobreak)"
+      "Bash(timeout /t 8 /nobreak)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix CLAUDE.md inaccuracies and add env setup guidance\n\n- correct API route count from 15+ to 11\n- remove references to non-existent .ai/roles/ directory\n- add testing gotcha about missing test file\n- add environment setup section with required env vars\n- add local overrides guidance for .claude.local.md\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
