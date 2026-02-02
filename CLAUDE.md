@@ -38,7 +38,7 @@ npm run gym-chat:quick-win-eval          # Quick win scenarios
 
 - **File-based routing** in `app/` directory with nested layouts
 - **Server components by default** - mark with `'use client'` for interactivity
-- **API routes** in `app/api/` - 15+ endpoints for various services
+- **API routes** in `app/api/` - 11 endpoint directories for various services
 - **Middleware** at root (`middleware.ts`) handles mobile detection and routing
 
 ### Gym Chatbot System
@@ -110,11 +110,9 @@ All development work must update `.ai/HANDOFF.md`:
 - Never create outputs outside this directory
 - List all outputs in handoff log Output Manifest
 
-### Role-Based Instructions
+### Reference Files
 
-- `.ai/roles/BUILDER.md` - Implementation guidelines
-- `.ai/roles/PLANNER.md` - Planning and scope definition
-- See `.ai/AGENTS.md` for core principles
+- `.ai/AGENTS.md` - Core agent principles and coordination guidelines
 
 ## Important Gotchas
 
@@ -122,6 +120,11 @@ All development work must update `.ai/HANDOFF.md`:
 
 - TypeScript `ignoreBuildErrors: true` is temporarily set in `next.config.js`
 - Fix type errors rather than relying on this setting
+
+### Testing
+
+- `npm test` expects `tests/koreader-remote.test.ts` which may not exist yet
+- Gym chat eval scripts in `eval/` directory for LLM response evaluation
 
 ### Mobile Detection
 
@@ -157,3 +160,14 @@ When working on gym chat queries:
 - **PDF/Excel**: @react-pdf/renderer, ExcelJS
 - **Email**: Resend API
 - **TypeScript**: v5.3.3 with strict typing (see `types/` directory)
+
+## Environment Setup
+
+Required environment variables in `.env.local`:
+- `POSTGRES_URL` - Vercel Postgres connection string
+- `RESEND_API_KEY` - For email notifications (DAR system)
+- `ANTHROPIC_API_KEY` - For gym chat LLM integration
+
+## Local Overrides
+
+Create `.claude.local.md` in the project root for personal preferences not shared with the team (already in `.gitignore`).
