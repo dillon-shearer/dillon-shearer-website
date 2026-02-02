@@ -3,7 +3,9 @@
     "allow": [
       "WebSearch",
       "Bash(timeout /t 8 /nobreak)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebFetch(domain:192.168.1.100)",
+      "Bash(npm run dev:*)"
     ]
   }
 }

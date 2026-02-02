@@ -12,7 +12,7 @@ interface DemoModalProps {
 export default function DemoModal({ demo, onClose }: DemoModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
 
-  const isInProgress = demo.status !== 'live'
+  const isAccessible = demo.status === 'live' || demo.status === 'ongoing'
   const exploreHref = demo.demoUrl ?? (demo.slug === 'koreader-remote' ? '/koreader-remote' : `/demos/${demo.slug}`)
 
   // Close on Escape key
@@ -44,7 +44,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
     >
       <div
         ref={modalRef}
-        className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-gray-700 bg-[#0c1424] text-white shadow-2xl"
+        className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/20 bg-black/95 backdrop-blur-sm text-white shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -52,7 +52,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-gray-400 transition-colors hover:bg-black/70 hover:text-white"
+          className="absolute right-4 top-4 z-10 rounded-full bg-white/5 border border-white/10 p-2 text-white/40 transition-all hover:bg-white/10 hover:border-white/20 hover:text-white"
           aria-label="Close modal"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,8 +61,8 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
         </button>
 
         {/* Header */}
-        <div className="border-b border-gray-700 px-6 pb-4 pt-6">
-          <p className="text-[0.65rem] uppercase tracking-[0.2em] text-blue-200/80">Demo — {demo.category}</p>
+        <div className="border-b border-white/10 px-6 pb-4 pt-6">
+          <p className="text-[0.65rem] uppercase tracking-[0.2em] text-white/50">Demo — {demo.category}</p>
           <h2 id="modal-title" className="mt-1 text-2xl font-semibold text-white">
             {demo.title}
           </h2>
@@ -70,31 +70,31 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
             <span
               className={`rounded-full px-2.5 py-1 ${
                 demo.status === 'live'
-                  ? 'bg-green-100/10 text-green-300'
+                  ? 'bg-green-500/15 text-green-400 border border-green-500/30'
                   : demo.status === 'ongoing'
-                    ? 'bg-blue-100/10 text-blue-300'
-                    : 'bg-yellow-100/10 text-yellow-200'
+                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                    : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
               }`}
             >
               {demo.status === 'live' ? '✓ Live' : demo.status === 'ongoing' ? '↻ Ongoing' : '⏳ In Progress'}
             </span>
             {demo.featured && (
-              <span className="rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 px-2.5 py-1 text-white">
+              <span className="rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 px-2.5 py-1 text-white border border-yellow-500/50">
                 ⭐ Featured
               </span>
             )}
             <span
               className={`rounded-full px-2.5 py-1 capitalize ${
                 demo.complexity === 'advanced'
-                  ? 'bg-red-100/10 text-red-300'
+                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
                   : demo.complexity === 'intermediate'
-                    ? 'bg-blue-100/10 text-blue-300'
-                    : 'bg-gray-100/10 text-gray-200'
+                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                    : 'bg-white/10 text-white/70 border border-white/20'
               }`}
             >
               {demo.complexity}
             </span>
-            <span className="rounded-full bg-gray-100/10 px-2.5 py-1 text-gray-200">
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-white/70 border border-white/20">
               {demo.buildTime}
             </span>
           </div>
@@ -104,14 +104,14 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
         <div className="px-6 py-6">
           <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:gap-8">
             <div className="space-y-5">
-              <p className="text-sm leading-relaxed text-gray-100 sm:text-base">{demo.description}</p>
+              <p className="text-sm leading-relaxed text-white/80 sm:text-base">{demo.description}</p>
 
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Key Features</h4>
-                <ul className="mt-2 space-y-2 text-sm text-gray-100">
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-white/40">Key Features</h4>
+                <ul className="mt-2 space-y-2 text-sm text-white/80">
                   {demo.highlights.slice(0, 5).map((highlight, idx) => (
                     <li key={idx} className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-400" aria-hidden="true" />
+                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#54b3d6]" aria-hidden="true" />
                       <span>{highlight}</span>
                     </li>
                   ))}
@@ -120,7 +120,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
             </div>
 
             <div className="space-y-4">
-              {!isInProgress ? (
+              {isAccessible ? (
                 <Link
                   href={exploreHref}
                   className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:from-blue-700 hover:to-blue-800"
@@ -129,7 +129,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
                   Explore full demo
                 </Link>
               ) : (
-                <div className="w-full rounded-xl bg-gray-800 px-4 py-2.5 text-center text-sm font-semibold text-gray-300">
+                <div className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-center text-sm font-semibold text-white/50">
                   Demo coming soon
                 </div>
               )}
@@ -141,12 +141,12 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
               )}
 
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400">Tech Stack</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-widest text-white/40">Tech Stack</h4>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {demo.techStack.map((tech) => (
                     <span
                       key={tech}
-                      className="rounded-lg bg-white/5 px-2.5 py-1 text-xs font-medium text-gray-100"
+                      className="rounded-lg bg-white/10 border border-white/20 px-2.5 py-1 text-xs font-medium text-white/70"
                     >
                       {tech}
                     </span>
@@ -160,7 +160,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
                     href={demo.githubUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-blue-400 hover:text-blue-200"
+                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition-all duration-200 hover:border-[#54b3d6]/50 hover:text-[#54b3d6] hover:bg-[#54b3d6]/5"
                     title="View source code"
                   >
                     Source
@@ -171,7 +171,7 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
                     href={demo.liveUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-green-400 hover:text-green-200"
+                    className="flex flex-1 items-center justify-center rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-white/70 transition-all duration-200 hover:border-green-400/50 hover:text-green-400 hover:bg-green-400/5"
                     title="Open live demo"
                   >
                     Live site
