@@ -16,30 +16,37 @@ export function BlogPosts() {
 
   if (generalPosts.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-700 rounded-lg p-6 border-2 border-dashed border-gray-200 dark:border-gray-600">
-        <div className="text-center text-gray-500 dark:text-gray-400">
-          <p className="font-medium">No general blog posts yet</p>
-          <p className="text-sm">General thoughts and insights will appear here</p>
+      <div className="rounded-xl p-8 border-2 border-dashed text-center" style={{ borderColor: 'var(--border-primary)' }}>
+        <div style={{ color: 'var(--text-secondary)' }}>
+          <p className="font-medium mb-2">No general blog posts yet</p>
+          <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>General thoughts and insights will appear here</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {generalPosts.map((post) => (
-        <article key={post.slug} className="bg-white dark:bg-gray-700 rounded-lg p-6 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
-          <Link href={`/blog/${post.slug}`} className="block">
-            <div className="flex items-start justify-between mb-2">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex-1">
+        <article
+          key={post.slug}
+          className="rounded-xl p-6 transition-all"
+          style={{
+            background: 'var(--bg-subtle)',
+            border: '1px solid var(--border-secondary)'
+          }}
+        >
+          <Link href={`/blog/${post.slug}`} className="block group">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <h3 className="text-lg font-semibold text-white group-hover:text-[--brand-cyan] transition-colors flex-1">
                 {post.metadata.title}
               </h3>
-              <time className="text-sm text-gray-500 dark:text-gray-400 ml-4 flex-shrink-0">
+              <time className="text-sm flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
                 {formatDate(post.metadata.publishedAt)}
               </time>
             </div>
-            
-            <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-2">
+
+            <p className="text-sm line-clamp-2 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {post.metadata.summary}
             </p>
           </Link>

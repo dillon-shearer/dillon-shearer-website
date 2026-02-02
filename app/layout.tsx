@@ -90,13 +90,18 @@ export default function RootLayout({
     <html
       lang="en"
       className={cx(
-        'dark', // Force dark mode
-        'text-black bg-white dark:text-white dark:bg-black',
+        'dark',
         GeistSans.variable,
         GeistMono.variable
       )}
+      style={{
+        fontFamily: 'var(--font-geist-sans), system-ui, sans-serif',
+      }}
     >
-      <body className="antialiased overflow-x-hidden">
+      <body className="antialiased overflow-x-hidden" style={{
+        backgroundColor: 'var(--bg-primary)',
+        color: 'var(--text-primary)',
+      }}>
         <Suspense fallback={null}>
           <EmbedToggle />
         </Suspense>

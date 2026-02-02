@@ -43,13 +43,13 @@ export default async function ResumePage({ params }: Props) {
   if (!data) notFound()
 
   return (
-    <div className="min-h-screen bg-black text-white print:bg-white print:text-black">
+    <div className="min-h-screen print:bg-white print:text-black">
       <div className="max-w-4xl mx-auto px-6 py-10 print:px-0 print:py-0 print:max-w-none">
         {/* Top bar — hidden in print */}
         <div className="flex items-center justify-between mb-10 print:hidden">
           <Link
             href="/resumes"
-            className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors"
+            className="link-primary inline-flex items-center gap-2 text-sm"
           >
             <svg
               className="w-4 h-4"

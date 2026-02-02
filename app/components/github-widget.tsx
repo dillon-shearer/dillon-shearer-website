@@ -86,11 +86,11 @@ export default function GitHubWidget() {
 
   if (loading) {
     return (
-      <div className="flex justify-center mt-16">
-        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 max-w-md w-full">
+      <div className="flex justify-center">
+        <div className="card-base max-w-md w-full p-6">
           <div className="animate-pulse text-center">
-            <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-32 mb-2 mx-auto"></div>
-            <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-64 mx-auto"></div>
+            <div className="h-4 rounded w-32 mb-2 mx-auto" style={{ backgroundColor: 'var(--bg-subtle)' }}></div>
+            <div className="h-3 rounded w-64 mx-auto" style={{ backgroundColor: 'var(--bg-subtle)' }}></div>
           </div>
         </div>
       </div>
@@ -99,10 +99,10 @@ export default function GitHubWidget() {
 
   if (!loading && (error || commits.length === 0)) {
     return (
-      <div className="flex justify-center mt-16">
-        <div className="bg-gray-50 dark:bg-gray-800 border border-red-200 dark:border-red-700 rounded-lg p-5 max-w-md w-full text-center">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-2">GitHub activity unavailable</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
+      <div className="flex justify-center">
+        <div className="card-base max-w-md w-full p-6 text-center">
+          <h3 className="font-semibold mb-2 text-white">GitHub Activity Unavailable</h3>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             GitHub is rate-limiting or unreachable right now. Please try again in a few minutes.
           </p>
         </div>
@@ -130,21 +130,21 @@ export default function GitHubWidget() {
     <>
       <div className="flex justify-center">
         <div
-          className="bg-gray-50 dark:bg-gray-800 border-2 border-gray-700 dark:border-white/20 rounded-xl p-4 max-w-md w-full cursor-pointer hover:shadow-brutalist-hover transition-all duration-300 shadow-brutalist"
+          className="card-base card-hover max-w-md w-full p-6 cursor-pointer"
           onClick={handleCardClick}
         >
           <div className="text-sm text-center">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <h3 className="font-medium text-gray-900 dark:text-white">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <h3 className="font-semibold text-white">
                 Site Development
               </h3>
               {isStale && (
-                <span className="text-[10px] uppercase tracking-widest text-amber-400 border border-amber-500/40 rounded-full px-2 py-0.5">
+                <span className="badge-base badge-secondary text-[10px]">
                   cached
                 </span>
               )}
             </div>
-            <div className="text-gray-600 dark:text-gray-400 space-y-1">
+            <div className="space-y-1" style={{ color: 'var(--text-secondary)' }}>
               <div>
                 Last updated: {timeAgo} • {commitsThisMonth} commit{commitsThisMonth === 1 ? '' : 's'} this month
               </div>
@@ -158,14 +158,21 @@ export default function GitHubWidget() {
 
       {/* Commit History Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="rounded-2xl border max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col" style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderColor: 'var(--border-primary)'
+          }}>
             {/* Header */}
-            <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Commit History</h2>
+            <div className="sticky top-0 border-b px-6 py-4 flex justify-between items-center" style={{
+              backgroundColor: 'var(--bg-elevated)',
+              borderColor: 'var(--border-primary)'
+            }}>
+              <h2 className="text-2xl font-bold text-white">Commit History</h2>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                className="transition-colors hover:text-[--brand-cyan]"
+                style={{ color: 'var(--text-tertiary)' }}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

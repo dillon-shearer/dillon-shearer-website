@@ -88,22 +88,23 @@ export default function Footer() {
   return (
     <footer
       ref={ref}
-      className={cn('mt-32 border-t border-white/10 bg-gradient-to-b from-black to-black reveal-on-scroll', isVisible && 'is-visible')}
+      className={cn('mt-20 border-t reveal-on-scroll', isVisible && 'is-visible')}
+      style={{ borderColor: 'var(--border-primary)' }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
         {/* 4-Column Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-8">
           {/* Column 1: Brand */}
           <div className="space-y-3.5">
-            <div className="font-mono text-lg font-bold text-[#54b3d6] tracking-wide">DWD</div>
-            <p className="text-sm text-white/50 leading-relaxed">
+            <div className="font-mono text-lg font-bold tracking-wide" style={{ color: 'var(--brand-cyan)' }}>DWD</div>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               Data-centric software engineer building analytics, pipelines, and AI tooling.
             </p>
           </div>
 
           {/* Column 2: Navigation */}
           <div className="space-y-3.5">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/70">
+            <h3 className="text-label" style={{ color: 'var(--text-secondary)' }}>
               Navigate
             </h3>
             <ul className="space-y-2.5">
@@ -111,7 +112,8 @@ export default function Footer() {
                 <li key={link.path}>
                   <Link
                     href={link.path}
-                    className="text-sm text-white/50 hover:text-[#54b3d6] transition-colors inline-block"
+                    className="text-sm transition-colors inline-block hover:text-[--brand-cyan]"
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     {link.name}
                   </Link>
@@ -122,7 +124,7 @@ export default function Footer() {
 
           {/* Column 3: Resources */}
           <div className="space-y-3.5">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/70">
+            <h3 className="text-label" style={{ color: 'var(--text-secondary)' }}>
               Resources
             </h3>
             <ul className="space-y-2.5">
@@ -130,7 +132,8 @@ export default function Footer() {
                 <li key={link.path}>
                   <Link
                     href={link.path}
-                    className="text-sm text-white/50 hover:text-[#54b3d6] transition-colors inline-block"
+                    className="text-sm transition-colors inline-block hover:text-[--brand-cyan]"
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     {link.name}
                   </Link>
@@ -141,7 +144,7 @@ export default function Footer() {
 
           {/* Column 4: Connect */}
           <div className="space-y-3.5">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/70">
+            <h3 className="text-label" style={{ color: 'var(--text-secondary)' }}>
               Connect
             </h3>
             <div className="space-y-2.5">
@@ -151,7 +154,8 @@ export default function Footer() {
                   href={link.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 text-sm text-white/50 hover:text-[#54b3d6] transition-colors group"
+                  className="flex items-center gap-2 text-sm transition-colors group hover:text-[--brand-cyan]"
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   <link.icon className="w-4 h-4 flex-shrink-0" />
                   <span>{link.label}</span>
@@ -163,21 +167,21 @@ export default function Footer() {
         </div>
 
         {/* Gradient Divider */}
-        <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-10" />
+        <div className="divider mb-6" />
 
         {/* Bottom Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-sm text-white/40">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-sm" style={{ color: 'var(--text-muted)' }}>
           <p className="text-xs">© {new Date().getFullYear()} Dillon Shearer. MIT Licensed.</p>
           <div className="flex items-center gap-4 text-xs">
             <a
               href="https://github.com/dillon-shearer/dillon-shearer-website"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-[#54b3d6] transition-colors"
+              className="link-primary"
             >
               View Source
             </a>
-            <span className="text-white/20">•</span>
+            <span style={{ color: 'var(--border-primary)' }}>•</span>
             <span className="font-mono">Built with Next.js</span>
           </div>
         </div>

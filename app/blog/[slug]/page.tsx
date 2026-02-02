@@ -71,7 +71,7 @@ export default async function Blog({ params }: Params) {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-10">
         <div className="max-w-4xl mx-auto">
           <script
             type="application/ld+json"
@@ -95,15 +95,15 @@ export default async function Blog({ params }: Params) {
               }),
             }}
           />
-          
+
           {/* Header with series info if applicable */}
           {post.metadata.series && (
             <div className="mb-6">
-              <div className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 mb-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="font-medium">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="badge-base badge-primary">
+                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
                   {post.metadata.series === 'data-dont-lie' ? 'Data Don\'t Lie' : post.metadata.series}
                   {post.metadata.episode && ` • Episode ${post.metadata.episode}`}
                 </span>
@@ -111,25 +111,26 @@ export default async function Blog({ params }: Params) {
             </div>
           )}
 
-          <h1 className="title font-semibold text-2xl tracking-tighter">
+          <h1 className="text-4xl font-bold mb-4 text-white">
             {post.metadata.title}
           </h1>
-          
-          <div className="flex justify-between items-center mt-2 mb-8 text-sm">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+
+          <div className="flex justify-between items-center mb-8">
+            <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
               {formatDate(post.metadata.publishedAt)}
             </p>
           </div>
-          
+
           <article className="prose prose-neutral dark:prose-invert max-w-none">
             <CustomMDX source={post.content} />
           </article>
 
           {/* Back to blog link */}
-          <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700">
+          <div className="mt-16 pt-8">
+            <div className="divider" />
             <a
               href="/blog"
-              className="inline-flex items-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              className="link-primary inline-flex items-center text-sm mt-8"
             >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

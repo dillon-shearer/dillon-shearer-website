@@ -38,36 +38,36 @@ const cardStackData = [
 export default function HomePage() {
   return (
     <>
-      <div className="min-h-screen bg-black text-white">
-        <div className="max-w-7xl mx-auto px-6 pt-10 pb-24">
-          <header className="text-center mb-24">
-            <div className="flex flex-col items-center gap-6">
+      <div className="min-h-screen">
+        <div className="max-w-7xl mx-auto px-6 py-10">
+          <header className="text-center mb-32">
+            <div className="flex flex-col items-center gap-8">
               <TripleClickAvatar
                 redirectPath="/demos/gym-dashboard/form"
                 className="w-40 h-40 rounded-full border border-white/10 shadow-2xl cursor-pointer"
               />
-              <div className="text-center">
+              <div className="text-center space-y-3">
                 <HeroTitle />
-                <p className="mt-4 text-lg text-white/80 max-w-3xl mx-auto">
+                <p className="text-lg leading-relaxed max-w-2xl mx-auto text-white/60">
                   Data-centric software engineer working end to end across the data lifecycle. Currently building analytics, pipelines, and AI tooling for healthcare and life-science teams.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center">
+              <div className="flex flex-col sm:flex-row gap-3.5 w-full sm:w-auto justify-center">
                 <MagneticButton
                   href="/contact"
-                  className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition-colors font-semibold"
+                  className="btn-primary"
                 >
                   Contact Me
                 </MagneticButton>
                 <MagneticButton
                   href="/demos"
-                  className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-white/30 hover:border-white font-semibold"
+                  className="btn-secondary"
                 >
-                  View interactive demos
+                  View Interactive Demos
                 </MagneticButton>
                 <MagneticButton
                   href="/resumes"
-                  className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-white/20 hover:border-white/60 font-semibold text-white/80"
+                  className="btn-secondary"
                 >
                   View Role-Specific Resumes
                 </MagneticButton>
@@ -76,17 +76,19 @@ export default function HomePage() {
           </header>
 
           {/* Card Stack Section */}
-          <section className="space-y-8">
-            <h2 className="text-sm uppercase tracking-[0.3em] text-white/50">
-              What I Do
-            </h2>
+          <section className="mb-20">
+            <div className="mb-8">
+              <p className="section-label">
+                What I Do
+              </p>
+            </div>
 
             <AnimatedCardStack cards={cardStackData} />
           </section>
 
-          <div className="mt-16">
+          <section>
             <GitHubWidget />
-          </div>
+          </section>
         </div>
       </div>
       <SplashOverlay />

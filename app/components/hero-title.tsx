@@ -7,7 +7,7 @@ export default function HeroTitle() {
   return (
     <div className="relative inline-flex flex-col items-center w-full max-w-3xl mx-auto py-4">
       <h1
-        className="text-4xl sm:text-5xl font-bold leading-tight tracking-tight text-white transition-all duration-500 hover:scale-105 hover:drop-shadow-[0_0_20px_rgba(84,179,214,0.5)]"
+        className="text-4xl sm:text-5xl font-bold leading-tight tracking-tight text-white transition-all duration-300 hover:text-[#54b3d6] cursor-default"
         style={{
           animation: 'scroll-reveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards',
         }}

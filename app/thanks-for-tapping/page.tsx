@@ -96,7 +96,7 @@ const additionalResources = [
 
 export default function ThanksForTappingPage() {
   return (
-    <div className="bg-black text-white">
+    <div style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       <article
         className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-5 pb-12 pt-8"
         style={{
@@ -106,12 +106,12 @@ export default function ThanksForTappingPage() {
       >
         {/* Header Section */}
         <section className="text-center">
-          <h1 className="text-3xl font-bold leading-tight text-balance">
-            Great to meet you!
+          <h1 className="text-3xl font-bold leading-tight text-balance text-white">
+            Great to Meet You!
           </h1>
-          <p className="mx-auto mt-3 text-base leading-relaxed text-white/85">
+          <p className="mx-auto mt-3 text-base leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
             I build custom software that saves time and simplifies complex work.
-            Let&apos;s continue the conversation.
+            Let's continue the conversation.
           </p>
 
           {/* Quick Facts */}
@@ -119,14 +119,19 @@ export default function ThanksForTappingPage() {
             {quickFacts.map((fact, index) => (
               <div
                 key={fact.label}
-                className={`rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center ${
+                className={`rounded-xl px-4 py-3 text-center ${
                   index === 2 ? 'col-span-2' : ''
                 }`}
+                style={{
+                  borderWidth: '1px',
+                  borderColor: 'var(--border-primary)',
+                  backgroundColor: 'var(--bg-subtle)'
+                }}
               >
-                <p className="text-[0.6rem] uppercase tracking-[0.3em] text-white/60">
+                <p className="text-label" style={{ color: 'var(--text-tertiary)' }}>
                   {fact.label}
                 </p>
-                <p className="mt-1.5 text-sm font-medium leading-snug text-white/90">{fact.value}</p>
+                <p className="mt-1.5 text-sm font-medium leading-snug text-white">{fact.value}</p>
               </div>
             ))}
           </div>
@@ -134,8 +139,8 @@ export default function ThanksForTappingPage() {
 
         {/* Contact Options - Equal Weight */}
         <section>
-          <h2 className="mb-5 text-center text-xs uppercase tracking-[0.35em] text-white/70">
-            Let&apos;s stay connected
+          <h2 className="mb-5 text-center text-label" style={{ color: 'var(--text-tertiary)' }}>
+            Let's stay connected
           </h2>
           <div className="grid gap-4">
             {contactOptions.map(option => {
@@ -143,9 +148,16 @@ export default function ThanksForTappingPage() {
                 // Phone number with copy functionality
                 return (
                   <div key={option.title} className="flex flex-col">
-                    <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-center transition-all duration-200 active:scale-[0.98]">
-                      <h3 className="text-lg font-semibold">{option.title}</h3>
-                      <p className="mt-1.5 text-sm leading-snug text-white/70">
+                    <div
+                      className="flex flex-col rounded-xl px-5 py-4 text-center transition-all duration-200 active:scale-[0.98]"
+                      style={{
+                        borderWidth: '1px',
+                        borderColor: 'var(--border-primary)',
+                        backgroundColor: 'var(--bg-subtle)'
+                      }}
+                    >
+                      <h3 className="text-lg font-semibold text-white">{option.title}</h3>
+                      <p className="mt-1.5 text-sm leading-snug" style={{ color: 'var(--text-secondary)' }}>
                         {option.description}
                       </p>
                       <div className="mt-3">
@@ -164,11 +176,19 @@ export default function ThanksForTappingPage() {
               }
 
               // Regular link cards
-              const cardClasses = `group flex flex-col rounded-xl px-5 py-4 text-center transition-all duration-200 active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                option.isPrimary
-                  ? 'border border-blue-500/20 bg-blue-500/5'
-                  : 'border border-white/10 bg-white/5'
-              }`
+              const cardStyle = option.isPrimary
+                ? {
+                    borderWidth: '1px',
+                    borderColor: 'var(--border-accent)',
+                    backgroundColor: 'rgba(84, 179, 214, 0.05)'
+                  }
+                : {
+                    borderWidth: '1px',
+                    borderColor: 'var(--border-primary)',
+                    backgroundColor: 'var(--bg-subtle)'
+                  }
+
+              const cardClasses = 'group flex flex-col rounded-xl px-5 py-4 text-center transition-all duration-200 active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white'
 
               const LinkComponent = option.isExternal ? 'a' : Link
               const linkProps = option.isExternal
@@ -188,14 +208,15 @@ export default function ThanksForTappingPage() {
                   key={option.title}
                   {...linkProps}
                   className={cardClasses}
+                  style={cardStyle}
                   data-analytics-id={option.analyticsId}
                 >
-                  <h3 className="text-lg font-semibold">{option.title}</h3>
-                  <p className="mt-1.5 text-sm leading-snug text-white/70">
+                  <h3 className="text-lg font-semibold text-white">{option.title}</h3>
+                  <p className="mt-1.5 text-sm leading-snug" style={{ color: 'var(--text-secondary)' }}>
                     {option.description}
                   </p>
                   <div className="mt-3 flex items-center justify-center">
-                    <span className="text-sm font-medium text-white/90">
+                    <span className="text-sm font-medium text-white">
                       {option.buttonText}
                     </span>
                     <span
@@ -213,8 +234,15 @@ export default function ThanksForTappingPage() {
         </section>
 
         {/* Additional Resources */}
-        <section className="rounded-xl border border-white/10 bg-white/5 p-5">
-          <h2 className="mb-4 text-center text-xs uppercase tracking-[0.35em] text-white/70">
+        <section
+          className="rounded-xl p-5"
+          style={{
+            borderWidth: '1px',
+            borderColor: 'var(--border-primary)',
+            backgroundColor: 'var(--bg-subtle)'
+          }}
+        >
+          <h2 className="mb-4 text-center text-label" style={{ color: 'var(--text-tertiary)' }}>
             Additional resources
           </h2>
           <div className="grid gap-3">
@@ -222,7 +250,7 @@ export default function ThanksForTappingPage() {
               const content = (
                 <>
                   <div className="flex items-center justify-center">
-                    <span className="text-base font-semibold">{resource.label}</span>
+                    <span className="text-base font-semibold text-white">{resource.label}</span>
                     <span
                       aria-hidden
                       className="ml-2 text-lg transition-transform duration-200 group-active:translate-x-1"
@@ -230,7 +258,9 @@ export default function ThanksForTappingPage() {
                       →
                     </span>
                   </div>
-                  <p className="mt-1 text-center text-sm leading-relaxed text-white/70">{resource.helper}</p>
+                  <p className="mt-1 text-center text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    {resource.helper}
+                  </p>
                 </>
               )
 
@@ -251,7 +281,12 @@ export default function ThanksForTappingPage() {
                 <ResourceLink
                   key={resource.label}
                   {...resourceProps}
-                  className="group block rounded-xl border border-white/10 bg-transparent px-4 py-3.5 transition-all duration-200 active:scale-[0.98]"
+                  className="group block rounded-xl px-4 py-3.5 transition-all duration-200 active:scale-[0.98]"
+                  style={{
+                    borderWidth: '1px',
+                    borderColor: 'var(--border-primary)',
+                    backgroundColor: 'transparent'
+                  }}
                   data-analytics-id={resource.analyticsId}
                 >
                   {content}
