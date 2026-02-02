@@ -244,65 +244,143 @@ body[data-embed-preview='true'] [data-embed-hide='true'] {
   opacity: 0;
 }
 
-/* Bento Grid Animations */
+/* ---------------------------------------------------------------- */
+/* Card Stack Animations                                            */
+/* ---------------------------------------------------------------- */
 
-/* Floating glow orb animation */
-@keyframes float-glow {
+/* Staggered entrance animation for cards */
+@keyframes card-stack-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header slide down animation */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Avatar pulse animation */
+@keyframes avatar-pulse {
   0%, 100% {
-    transform: translate(0, 0) scale(1);
+    box-shadow: 0 0 0 0 rgba(84, 179, 214, 0.4);
   }
   50% {
-    transform: translate(10px, -10px) scale(1.1);
+    box-shadow: 0 0 0 8px rgba(84, 179, 214, 0);
   }
 }
 
-.bento-glow-orb {
-  animation: float-glow 8s ease-in-out infinite;
-}
-
-/* Subtle shimmer effect for featured card border */
-@keyframes bento-shimmer {
-  0% {
-    background-position: -200% center;
+/* Character reveal animation */
+@keyframes char-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  100% {
-    background-position: 200% center;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.bento-card-featured {
-  position: relative;
+/* Scroll reveal animation */
+@keyframes scroll-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.bento-card-featured::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(84, 179, 214, 0.3) 50%,
-    transparent 100%
-  );
-  background-size: 200% auto;
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
+/* ---------------------------------------------------------------- */
+/* Utility Classes                                                  */
+/* ---------------------------------------------------------------- */
+
+/* Neo-brutalist borders */
+.border-brutalist {
+  border: 2px solid currentColor;
+}
+
+.border-brutalist-thick {
+  border: 3px solid currentColor;
+}
+
+/* Neo-brutalist shadows */
+.shadow-brutalist {
+  box-shadow: 4px 4px 0px rgba(84, 179, 214, 0.2);
+}
+
+.shadow-brutalist-lg {
+  box-shadow: 6px 6px 0px rgba(84, 179, 214, 0.25);
+}
+
+.shadow-brutalist-accent {
+  box-shadow: 4px 4px 0px rgba(84, 179, 214, 0.4);
+}
+
+/* Scroll reveal trigger */
+.reveal-on-scroll {
   opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
+  transform: translateY(30px);
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.bento-card-featured:hover::before {
+.reveal-on-scroll.is-visible {
   opacity: 1;
-  animation: bento-shimmer 2s linear infinite;
+  transform: translateY(0);
+}
+
+/* Magnetic hover effect */
+.magnetic {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* Avatar pulse effect */
+.avatar-pulse {
+  animation: avatar-pulse 3s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------- */
+/* Reduced Motion Support                                           */
+/* ---------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .reveal-on-scroll {
+    opacity: 1;
+    transform: none;
+  }
+
+  .magnetic {
+    transform: none !important;
+  }
+
+  .avatar-pulse {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------------- */

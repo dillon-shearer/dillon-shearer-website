@@ -46,7 +46,7 @@ export default function TripleClickAvatar({ redirectPath, className }: Props) {
       width={160}
       height={160}
       priority
-      className={className ? `${className} cursor-default` : 'cursor-default'}
+      className={className ? `${className} cursor-default avatar-pulse` : 'cursor-default avatar-pulse'}
       draggable={false}
       style={{ userSelect: 'none', cursor: 'default' }}
       onClick={handleClick}

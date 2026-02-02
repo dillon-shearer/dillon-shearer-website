@@ -128,9 +128,9 @@ export default function GitHubWidget() {
 
   return (
     <>
-      <div className="flex justify-center mt-16">
-        <div 
-          className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 max-w-md w-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
+      <div className="flex justify-center">
+        <div
+          className="bg-gray-50 dark:bg-gray-800 border-2 border-gray-700 dark:border-white/20 rounded-xl p-4 max-w-md w-full cursor-pointer hover:shadow-brutalist-hover transition-all duration-300 shadow-brutalist"
           onClick={handleCardClick}
         >
           <div className="text-sm text-center">

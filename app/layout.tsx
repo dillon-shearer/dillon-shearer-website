@@ -101,19 +101,19 @@ export default function RootLayout({
           <EmbedToggle />
         </Suspense>
         <RouteWarmup />
-        <main className="site-shell flex-auto min-w-0 mt-6 flex flex-col px-2 md:px-0 max-w-7xl mx-auto">
-          <div data-embed-hide="true">
-            <Navbar />
-          </div>
-          <div className="w-full overflow-x-hidden site-shell-content">
+        <div data-embed-hide="true">
+          <Navbar />
+        </div>
+        <main className="site-shell flex-auto min-w-0 mt-6 flex flex-col w-full">
+          <div className="w-full overflow-x-hidden site-shell-content max-w-7xl mx-auto px-2 md:px-0">
             {children}
-          </div>
-          <div data-embed-hide="true">
-            <Footer />
           </div>
           <Analytics />
           <SpeedInsights />
         </main>
+        <div data-embed-hide="true">
+          <Footer />
+        </div>
         <script
           type="application/ld+json"
           suppressHydrationWarning
