@@ -43,7 +43,7 @@ export default function MultipleChoiceQuestion({
 
   const getOptionClass = (index: number) => {
     const baseClass =
-      'w-full text-left p-3 sm:p-4 rounded-xl font-medium transition-all duration-200 border-2'
+      'w-full text-left p-3 sm:p-4 rounded-xl font-medium transition-all duration-200 border-2 break-words'
 
     if (!hasAnswered) {
       return `${baseClass} border-white/20 bg-white/5 hover:border-white/40 hover:bg-white/10`
@@ -117,7 +117,7 @@ export default function MultipleChoiceQuestion({
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Question Text */}
-      <div className="text-lg sm:text-xl font-medium leading-relaxed">{question.question}</div>
+      <div className="text-lg sm:text-xl font-medium leading-relaxed break-words">{question.question}</div>
 
       {/* Options */}
       <div className="space-y-2 sm:space-y-3">

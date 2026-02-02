@@ -77,7 +77,7 @@ export default function DragAndDropQuestion({
   return (
     <div className="space-y-6">
       {/* Question Text */}
-      <div className="text-xl font-medium leading-relaxed mb-2">{question.question}</div>
+      <div className="text-lg sm:text-xl font-medium leading-relaxed mb-2 break-words">{question.question}</div>
       <p className="text-sm text-white/60 mb-4">Assign each item to the correct category</p>
 
       {/* Drop Zones Reference */}
@@ -139,7 +139,7 @@ export default function DragAndDropQuestion({
                     value={selectedZoneId || ''}
                     onChange={(e) => handlePlacement(shuffledIndex, e.target.value)}
                     disabled={hasAnswered}
-                    className={`flex-1 sm:min-w-[200px] px-3 sm:px-4 py-2 rounded-lg border-2 bg-white/5 text-white text-sm sm:text-base transition-all ${
+                    className={`flex-1 sm:min-w-[200px] max-w-full px-3 sm:px-4 py-2 rounded-lg border-2 bg-white/5 text-white text-sm sm:text-base transition-all truncate ${
                       hasAnswered
                         ? 'cursor-not-allowed opacity-75'
                         : 'border-white/30 hover:border-white/50 focus:border-[#54b3d6] focus:outline-none cursor-pointer'
@@ -147,7 +147,7 @@ export default function DragAndDropQuestion({
                   >
                     <option value="" className="bg-gray-900">Select category...</option>
                     {shuffledData.dropZones.map((zone) => (
-                      <option key={zone.id} value={zone.id} className="bg-gray-900">
+                      <option key={zone.id} value={zone.id} className="bg-gray-900 truncate">
                         {zone.label}
                       </option>
                     ))}

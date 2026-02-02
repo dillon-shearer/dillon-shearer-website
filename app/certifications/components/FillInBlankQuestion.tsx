@@ -59,7 +59,7 @@ export default function FillInBlankQuestion({
   return (
     <div className="space-y-6">
       {/* Question Text with Blanks */}
-      <div className="text-lg sm:text-xl font-medium leading-relaxed">
+      <div className="text-lg sm:text-xl font-medium leading-relaxed break-words">
         <div className="flex flex-wrap items-center gap-2">
           {parts.map((part, index) => {
             // Check if this part is a blank (multiple underscores)

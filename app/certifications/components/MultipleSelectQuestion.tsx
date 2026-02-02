@@ -59,7 +59,7 @@ export default function MultipleSelectQuestion({
 
   const getOptionClass = (index: number) => {
     const baseClass =
-      'w-full text-left p-3 sm:p-4 rounded-xl font-medium transition-all duration-200 border-2'
+      'w-full text-left p-3 sm:p-4 rounded-xl font-medium transition-all duration-200 border-2 break-words'
 
     const isSelected = selectedAnswers.includes(index)
     const isCorrect = shuffledData.correctAnswerIndices.includes(index)
@@ -150,7 +150,7 @@ export default function MultipleSelectQuestion({
     <div className="space-y-4 sm:space-y-6">
       {/* Question Text */}
       <div>
-        <div className="text-lg sm:text-xl font-medium leading-relaxed mb-2">{question.question}</div>
+        <div className="text-lg sm:text-xl font-medium leading-relaxed mb-2 break-words">{question.question}</div>
         <p className="text-xs sm:text-sm text-white/60">Select all that apply</p>
       </div>
 

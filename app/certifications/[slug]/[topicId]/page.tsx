@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getTopicById } from '@/lib/certifications'
 import QuestionRenderer from '@/app/certifications/components/QuestionRenderer'
 
@@ -30,9 +30,17 @@ export default function QuizPage() {
     setRandomizedQuestions(questions)
   }, []) // Empty dependency array - only run once on mount
 
+  // Scroll to question when it changes
+  useEffect(() => {
+    if (questionCardRef.current) {
+      questionCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [currentQuestionIndex])
+
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [showExplanation, setShowExplanation] = useState(true)
   const [answers, setAnswers] = useState<Record<string, boolean>>({})
+  const questionCardRef = useRef<HTMLDivElement>(null)
 
   if (!data) {
     return (
@@ -176,7 +184,7 @@ export default function QuizPage() {
         </div>
 
         {/* Question Card */}
-        <div className="mb-6 sm:mb-8 p-4 sm:p-8 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent">
+        <div ref={questionCardRef} className="mb-6 sm:mb-8 p-4 sm:p-8 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent overflow-hidden">
           {/* Question Header */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
             <div className="flex items-center flex-wrap gap-2">

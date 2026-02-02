@@ -48,7 +48,7 @@ export default function OpenTextQuestion({
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Question Text */}
-      <div className="text-lg sm:text-xl font-medium leading-relaxed">{question.question}</div>
+      <div className="text-lg sm:text-xl font-medium leading-relaxed break-words">{question.question}</div>
 
       {/* Text Input */}
       <div>

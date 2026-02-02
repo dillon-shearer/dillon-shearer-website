@@ -74,7 +74,7 @@ export default function MatchingQuestion({
   return (
     <div className="space-y-6">
       {/* Question Text */}
-      <div className="text-xl font-medium leading-relaxed mb-2">{question.question}</div>
+      <div className="text-lg sm:text-xl font-medium leading-relaxed mb-2 break-words">{question.question}</div>
       <p className="text-sm text-white/60 mb-4">Match each item on the left with its correct pair on the right</p>
 
       {/* Matching Interface */}
@@ -110,7 +110,7 @@ export default function MatchingQuestion({
                     value={selectedRightId || ''}
                     onChange={(e) => handleMatch(leftItem.id, e.target.value)}
                     disabled={hasAnswered}
-                    className={`flex-1 sm:min-w-[200px] px-3 sm:px-4 py-2 rounded-lg border-2 bg-white/5 text-white text-sm sm:text-base transition-all ${
+                    className={`flex-1 sm:min-w-[200px] max-w-full px-3 sm:px-4 py-2 rounded-lg border-2 bg-white/5 text-white text-sm sm:text-base transition-all truncate ${
                       hasAnswered
                         ? 'cursor-not-allowed opacity-75'
                         : 'border-white/30 hover:border-white/50 focus:border-[#54b3d6] focus:outline-none cursor-pointer'
@@ -118,7 +118,7 @@ export default function MatchingQuestion({
                   >
                     <option value="" className="bg-gray-900">Select a match...</option>
                     {shuffledData.rightItems.map((rightItem) => (
-                      <option key={rightItem.id} value={rightItem.id} className="bg-gray-900">
+                      <option key={rightItem.id} value={rightItem.id} className="bg-gray-900 truncate">
                         {rightItem.text}
                       </option>
                     ))}
