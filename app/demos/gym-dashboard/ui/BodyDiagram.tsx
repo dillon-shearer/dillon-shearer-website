@@ -94,7 +94,7 @@ export default function BodyDiagram({
   return (
     <div className={`bg-white/[0.02] border border-white/10 rounded-xl p-5 flex flex-col ${className}`}>
       <div className="flex items-center justify-between mb-4 gap-2">
-        <h3 className="text-base sm:text-lg font-bold tracking-tight">Body Focus</h3>
+        <h3 className="text-base sm:text-lg font-bold tracking-tight text-center sm:text-left w-full sm:w-auto">Body Focus</h3>
         <InfoTooltip>
           <div className="max-w-[320px] space-y-2">
             <div className="text-[11px] uppercase tracking-wide text-gray-300">Color Formula</div>
@@ -104,7 +104,7 @@ export default function BodyDiagram({
               <div>
                 More days working a split = the target moves up for those body parts. You need to beat{' '}
                 <span className="font-semibold">greenAt × splitDays</span> to go green, hit at least{' '}
-                <span className="font-semibold">yellowAt × splitDays</span> to be yellow; otherwise you’re red.
+                <span className="font-semibold">yellowAt × splitDays</span> to be yellow; otherwise you're red.
               </div>
             </div>
 
@@ -113,7 +113,7 @@ export default function BodyDiagram({
               <div className="space-y-1.5">
                 <div>
                   For each body part <code>p</code>, let <code>splitDays(p)</code> be the count of days in-range whose
-                  majority tag matches <code>p</code>’s split (Push/Pull/Legs). Let{' '}
+                  majority tag matches <code>p</code>'s split (Push/Pull/Legs). Let{' '}
                   <code>k = splitDays(p) × splitFactor</code> (with <code>splitFactor</code> ≥ 1 by default).
                 </div>
                 <div>
@@ -136,9 +136,14 @@ export default function BodyDiagram({
         </InfoTooltip>
       </div>
 
-      <div className="relative flex-1 rounded-lg border border-white/5 bg-black/40 aspect-[5/9] min-h-[360px] md:min-h-[440px] lg:min-h-[520px]">
+      <div className="relative flex-1 w-full rounded-lg border border-white/5 bg-black/40 overflow-hidden" style={{ minHeight: '400px', maxHeight: '600px', height: '100%' }}>
         {webglOK ? (
-          <Canvas dpr={[1, 2]} camera={{ position: [0, 1.4, 7], fov: 39 }} style={{ width: '100%', height: '100%' }}>
+          <Canvas
+            dpr={[1, 2]}
+            camera={{ position: [0, 1.4, 7], fov: 39 }}
+            resize={{ scroll: false, debounce: { scroll: 50, resize: 50 } }}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+          >
             <ambientLight intensity={0.7} />
             <directionalLight position={[5, 7, 6]} intensity={1.0} />
             <directionalLight position={[-6, 3, -6]} intensity={0.45} color="#a8c3ff" />

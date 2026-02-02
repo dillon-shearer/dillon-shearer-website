@@ -510,26 +510,10 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const backVisible = mode === 'day' && !!prevMode
 
   const Filters = (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full" aria-label="Dashboard filters">
-      {backVisible && (
-        <button
-          type="button"
-          title={`Back to ${prevMode}`}
-          aria-label="Back"
-          onClick={() => {
-            if (!prevMode) return
-            setMode(prevMode)
-            setPrevMode(null)
-            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
-          }}
-          className="h-10 px-4 rounded-lg border text-sm font-medium bg-white/[0.03] border-white/10 text-white/80 hover:bg-white/[0.06] hover:border-white/20 transition-all"
-        >
-          ← Back
-        </button>
-      )}
-
+    <div className="flex flex-col items-stretch gap-3 w-full" aria-label="Dashboard filters">
+      {/* Range selector buttons - Mobile optimized with 2x2 grid on small screens */}
       <div className="flex-1 min-w-0">
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {(['day','week','month','year'] as RangeMode[]).map(k => {
             const active = mode === k
             return (
@@ -539,8 +523,8 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 onClick={() => setMode(k)}
                 aria-pressed={active}
                 className={[
-                  'h-10 px-3 rounded-lg border text-sm font-semibold tracking-wide transition-all',
-                  'focus:outline-none focus:ring-2 focus:ring-[#54b3d6]/40',
+                  'h-11 sm:h-10 px-3 rounded-lg border text-sm font-semibold tracking-wide transition-all touch-target',
+                  'focus:outline-none focus:ring-2 focus:ring-[#54b3d6]/40 active:scale-95',
                   active
                     ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
                     : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20 hover:text-white'
@@ -553,49 +537,44 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
       </div>
 
-      {mode === 'day' ? (
-        <div className="flex items-center gap-2 justify-center sm:justify-start">
+      {/* Date navigation - Mobile optimized spacing */}
+      {mode === 'day' || mode === 'year' ? (
+        <div className="flex items-center gap-2 justify-center">
+          {backVisible && mode === 'day' && (
+            <button
+              type="button"
+              title={`Back to ${prevMode}`}
+              aria-label="Back"
+              onClick={() => {
+                if (!prevMode) return
+                setMode(prevMode)
+                setPrevMode(null)
+                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              className="h-11 sm:h-10 px-3 sm:px-4 rounded-lg border text-sm font-medium bg-white/[0.03] border-white/10 text-white/80 hover:bg-white/[0.06] hover:border-white/20 transition-all active:scale-95 touch-target"
+            >
+              <span className="hidden sm:inline">← Back</span>
+              <span className="sm:hidden">←</span>
+            </button>
+          )}
           <button
-            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            onClick={() => setDayDate(d => shiftYMD(d, -1))}
-            aria-label="Previous Day"
-            disabled={datasetMinDate ? dayDate <= datasetMinDate : false}
+            className="h-11 sm:h-10 w-11 sm:w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 touch-target"
+            onClick={mode === 'day' ? () => setDayDate(d => shiftYMD(d, -1)) : decYear}
+            aria-label={mode === 'day' ? 'Previous Day' : 'Previous Year'}
+            disabled={mode === 'day' && datasetMinDate ? dayDate <= datasetMinDate : false}
           >
             <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
               <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
             </svg>
           </button>
-          <div className="min-w-[140px] text-center text-sm font-medium text-white/80 font-mono">
-            {formatLongDate(dayDate)}
+          <div className="flex-1 max-w-[200px] text-center text-sm font-medium text-white/80 font-mono px-2">
+            {mode === 'day' ? formatLongDate(dayDate) : year}
           </div>
           <button
-            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            onClick={() => setDayDate(d => clampToToday(shiftYMD(d, +1)))}
-            aria-label="Next Day"
-            disabled={dayDate >= todayUTCKey()}
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-              <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
-            </svg>
-          </button>
-        </div>
-      ) : mode === 'year' ? (
-        <div className="flex items-center gap-2 justify-center sm:justify-start">
-          <button
-            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 transition-all"
-            onClick={decYear}
-            aria-label="Previous Year"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-              <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
-            </svg>
-          </button>
-          <div className="min-w-[80px] text-center text-sm font-semibold text-white/80 font-mono">{year}</div>
-          <button
-            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            onClick={incYear}
-            aria-label="Next Year"
-            disabled={year >= currentYear}
+            className="h-11 sm:h-10 w-11 sm:w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 touch-target"
+            onClick={mode === 'day' ? () => setDayDate(d => clampToToday(shiftYMD(d, +1))) : incYear}
+            aria-label={mode === 'day' ? 'Next Day' : 'Next Year'}
+            disabled={mode === 'day' ? dayDate >= todayUTCKey() : year >= currentYear}
           >
             <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
               <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
@@ -638,16 +617,16 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
   return (
     <div className="bg-black text-white min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-12">
-        {/* Hero Header - Athletic precision */}
-        <div className="pt-20 pb-8 border-b border-white/5">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-12 sm:pb-16">
+        {/* Hero Header - Mobile optimized */}
+        <div className="pt-20 pb-6 sm:pb-8 border-b border-white/5">
+          <div className="flex flex-col gap-3 sm:gap-4">
             <div>
               <div className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 rounded-full bg-[#54b3d6]/10 border border-[#54b3d6]/20">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#54b3d6] animate-pulse" />
                 <span className="text-xs font-medium text-[#54b3d6] uppercase tracking-wider">Live Data</span>
               </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-none mb-2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight leading-none mb-2" style={{ fontVariantNumeric: 'tabular-nums' }}>
                 Workout Analytics
               </h1>
               <p className="text-sm sm:text-base text-white/50 max-w-xl">
@@ -655,18 +634,18 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               </p>
             </div>
             {lastModifiedStr ? (
-              <div className="flex items-center gap-2 text-xs text-white/40 sm:pb-1">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="font-mono">{lastModifiedStr}</span>
+                <span className="font-mono truncate">{lastModifiedStr}</span>
               </div>
             ) : null}
           </div>
         </div>
 
-        {/* Control Panel */}
-        <div className="mt-8 mb-8">
+        {/* Control Panel - Mobile optimized */}
+        <div className="mt-6 sm:mt-8 mb-6 sm:mb-8">
           <UtilityCard
             filters={Filters}
             downloadButton={DownloadButton}
@@ -675,188 +654,202 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
 
         {!hasData ? (
-          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/5 mb-4">
-              <svg className="w-8 h-8 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-8 sm:p-12 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/5 mb-3 sm:mb-4">
+              <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
               </svg>
             </div>
-            <p className="text-white/60 text-base font-medium">No workout data in this range</p>
-            <p className="text-white/40 text-sm mt-1">Try selecting a different time period</p>
+            <p className="text-white/60 text-sm sm:text-base font-medium">No workout data in this range</p>
+            <p className="text-white/40 text-xs sm:text-sm mt-1">Try selecting a different time period</p>
           </div>
         ) : mode === 'day' ? (
           <DailyView lifts={lifts} date={dayDate} onChangeDate={(newDate) => setDayDate(clampToToday(newDate))} />
         ) : (
           <>
-            {/* Metrics Grid */}
-            <section className="mb-8">
-              <div className="grid lg:grid-cols-[1fr_1fr_1fr_0.85fr] lg:grid-rows-[auto_auto] gap-4">
-                {/* LEFT: KPI row + chart */}
-                <div className="lg:col-span-3 lg:row-start-1 lg:row-end-2 grid grid-rows-[auto_1fr] gap-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* TOTAL VOLUME */}
-                    <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="relative">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40 mb-3">Total Volume</div>
-                        <div className="font-bold text-4xl sm:text-5xl leading-none mb-2 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatNum(totalVolume)}</div>
-                        <div className="text-xs font-semibold tracking-wider text-white/50 uppercase">lbs</div>
-                      </div>
-                    </div>
-
-                    {/* GYM DAYS */}
-                    <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="relative">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40 mb-3">Gym Days</div>
-                        <div className="font-bold text-4xl sm:text-5xl leading-none font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {unique(filtered.map(l => l.date)).length}
-                          <span className="text-2xl mx-2 text-white/30">/</span>
-                          {dateWindow.length}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* EXERCISE VARIETY */}
-                    <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="relative">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40 mb-3">Exercise Variety</div>
-                        <div className="font-bold text-4xl sm:text-5xl leading-none font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>{exerciseVariety}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-base sm:text-lg font-bold tracking-tight">Daily Volume</h2>
-                    </div>
-                    <VolumeChart data={daily.map(d => ({ date: d.date, volume: d.volume }))} height={236} />
+            {/* Metrics Grid - Mobile-first responsive layout */}
+            <section className="space-y-4 mb-8">
+              {/* KPI Cards - Stack on mobile, grid on tablet+ - CENTERED TEXT */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                {/* TOTAL VOLUME */}
+                <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative text-center">
+                    <div className="dashboard-stat-label mb-3">Total Volume</div>
+                    <div className="dashboard-stat-value text-3xl sm:text-4xl lg:text-5xl mb-2">{formatNum(totalVolume)}</div>
+                    <div className="text-xs font-semibold tracking-wider text-white/50 uppercase">lbs</div>
                   </div>
                 </div>
 
-                {/* RIGHT: Body diagram */}
-                <BodyDiagram
-                  stats={bodyStats}
-                  splitCounts={splitCountsPPL}
-                  className="lg:col-start-4 lg:row-span-2 h-full"
-                />
-
-                {/* ROW 2 LEFT: Split + Body-part frequency */}
-                <div className="lg:col-span-3 lg:row-start-2 lg:row-end-3 grid lg:grid-cols-2 gap-4">
-                  {/* Split Frequency */}
-                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 flex flex-col min-h-[180px]">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-base font-bold tracking-tight">Split Frequency</h2>
-                      <div className="text-[10px] font-mono text-white/40">
-                        {dateWindow[0]} – {dateWindow[dateWindow.length - 1]}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 flex-1">
-                      <SplitTile name="Push" count={splitCountsPPL.Push} />
-                      <SplitTile name="Pull" count={splitCountsPPL.Pull} />
-                      <SplitTile name="Legs" count={splitCountsPPL.Legs} />
+                {/* GYM DAYS */}
+                <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative text-center">
+                    <div className="dashboard-stat-label mb-3">Gym Days</div>
+                    <div className="dashboard-stat-value text-3xl sm:text-4xl lg:text-5xl">
+                      {unique(filtered.map(l => l.date)).length}
+                      <span className="text-xl sm:text-2xl mx-2 text-white/30">/</span>
+                      {dateWindow.length}
                     </div>
                   </div>
+                </div>
 
-                  {/* Body-part Frequency */}
-                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 flex flex-col min-h-[180px]">
+                {/* EXERCISE VARIETY */}
+                <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden sm:col-span-2 lg:col-span-1">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative text-center">
+                    <div className="dashboard-stat-label mb-3">Exercise Variety</div>
+                    <div className="dashboard-stat-value text-3xl sm:text-4xl lg:text-5xl">{exerciseVariety}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Main content grid - Proper stacking on all screen sizes */}
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4">
+                {/* Left column: Chart + Stats */}
+                <div className="space-y-4 min-w-0">
+                  {/* Daily Volume Chart */}
+                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-base font-bold tracking-tight">Body Part Frequency</h2>
-                      <span className="text-[10px] font-mono text-white/40">
-                        {bodyPartsPaged.total} groups
-                      </span>
+                      <h2 className="text-base sm:text-lg font-bold tracking-tight text-center sm:text-left w-full">Daily Volume</h2>
+                    </div>
+                    <VolumeChart data={daily.map(d => ({ date: d.date, volume: d.volume }))} height={200} />
+                  </div>
+
+                  {/* Split & Body-part frequency - Stack on mobile, side-by-side on tablet+ */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Split Frequency */}
+                    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 flex flex-col min-h-[180px]">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                        <h2 className="text-base font-bold tracking-tight text-center sm:text-left">Split Frequency</h2>
+                        <div className="text-[10px] font-mono text-white/40 truncate text-center sm:text-right">
+                          {dateWindow[0]} – {dateWindow[dateWindow.length - 1]}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3 flex-1">
+                        <SplitTile name="Push" count={splitCountsPPL.Push} />
+                        <SplitTile name="Pull" count={splitCountsPPL.Pull} />
+                        <SplitTile name="Legs" count={splitCountsPPL.Legs} />
+                      </div>
                     </div>
 
-                    {bodyPartsPaged.rows.length === 0 ? (
-                      <div className="text-sm text-white/40 flex-1 flex items-center justify-center">No sets in this range</div>
-                    ) : (
-                      <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2 flex-1 content-start">
-                        {bodyPartsPaged.rows.map(({ bp, sets }) => (
-                          <CompactChip key={bp} label={bp.charAt(0).toUpperCase() + bp.slice(1)} count={sets} size="xs" />
-                        ))}
+                    {/* Body-part Frequency */}
+                    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 flex flex-col min-h-[180px]">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-base font-bold tracking-tight text-center sm:text-left flex-1">Body Part Frequency</h2>
+                        <span className="text-[10px] font-mono text-white/40 flex-shrink-0">
+                          {bodyPartsPaged.total} groups
+                        </span>
                       </div>
-                    )}
 
-                    <Pager
-                      page={bodyPartsPaged.page}
-                      totalPages={bodyPartsPaged.totalPages}
-                      onPrev={() => setBpPage(p => Math.max(1, p - 1))}
-                      onNext={() => setBpPage(p => Math.min(bodyPartsPaged.totalPages, p + 1))}
-                      className="mt-4 pt-4 border-t border-white/5"
-                    />
+                      {bodyPartsPaged.rows.length === 0 ? (
+                        <div className="text-sm text-white/40 flex-1 flex items-center justify-center">No sets in this range</div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2 flex-1 content-start">
+                          {bodyPartsPaged.rows.map(({ bp, sets }) => (
+                            <CompactChip key={bp} label={bp.charAt(0).toUpperCase() + bp.slice(1)} count={sets} size="xs" />
+                          ))}
+                        </div>
+                      )}
+
+                      <Pager
+                        page={bodyPartsPaged.page}
+                        totalPages={bodyPartsPaged.totalPages}
+                        onPrev={() => setBpPage(p => Math.max(1, p - 1))}
+                        onNext={() => setBpPage(p => Math.min(bodyPartsPaged.totalPages, p + 1))}
+                        className="mt-4 pt-4 border-t border-white/5"
+                      />
+                    </div>
                   </div>
+                </div>
+
+                {/* Right column: Body diagram - Stacks below on mobile/tablet, sidebar on xl+ */}
+                <div className="w-full xl:w-auto">
+                  <BodyDiagram
+                    stats={bodyStats}
+                    splitCounts={splitCountsPPL}
+                    className="h-full min-h-[400px] xl:sticky xl:top-24 w-full"
+                  />
                 </div>
               </div>
             </section>
 
-            {/* PRs + Heatmap */}
+            {/* PRs + Heatmap - Stack on mobile, side-by-side on desktop */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <h2 className="text-base sm:text-lg font-bold tracking-tight">Exercise PRs</h2>
+              {/* Exercise PRs Table - Mobile optimized with horizontal scroll */}
+              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6">
+                <div className="flex items-center justify-center sm:justify-start gap-2 mb-4 sm:mb-5">
+                  <h2 className="text-base sm:text-lg font-bold tracking-tight leading-none">Exercise PRs</h2>
                   <Tooltip text={e1RMTooltip}>
-                    <button className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 hover:border-[#54b3d6]/50 text-[10px] font-bold leading-none hover:bg-[#54b3d6]/10 transition-all" aria-label="Estimated 1RM formula info">i</button>
+                    <button className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 hover:border-[#54b3d6]/50 text-[10px] font-bold leading-none hover:bg-[#54b3d6]/10 transition-all flex-shrink-0 -mt-0.5" aria-label="Estimated 1RM formula info">i</button>
                   </Tooltip>
                 </div>
-                <div className="overflow-x-auto -mx-5 sm:-mx-6 px-5 sm:px-6">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-white/40 border-b border-white/5 select-none">
-                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('exercise')}>
-                          Exercise {sortKey === 'exercise' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('bestWeight')}>
-                          Weight {sortKey === 'bestWeight' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('best1RM')}>
-                          Est 1RM {sortKey === 'best1RM' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider">Best Set</th>
-                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('bestSetDate')}>
-                          Date {sortKey === 'bestSetDate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {prsSortedPaged.rows.map((row, idx) => (
-                        <tr key={row.exercise} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${idx === prsSortedPaged.rows.length - 1 ? 'border-0' : ''}`}>
-                          <td className="py-3 pr-6 font-medium">{row.exercise}</td>
-                          <td className="py-3 pr-6 font-mono text-white/80" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.bestWeight} lbs</td>
-                          <td className="py-3 pr-6 font-mono text-white/80" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.best1RM} lbs</td>
-                          <td className="py-3 pr-6 font-mono text-white/60" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}</td>
-                          <td className="py-3 pr-6 font-mono text-white/60 text-xs">{row.bestSetDate}</td>
+
+                {/* Mobile-friendly horizontal scroll wrapper */}
+                <div className="overflow-x-auto -mx-4 sm:-mx-6 scrollbar-hide">
+                  <div className="inline-block min-w-full px-4 sm:px-6">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-white/40 border-b border-white/5 select-none">
+                          <th className="py-3 pr-4 sm:pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors whitespace-nowrap" onClick={() => toggleSort('exercise')}>
+                            Exercise {sortKey === 'exercise' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          </th>
+                          <th className="py-3 pr-4 sm:pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors whitespace-nowrap" onClick={() => toggleSort('bestWeight')}>
+                            Weight {sortKey === 'bestWeight' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          </th>
+                          <th className="py-3 pr-4 sm:pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors whitespace-nowrap" onClick={() => toggleSort('best1RM')}>
+                            Est 1RM {sortKey === 'best1RM' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          </th>
+                          <th className="py-3 pr-4 sm:pr-6 text-xs font-bold uppercase tracking-wider whitespace-nowrap">Best Set</th>
+                          <th className="py-3 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors whitespace-nowrap" onClick={() => toggleSort('bestSetDate')}>
+                            Date {sortKey === 'bestSetDate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {prsSortedPaged.rows.map((row, idx) => (
+                          <tr key={row.exercise} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${idx === prsSortedPaged.rows.length - 1 ? 'border-0' : ''}`}>
+                            <td className="py-3 pr-4 sm:pr-6 font-medium whitespace-nowrap">{row.exercise}</td>
+                            <td className="py-3 pr-4 sm:pr-6 font-mono text-white/80 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.bestWeight} lbs</td>
+                            <td className="py-3 pr-4 sm:pr-6 font-mono text-white/80 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.best1RM} lbs</td>
+                            <td className="py-3 pr-4 sm:pr-6 font-mono text-white/60 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}</td>
+                            <td className="py-3 font-mono text-white/60 text-xs whitespace-nowrap">{row.bestSetDate}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+
                 <Pager
                   page={prsSortedPaged.page}
                   totalPages={prsSortedPaged.totalPages}
                   onPrev={() => setPrsPage(p => Math.max(1, p - 1))}
                   onNext={() => setPrsPage(p => Math.min(prsSortedPaged.totalPages, p + 1))}
-                  className="mt-5 pt-5 border-t border-white/5"
+                  className="mt-4 sm:mt-5 pt-4 sm:pt-5 border-t border-white/5"
                 />
               </div>
 
-              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 flex flex-col">
-                <div className="flex items-center gap-2 mb-5">
-                  <h2 className="text-base sm:text-lg font-bold tracking-tight">Volume Heatmap</h2>
+              {/* Volume Heatmap - Mobile optimized with min-width to prevent disappearing */}
+              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6 flex flex-col min-h-[280px]">
+                <div className="flex items-center gap-2 mb-4 sm:mb-5 justify-center sm:justify-start">
+                  <h2 className="text-base sm:text-lg font-bold tracking-tight leading-none">Volume Heatmap</h2>
                   <Tooltip text={heatmapTooltip}>
-                    <button className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 hover:border-[#54b3d6]/50 text-[10px] font-bold leading-none hover:bg-[#54b3d6]/10 transition-all" aria-label="Heatmap info">i</button>
+                    <button className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 hover:border-[#54b3d6]/50 text-[10px] font-bold leading-none hover:bg-[#54b3d6]/10 transition-all flex-shrink-0 -mt-0.5" aria-label="Heatmap info">i</button>
                   </Tooltip>
                 </div>
-                <div className="flex-1">
-                  <Heatmap mode={mode as 'week' | 'month' | 'year'} data={daily.map(d => ({ date: d.date, volume: d.volume }))} naColor="#3b4351" autoGrow />
+                <div className="flex-1 min-h-[200px] overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0 scrollbar-hide">
+                  <div className="min-w-[300px] h-full">
+                    <Heatmap mode={mode as 'week' | 'month' | 'year'} data={daily.map(d => ({ date: d.date, volume: d.volume }))} naColor="#3b4351" autoGrow />
+                  </div>
                 </div>
               </div>
             </section>
 
-            {/* Recent sessions */}
-            <section className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <h2 className="text-base sm:text-lg font-bold tracking-tight">Recent Sessions</h2>
+            {/* Recent sessions - Mobile optimized cards */}
+            <section className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-6 mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-5 sm:mb-6">
+                <h2 className="text-base sm:text-lg font-bold tracking-tight text-center sm:text-left w-full sm:w-auto">Recent Sessions</h2>
                 <Pager
                   page={recentSessions.page}
                   totalPages={recentSessions.totalPages}
@@ -865,23 +858,24 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Stack vertically on mobile, grid on tablet+ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {recentSessions.rows.map((s) => (
                   <Tooltip key={s.date} text="Click to view detailed breakdown">
                     <button
                       onClick={() => jumpToDay(s.date)}
-                      className="group relative text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 hover:border-[#54b3d6]/40 transition-all rounded-lg px-4 py-4 w-full overflow-hidden"
+                      className="group relative text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 hover:border-[#54b3d6]/40 transition-all rounded-lg p-4 w-full overflow-hidden active:scale-98 touch-target"
                       aria-label={`Open daily view for ${s.date}`}
                     >
                       <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/0 to-[#54b3d6]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                       <div className="relative">
                         <div className="flex items-start justify-between gap-2 mb-3">
                           <div className="flex-1 min-w-0">
-                            <div className="font-bold text-sm tracking-tight mb-0.5">
+                            <div className="font-bold text-sm tracking-tight mb-0.5 truncate">
                               {formatLongDate(s.date)}
                             </div>
                             {s.dayTag && (
-                              <div className="text-xs font-semibold text-[#54b3d6]">
+                              <div className="text-xs font-semibold text-[#54b3d6] truncate">
                                 {titleCaseTag(cleanTag(s.dayTag))}
                               </div>
                             )}
@@ -890,15 +884,15 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                             {formatNum(s.volume)} lbs
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-md text-[11px] font-semibold text-white/70">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] font-semibold text-white/70">
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                             </svg>
-                            {s.exercises.length} ex
+                            <span className="font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>{s.exercises.length}</span> ex
                           </span>
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-md text-[11px] font-semibold text-white/70 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 rounded-md text-[11px] font-semibold text-white/70 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             </svg>
                             {s.sets} sets
@@ -914,13 +908,14 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         )}
       </div>
 
+      {/* Chat Bubble - Mobile optimized positioning */}
       <div
         ref={bubbleRef}
-        className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3"
+        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-3"
         style={{ transform: `translate(${bubbleOffset.x}px, ${bubbleOffset.y}px)` }}
       >
         {isChatOpen ? (
-          <div className="h-[75vh] max-h-[640px] w-[min(460px,94vw)] overflow-hidden rounded-2xl bg-[#0d1117] border border-white/10 shadow-2xl backdrop-blur">
+          <div className="h-[calc(100vh-120px)] sm:h-[75vh] max-h-[640px] w-[calc(100vw-32px)] sm:w-[min(460px,94vw)] overflow-hidden rounded-2xl bg-[#0d1117] border border-white/10 shadow-2xl backdrop-blur">
             <ChatClient embedded onClose={() => setIsChatOpen(false)} />
           </div>
         ) : null}
@@ -928,7 +923,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
           type="button"
           onClick={() => setIsChatOpen(current => !current)}
           aria-label={isChatOpen ? 'Close gym chat' : 'Open gym chat'}
-          className="group flex h-14 w-14 items-center justify-center rounded-full border border-[#54b3d6]/40 bg-[#54b3d6]/20 backdrop-blur-sm text-xl font-bold text-white shadow-lg shadow-[#54b3d6]/20 hover:border-[#54b3d6]/60 hover:bg-[#54b3d6]/30 hover:shadow-xl hover:shadow-[#54b3d6]/30 transition-all"
+          className="group flex h-14 w-14 sm:h-14 sm:w-14 items-center justify-center rounded-full border border-[#54b3d6]/40 bg-[#54b3d6]/20 backdrop-blur-sm text-xl font-bold text-white shadow-lg shadow-[#54b3d6]/20 hover:border-[#54b3d6]/60 hover:bg-[#54b3d6]/30 hover:shadow-xl hover:shadow-[#54b3d6]/30 transition-all active:scale-95 touch-target"
         >
           {isChatOpen ? (
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -942,25 +937,35 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </button>
       </div>
 
-      {/* Download modal */}
+      {/* Download modal - Mobile bottom sheet / Desktop centered modal */}
       {showDownload && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDownload(false)}>
-          <div className="bg-[#0a0a0a] border border-white/10 rounded-xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
-              <h3 className="text-lg font-bold tracking-tight">Download Dataset</h3>
-              <button onClick={() => setShowDownload(false)} className="text-white/40 hover:text-white transition-colors" aria-label="Close">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={() => setShowDownload(false)}>
+          <div
+            className="bg-[#0a0a0a] border border-white/10 rounded-t-2xl sm:rounded-xl max-w-md w-full shadow-2xl animate-slide-up sm:animate-none max-h-[90vh] sm:max-h-none overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 sm:px-6 py-4 sm:py-5 border-b border-white/10 sticky top-0 bg-[#0a0a0a] z-10">
+              <h3 className="text-base sm:text-lg font-bold tracking-tight">Download Dataset</h3>
+              <button
+                onClick={() => setShowDownload(false)}
+                className="text-white/40 hover:text-white transition-colors p-1 touch-target"
+                aria-label="Close"
+              >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            {/* Content */}
+            <div className="p-5 sm:p-6 space-y-5">
+              {/* Range selector */}
               <div>
-                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wider">Range</div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="text-xs sm:text-sm font-bold text-white/80 mb-3 uppercase tracking-wider">Range</div>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <button
-                    className={`px-4 py-3 rounded-lg border text-sm font-semibold transition-all ${
+                    className={`px-3 sm:px-4 py-3 rounded-lg border text-sm font-semibold transition-all touch-target active:scale-95 ${
                       dlRange === 'current'
                         ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
                         : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20'
@@ -970,7 +975,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     Current filter
                   </button>
                   <button
-                    className={`px-4 py-3 rounded-lg border text-sm font-semibold transition-all ${
+                    className={`px-3 sm:px-4 py-3 rounded-lg border text-sm font-semibold transition-all touch-target active:scale-95 ${
                       dlRange === 'all'
                         ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
                         : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20'
@@ -982,11 +987,12 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 </div>
               </div>
 
+              {/* Format selector */}
               <div>
-                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wider">Format</div>
-                <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
+                <div className="text-xs sm:text-sm font-bold text-white/80 mb-3 uppercase tracking-wider">Format</div>
+                <div className="inline-flex w-full sm:w-auto rounded-lg border border-white/10 overflow-hidden">
                   <button
-                    className={`px-5 py-2.5 text-sm font-semibold transition-all ${
+                    className={`flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-2.5 text-sm font-semibold transition-all touch-target active:scale-95 ${
                       dlFormat === 'csv'
                         ? 'bg-[#54b3d6] text-black'
                         : 'bg-white/[0.03] text-white/70 hover:bg-white/[0.06]'
@@ -996,7 +1002,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                     CSV
                   </button>
                   <button
-                    className={`px-5 py-2.5 text-sm font-semibold transition-all ${
+                    className={`flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-2.5 text-sm font-semibold transition-all touch-target active:scale-95 ${
                       dlFormat === 'json'
                         ? 'bg-[#54b3d6] text-black'
                         : 'bg-white/[0.03] text-white/70 hover:bg-white/[0.06]'
@@ -1009,17 +1015,18 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               </div>
             </div>
 
-            <div className="px-6 py-5 border-t border-white/10 flex justify-end gap-3">
+            {/* Footer Actions */}
+            <div className="px-5 sm:px-6 py-4 sm:py-5 border-t border-white/10 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 sticky bottom-0 bg-[#0a0a0a]">
               <button
                 onClick={() => setShowDownload(false)}
-                className="px-5 py-2.5 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg text-sm font-semibold transition-all"
+                className="w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg text-sm font-semibold transition-all touch-target active:scale-95"
               >
                 Cancel
               </button>
               <a
                 href={buildDownloadUrl()}
                 onClick={() => setShowDownload(false)}
-                className="px-5 py-2.5 bg-[#54b3d6] hover:bg-[#6dc5e8] text-black rounded-lg text-sm font-bold transition-all shadow-lg shadow-[#54b3d6]/20 flex items-center gap-2"
+                className="w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-[#54b3d6] hover:bg-[#6dc5e8] text-black rounded-lg text-sm font-bold transition-all shadow-lg shadow-[#54b3d6]/20 flex items-center justify-center gap-2 touch-target active:scale-95"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

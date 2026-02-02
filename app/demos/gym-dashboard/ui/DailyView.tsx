@@ -199,22 +199,23 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
   }, [cumSeries])
 
   return (
-    <div className="space-y-6">
-      {/* Last 7 days (Sun→Sat replaced with rolling 7 ending today) */}
-      <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4">
-        <div className="mb-3 text-center">
-          <h2 className="text-lg font-semibold text-white">Last 7 days</h2>
+    <div className="space-y-4 sm:space-y-6">
+      {/* Last 7 days - Mobile optimized with horizontal scroll */}
+      <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5">
+        <div className="mb-3 sm:mb-4 text-center">
+          <h2 className="text-base sm:text-lg font-semibold text-white">Last 7 days</h2>
         </div>
-        <div className="grid grid-cols-7 gap-2">
+        {/* Desktop: grid, Mobile: horizontal scroll with snap */}
+        <div className="hidden sm:grid sm:grid-cols-7 gap-2">
           {last7.map((d) => {
             const isSelected = d.ymd === date
             const base = [
-              'flex flex-col items-center rounded border py-2 px-2 transition-colors',
+              'flex flex-col items-center rounded-lg border py-3 px-2 transition-all touch-target active:scale-95',
               isSelected
-                ? 'bg-green-500/70 border-green-400 text-white'
+                ? 'bg-green-500/70 border-green-400 text-white shadow-lg'
                 : (d.hasData
-                    ? 'bg-transparent border-white/10 text-gray-200 hover:bg-gray-800/40'
-                    : 'bg-transparent border-white/5 text-gray-500 hover:bg-gray-800/30 opacity-80')
+                    ? 'bg-transparent border-white/10 text-white/80 hover:bg-white/[0.04] hover:border-white/20'
+                    : 'bg-transparent border-white/5 text-white/40 hover:bg-white/[0.02] opacity-70')
             ].join(' ')
             return (
               <button
@@ -224,8 +225,41 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
                 title={d.label + (d.isToday ? ' (Today)' : '')}
                 aria-label={d.label + (d.isToday ? ' (Today)' : '')}
               >
-                <div className="text-[11px]">
-                  {d.isToday ? 'Today' : d.label}
+                <div className="text-[11px] font-medium text-center">
+                  {d.isToday ? 'Today' : d.label.split(' | ')[0]}
+                </div>
+                <div className="text-[10px] text-white/60 mt-0.5">
+                  {d.label.split(' | ')[1]}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        {/* Mobile horizontal scroll */}
+        <div className="sm:hidden flex gap-2 overflow-x-auto snap-x scrollbar-hide -mx-4 px-4">
+          {last7.map((d) => {
+            const isSelected = d.ymd === date
+            const base = [
+              'flex-none snap-center flex flex-col items-center rounded-lg border py-3 px-4 min-w-[100px] transition-all touch-target active:scale-95',
+              isSelected
+                ? 'bg-green-500/70 border-green-400 text-white shadow-lg'
+                : (d.hasData
+                    ? 'bg-transparent border-white/10 text-white/80 active:bg-white/[0.04]'
+                    : 'bg-transparent border-white/5 text-white/40 opacity-70')
+            ].join(' ')
+            return (
+              <button
+                key={d.ymd}
+                onClick={() => onChangeDate?.(d.ymd)}
+                className={base}
+                title={d.label + (d.isToday ? ' (Today)' : '')}
+                aria-label={d.label + (d.isToday ? ' (Today)' : '')}
+              >
+                <div className="text-xs font-semibold text-center whitespace-nowrap">
+                  {d.isToday ? 'Today' : d.label.split(' | ')[0]}
+                </div>
+                <div className="text-[10px] text-white/60 mt-1">
+                  {d.label.split(' | ')[1]}
                 </div>
               </button>
             )
@@ -233,25 +267,25 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
         </div>
       </div>
 
-      {/* KPI row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
-          <div className="text-sm text-gray-400">Total Volume</div>
-          <div className="text-2xl font-semibold mt-2">{totalVolume.toLocaleString()} lbs</div>
+      {/* KPI row - Mobile optimized grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 text-center hover:border-white/20 transition-colors">
+          <div className="text-xs sm:text-sm text-white/50 font-medium">Total Volume</div>
+          <div className="text-xl sm:text-2xl font-bold mt-2 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>{totalVolume.toLocaleString()} <span className="text-sm text-white/50">lbs</span></div>
         </div>
-        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
-          <div className="text-sm text-gray-400">Exercises • Sets • Reps</div>
-          <div className="text-2xl font-semibold mt-2">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 text-center hover:border-white/20 transition-colors">
+          <div className="text-xs sm:text-sm text-white/50 font-medium">Exercises • Sets • Reps</div>
+          <div className="text-xl sm:text-2xl font-bold mt-2 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {exerciseCount} • {totalSets} • {totalReps}
           </div>
         </div>
-        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
-          <div className="text-sm text-gray-400">Top Body Part</div>
-          <div className="text-2xl font-semibold mt-2">{topBodyPart}</div>
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 text-center hover:border-white/20 transition-colors">
+          <div className="text-xs sm:text-sm text-white/50 font-medium">Top Body Part</div>
+          <div className="text-xl sm:text-2xl font-bold mt-2">{topBodyPart}</div>
         </div>
-        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
-          <div className="text-sm text-gray-400">Near-Max Sets</div>
-          <div className="text-2xl font-semibold mt-2">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5 text-center hover:border-white/20 transition-colors">
+          <div className="text-xs sm:text-sm text-white/50 font-medium">Near-Max Sets</div>
+          <div className="text-xl sm:text-2xl font-bold mt-2 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {
               dayLifts.filter(l => {
                 const best = lifts
@@ -262,7 +296,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
               }).length
             }
           </div>
-          <div className="text-[11px] text-gray-500 mt-1">≥ 90% of lifetime 1RM</div>
+          <div className="text-[10px] sm:text-[11px] text-white/40 mt-1">≥ 90% of lifetime 1RM</div>
         </div>
       </div>
 

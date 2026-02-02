@@ -23,7 +23,7 @@ npm run gym-chat:policy
 # Gym chat canonical SQL generator
 npm run gym-chat:canonical-sql
 
-# Gym chat evaluation suites
+# Gym chat evaluation suites (scripts not yet created)
 npm run gym-chat:eval                    # Main evaluation
 npm run gym-chat:clarification-eval      # Clarification handling
 npm run gym-chat:multiturn-eval          # Multi-turn conversations
@@ -63,7 +63,7 @@ npm run dev
 
 - **File-based routing** in `app/` directory with nested layouts
 - **Server components by default** - mark with `'use client'` for interactivity
-- **API routes** in `app/api/` - 12 endpoint directories for various services
+- **API routes** in `app/api/` - 8 endpoint directories for various services
 - **Middleware** at root (`middleware.ts`) handles mobile detection and routing
 
 ### Gym Chatbot System
@@ -185,8 +185,9 @@ These are optional tools for complex agent handoffs, not required for normal dev
 
 ### Testing
 
-- `npm test` expects `tests/koreader-remote.test.ts` which may not exist yet
-- Gym chat eval scripts in `eval/` directory for LLM response evaluation
+- **Test infrastructure**: `npm test` expects `tests/koreader-remote.test.ts` which doesn't exist yet - test setup is incomplete
+- **Gym chat eval scripts**: Defined in package.json but corresponding files in `eval/` directory don't exist yet
+- **TypeScript execution**: All scripts use `tsx` (not ts-node) for running TypeScript files
 
 ### Mobile Detection
 
@@ -222,7 +223,7 @@ When working on gym chat queries:
 ## Key Technologies
 
 - **Framework**: Next.js 15 (App Router) + React 19
-- **Styling**: Tailwind CSS v4 alpha + PostCSS
+- **Styling**: Tailwind CSS v4 alpha + PostCSS (⚠️ alpha version - expect potential breaking changes)
 - **Database**: Vercel Postgres + native pg driver
 - **Content**: MDX with remark-gfm for GitHub Flavored Markdown
 - **Visualization**: Recharts for charts, Three.js for 3D
@@ -241,11 +242,17 @@ Required environment variables in `.env.local`:
 
 ### Dev Server Won't Start
 ```bash
-# Check if port 3001 is in use
+# Check if port 3001 is in use (Unix/Mac)
 lsof -i :3001
 
-# Kill process if needed
+# Check if port 3001 is in use (Windows)
+netstat -ano | findstr :3001
+
+# Kill process if needed (Unix/Mac)
 kill -9 <PID>
+
+# Kill process if needed (Windows)
+taskkill /PID <PID> /F
 
 # Or use a different port temporarily
 npm run dev -- -p 3002
@@ -271,4 +278,8 @@ npm run dev -- -p 3002
 
 ## Local Overrides
 
-Create `.claude.local.md` in the project root for personal preferences not shared with the team (already in `.gitignore`).
+Create `.claude.local.md` in the project root for personal preferences not shared with the team. Add to `.gitignore` to keep it local:
+```
+# Add to .gitignore
+.claude.local.md
+```

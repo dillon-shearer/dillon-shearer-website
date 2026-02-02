@@ -92,10 +92,10 @@ export default function Footer() {
       style={{ borderColor: 'var(--border-primary)' }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
-        {/* 4-Column Grid */}
+        {/* 4-Column Grid - Centered on mobile */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 mb-8">
           {/* Column 1: Brand */}
-          <div className="space-y-3.5">
+          <div className="space-y-3.5 text-center sm:text-left">
             <div className="font-mono text-lg font-bold tracking-wide" style={{ color: 'var(--brand-cyan)' }}>DWD</div>
             <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               Data-centric software engineer building analytics, pipelines, and AI tooling.
@@ -103,7 +103,7 @@ export default function Footer() {
           </div>
 
           {/* Column 2: Navigation */}
-          <div className="space-y-3.5">
+          <div className="space-y-3.5 text-center sm:text-left">
             <h3 className="text-label" style={{ color: 'var(--text-secondary)' }}>
               Navigate
             </h3>
@@ -123,7 +123,7 @@ export default function Footer() {
           </div>
 
           {/* Column 3: Resources */}
-          <div className="space-y-3.5">
+          <div className="space-y-3.5 text-center sm:text-left">
             <h3 className="text-label" style={{ color: 'var(--text-secondary)' }}>
               Resources
             </h3>
@@ -143,11 +143,11 @@ export default function Footer() {
           </div>
 
           {/* Column 4: Connect */}
-          <div className="space-y-3.5">
+          <div className="space-y-3.5 text-center sm:text-left">
             <h3 className="text-label" style={{ color: 'var(--text-secondary)' }}>
               Connect
             </h3>
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 flex flex-col items-center sm:items-start">
               {socialLinks.map((link) => (
                 <a
                   key={link.href}
@@ -169,10 +169,10 @@ export default function Footer() {
         {/* Gradient Divider */}
         <div className="divider mb-6" />
 
-        {/* Bottom Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-sm" style={{ color: 'var(--text-muted)' }}>
+        {/* Bottom Bar - Centered on mobile */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-sm text-center sm:text-left" style={{ color: 'var(--text-muted)' }}>
           <p className="text-xs">© {new Date().getFullYear()} Dillon Shearer. MIT Licensed.</p>
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-4 text-xs flex-wrap justify-center">
             <a
               href="https://github.com/dillon-shearer/dillon-shearer-website"
               target="_blank"
