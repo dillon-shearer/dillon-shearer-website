@@ -5,7 +5,8 @@
       "Bash(timeout /t 8 /nobreak)",
       "Bash(git add:*)",
       "WebFetch(domain:192.168.1.100)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(dir \"c:\\\\Users\\\\dills\\\\OneDrive\\\\Pictures\\\\Screenshots\"\" | findstr \"2026-02-02 \")"
     ]
   }
 }

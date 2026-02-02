@@ -59,7 +59,7 @@ export default function FillInBlankQuestion({
   return (
     <div className="space-y-6">
       {/* Question Text with Blanks */}
-      <div className="text-xl font-medium leading-relaxed">
+      <div className="text-lg sm:text-xl font-medium leading-relaxed">
         <div className="flex flex-wrap items-center gap-2">
           {parts.map((part, index) => {
             // Check if this part is a blank (multiple underscores)
@@ -81,7 +81,7 @@ export default function FillInBlankQuestion({
                   }
                   disabled={hasAnswered}
                   placeholder="___"
-                  className={`inline-block px-3 py-1 rounded border-2 bg-white/5 text-white min-w-[120px] transition-all ${
+                  className={`inline-block px-2 sm:px-3 py-1 text-sm sm:text-base rounded border-2 bg-white/5 text-white w-full sm:w-auto sm:min-w-[120px] transition-all ${
                     hasAnswered
                       ? isCorrect
                         ? 'border-green-500 bg-green-500/10'
@@ -91,7 +91,7 @@ export default function FillInBlankQuestion({
                 />
               )
             }
-            return <span key={`text-${index}`}>{part}</span>
+            return <span key={`text-${index}`} className="text-sm sm:text-base">{part}</span>
           })}
         </div>
       </div>

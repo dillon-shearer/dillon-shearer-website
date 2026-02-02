@@ -28,7 +28,7 @@ export default function TrueFalseQuestion({
 
   const getButtonClass = (value: boolean) => {
     const baseClass =
-      'flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-200 border-2'
+      'flex-1 py-3 sm:py-4 px-4 sm:px-6 rounded-xl text-sm sm:text-base font-semibold transition-all duration-200 border-2'
 
     if (!hasAnswered) {
       return `${baseClass} border-white/20 bg-white/5 hover:border-white/40 hover:bg-white/10`
@@ -50,19 +50,19 @@ export default function TrueFalseQuestion({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Question Text */}
-      <div className="text-xl font-medium leading-relaxed">{question.question}</div>
+      <div className="text-lg sm:text-xl font-medium leading-relaxed">{question.question}</div>
 
       {/* Answer Buttons */}
-      <div className="flex gap-4">
+      <div className="flex gap-3 sm:gap-4">
         <button
           onClick={() => handleAnswer(true)}
           disabled={hasAnswered}
           className={getButtonClass(true)}
         >
-          <div className="flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -70,7 +70,7 @@ export default function TrueFalseQuestion({
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            True
+            <span>True</span>
           </div>
         </button>
 
@@ -79,8 +79,8 @@ export default function TrueFalseQuestion({
           disabled={hasAnswered}
           className={getButtonClass(false)}
         >
-          <div className="flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -88,7 +88,7 @@ export default function TrueFalseQuestion({
                 d="M6 18L18 6M6 6l12 12"
               />
             </svg>
-            False
+            <span>False</span>
           </div>
         </button>
       </div>

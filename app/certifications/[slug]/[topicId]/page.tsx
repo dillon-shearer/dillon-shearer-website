@@ -114,8 +114,8 @@ export default function QuizPage() {
   const hasAnsweredCurrent = currentQuestion.id in answers
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-4xl mx-auto px-6 py-10">
+    <div className="bg-black text-white">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Header */}
         <div className="mb-8">
           <Link
@@ -133,11 +133,11 @@ export default function QuizPage() {
         </div>
 
         {/* Session Stats */}
-        <div className="mb-8 p-6 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent">
-          <div className="flex flex-wrap gap-6 justify-between items-center">
+        <div className="mb-8 p-4 sm:p-6 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-4 sm:gap-6 sm:justify-between sm:items-center">
             <div>
-              <p className="text-sm text-white/60 mb-1">Question</p>
-              <p className="text-2xl font-bold">
+              <p className="text-xs sm:text-sm text-white/60 mb-1">Question</p>
+              <p className="text-xl sm:text-2xl font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>
                 {currentQuestionIndex + 1} / {totalQuestions}
               </p>
             </div>
@@ -145,12 +145,12 @@ export default function QuizPage() {
             {answeredCount > 0 && (
               <>
                 <div>
-                  <p className="text-sm text-white/60 mb-1">Answered This Session</p>
-                  <p className="text-2xl font-bold">{answeredCount}</p>
+                  <p className="text-xs sm:text-sm text-white/60 mb-1">Answered</p>
+                  <p className="text-xl sm:text-2xl font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>{answeredCount}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-white/60 mb-1">Correct</p>
-                  <p className="text-2xl font-bold text-green-400">
+                <div className="col-span-2 sm:col-span-1">
+                  <p className="text-xs sm:text-sm text-white/60 mb-1">Correct</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {correctCount} ({answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0}%)
                   </p>
                 </div>
@@ -160,9 +160,9 @@ export default function QuizPage() {
             {/* Settings */}
             <button
               onClick={() => setShowExplanation((prev) => !prev)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-white/20 hover:border-white/40 transition-colors"
+              className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-white/20 hover:border-white/40 transition-colors text-sm"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -170,22 +170,22 @@ export default function QuizPage() {
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              Explanations: {showExplanation ? 'On' : 'Off'}
+              <span className="whitespace-nowrap">Explanations: {showExplanation ? 'On' : 'Off'}</span>
             </button>
           </div>
         </div>
 
         {/* Question Card */}
-        <div className="mb-8 p-8 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent">
+        <div className="mb-6 sm:mb-8 p-4 sm:p-8 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent">
           {/* Question Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <span className="px-3 py-1 text-xs uppercase tracking-widest bg-[#54b3d6]/10 text-[#54b3d6] rounded-full">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+            <div className="flex items-center flex-wrap gap-2">
+              <span className="px-3 py-1 text-xs uppercase tracking-widest bg-[#54b3d6]/10 text-[#54b3d6] rounded-full whitespace-nowrap">
                 {currentQuestion.type.replace('-', ' ')}
               </span>
               {currentQuestion.difficulty && (
                 <span
-                  className={`px-3 py-1 text-xs uppercase tracking-widest rounded-full ${
+                  className={`px-3 py-1 text-xs uppercase tracking-widest rounded-full whitespace-nowrap ${
                     currentQuestion.difficulty === 'hard'
                       ? 'bg-red-500/10 text-red-400'
                       : currentQuestion.difficulty === 'medium'
@@ -200,7 +200,7 @@ export default function QuizPage() {
 
             {hasAnsweredCurrent && (
               <span
-                className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
                   answers[currentQuestion.id]
                     ? 'bg-green-500/20 text-green-300'
                     : 'bg-red-500/20 text-red-300'
@@ -221,23 +221,24 @@ export default function QuizPage() {
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <button
             onClick={goToPrevious}
             disabled={currentQuestionIndex === 0}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-white/20 hover:border-white/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold border border-white/20 hover:border-white/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Previous
+            <span className="hidden sm:inline">Previous</span>
+            <span className="sm:hidden">Prev</span>
           </button>
 
           <button
             onClick={goToRandom}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-[#54b3d6]/30 bg-[#54b3d6]/10 hover:bg-[#54b3d6]/20 transition-colors"
+            className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold border border-[#54b3d6]/30 bg-[#54b3d6]/10 hover:bg-[#54b3d6]/20 transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Random
@@ -246,10 +247,11 @@ export default function QuizPage() {
           <button
             onClick={goToNext}
             disabled={currentQuestionIndex === totalQuestions - 1}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border border-white/20 hover:border-white/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold border border-white/20 hover:border-white/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            Next
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <span className="hidden sm:inline">Next</span>
+            <span className="sm:hidden">Next</span>
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>

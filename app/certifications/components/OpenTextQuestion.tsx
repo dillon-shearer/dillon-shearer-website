@@ -46,9 +46,9 @@ export default function OpenTextQuestion({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Question Text */}
-      <div className="text-xl font-medium leading-relaxed">{question.question}</div>
+      <div className="text-lg sm:text-xl font-medium leading-relaxed">{question.question}</div>
 
       {/* Text Input */}
       <div>
@@ -59,7 +59,7 @@ export default function OpenTextQuestion({
           onKeyDown={handleKeyDown}
           disabled={hasAnswered}
           placeholder="Type your answer..."
-          className={`w-full px-4 py-3 rounded-xl border-2 bg-white/5 text-white transition-all duration-200 ${
+          className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-xl border-2 bg-white/5 text-white transition-all duration-200 ${
             hasAnswered
               ? isCorrect
                 ? 'border-green-500 bg-green-500/10'
@@ -68,7 +68,7 @@ export default function OpenTextQuestion({
           }`}
         />
         {!hasAnswered && (
-          <p className="mt-2 text-sm text-white/50">
+          <p className="mt-2 text-xs sm:text-sm text-white/50">
             {question.caseSensitive
               ? 'Case-sensitive - type exactly as expected'
               : 'Not case-sensitive'}

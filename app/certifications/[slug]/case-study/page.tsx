@@ -28,8 +28,8 @@ export default function CaseStudyPage() {
   const caseStudy = certification.caseStudy
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-5xl mx-auto px-6 py-10">
+    <div className="bg-black text-white">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         {/* Back Link */}
         <Link
           href={`/certifications/${slug}`}
@@ -42,17 +42,17 @@ export default function CaseStudyPage() {
         </Link>
 
         {/* Header */}
-        <div className="mb-12">
+        <div className="mb-8 sm:mb-12">
           <div className="flex items-center gap-3 mb-4">
-            <svg className="w-10 h-10 text-[#54b3d6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-8 h-8 sm:w-10 sm:h-10 text-[#54b3d6] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <h1 className="text-4xl lg:text-5xl font-bold">Hands-On Case Study</h1>
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold">Hands-On Case Study</h1>
           </div>
-          <h2 className="text-2xl font-semibold text-white/90 mb-3">
+          <h2 className="text-xl sm:text-2xl font-semibold text-white/90 mb-3">
             {caseStudy.title}
           </h2>
-          <p className="text-xl text-white/70 mb-4">
+          <p className="text-base sm:text-xl text-white/70 mb-4">
             {caseStudy.description}
           </p>
           {caseStudy.estimatedTime && (
@@ -87,24 +87,24 @@ export default function CaseStudyPage() {
         </div>
 
         {/* Data Files */}
-        <div className="mb-12 p-6 bg-gradient-to-br from-green-500/5 to-transparent border border-green-500/20 rounded-xl">
-          <h3 className="text-lg font-semibold text-green-400 mb-4">Download Data Files</h3>
-          <p className="text-white/70 mb-4">
+        <div className="mb-8 sm:mb-12 p-4 sm:p-6 bg-gradient-to-br from-green-500/5 to-transparent border border-green-500/20 rounded-xl">
+          <h3 className="text-base sm:text-lg font-semibold text-green-400 mb-3 sm:mb-4">Download Data Files</h3>
+          <p className="text-sm sm:text-base text-white/70 mb-4">
             Download all three data files in one convenient package. Extract the ZIP file and you'll have everything you need to complete the case study.
           </p>
           <a
             href="/api/certifications/pl-300/data-export"
             download="pl300-gym-data.zip"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all font-semibold"
+            className="inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-green-500/10 border border-green-500/30 rounded-lg text-sm sm:text-base text-green-400 hover:bg-green-500/20 hover:border-green-500/50 transition-all font-semibold w-full sm:w-auto"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Download All Data Files (ZIP)
+            <span className="whitespace-nowrap">Download All Data Files (ZIP)</span>
           </a>
 
-          <div className="mt-6 space-y-3">
-            <h4 className="text-sm font-semibold text-white/70">Included Files:</h4>
+          <div className="mt-4 sm:mt-6 space-y-3">
+            <h4 className="text-xs sm:text-sm font-semibold text-white/70">Included Files:</h4>
             <div className="grid grid-cols-1 gap-3">
               <div className="p-3 bg-white/[0.03] border border-white/10 rounded-lg">
                 <div className="flex items-start gap-3">
@@ -152,17 +152,17 @@ export default function CaseStudyPage() {
                 key={step.stepNumber}
                 className="group bg-white/[0.03] border border-white/10 rounded-xl overflow-hidden hover:border-white/20 transition-all"
               >
-                <summary className="cursor-pointer p-6 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#54b3d6]/10 border border-[#54b3d6]/20 text-[#54b3d6] font-bold text-lg flex-shrink-0">
+                <summary className="cursor-pointer p-4 sm:p-6 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                    <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#54b3d6]/10 border border-[#54b3d6]/20 text-[#54b3d6] font-bold text-base sm:text-lg flex-shrink-0">
                       {step.stepNumber}
                     </div>
-                    <h4 className="font-semibold text-lg text-white group-hover:text-[#54b3d6] transition-colors">
+                    <h4 className="font-semibold text-base sm:text-lg text-white group-hover:text-[#54b3d6] transition-colors min-w-0 break-words">
                       {step.title}
                     </h4>
                   </div>
                   <svg
-                    className="w-6 h-6 text-white/50 transition-transform group-open:rotate-180"
+                    className="w-5 h-5 sm:w-6 sm:h-6 text-white/50 transition-transform group-open:rotate-180 flex-shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -170,18 +170,18 @@ export default function CaseStudyPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </summary>
-                <div className="px-6 pb-6 space-y-5 border-t border-white/5">
-                  <div className="pt-5">
+                <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4 sm:space-y-5 border-t border-white/5">
+                  <div className="pt-4 sm:pt-5">
                     <h5 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Instructions</h5>
-                    <p className="text-white/80 leading-relaxed">{step.description}</p>
+                    <p className="text-sm sm:text-base text-white/80 leading-relaxed break-words">{step.description}</p>
                   </div>
                   <div>
                     <h5 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Expected Outcome</h5>
-                    <p className="text-white/70 leading-relaxed">{step.expectedOutcome}</p>
+                    <p className="text-sm sm:text-base text-white/70 leading-relaxed break-words">{step.expectedOutcome}</p>
                   </div>
                   <div>
                     <h5 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Validation</h5>
-                    <p className="text-green-400/80 leading-relaxed">{step.validation}</p>
+                    <p className="text-sm sm:text-base text-green-400/80 leading-relaxed break-words">{step.validation}</p>
                   </div>
                 </div>
               </details>
@@ -190,25 +190,25 @@ export default function CaseStudyPage() {
         </div>
 
         {/* Footer CTA */}
-        <div className="mt-16 p-8 bg-gradient-to-br from-[#54b3d6]/10 to-transparent border border-[#54b3d6]/20 rounded-2xl text-center">
-          <h3 className="text-2xl font-bold mb-3">Ready to Get Started?</h3>
-          <p className="text-white/70 mb-6 max-w-2xl mx-auto">
+        <div className="mt-12 sm:mt-16 p-6 sm:p-8 bg-gradient-to-br from-[#54b3d6]/10 to-transparent border border-[#54b3d6]/20 rounded-2xl text-center">
+          <h3 className="text-xl sm:text-2xl font-bold mb-3">Ready to Get Started?</h3>
+          <p className="text-sm sm:text-base text-white/70 mb-6 max-w-2xl mx-auto">
             Download the data files, fire up Power BI Desktop, and work through each step. This hands-on experience will reinforce the concepts you've learned and prepare you for the real exam.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
             <a
               href="/api/certifications/pl-300/data-export"
               download="pl300-gym-data.zip"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#54b3d6] text-black font-semibold rounded-lg hover:bg-[#54b3d6]/90 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base bg-[#54b3d6] text-black font-semibold rounded-lg hover:bg-[#54b3d6]/90 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Download Data Files
+              <span className="whitespace-nowrap">Download Data Files</span>
             </a>
             <Link
               href={`/certifications/${slug}`}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white/5 border border-white/20 text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base bg-white/5 border border-white/20 text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
             >
               Back to Practice Questions
             </Link>

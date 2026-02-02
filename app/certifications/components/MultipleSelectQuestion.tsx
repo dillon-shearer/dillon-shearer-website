@@ -59,7 +59,7 @@ export default function MultipleSelectQuestion({
 
   const getOptionClass = (index: number) => {
     const baseClass =
-      'w-full text-left p-4 rounded-xl font-medium transition-all duration-200 border-2'
+      'w-full text-left p-3 sm:p-4 rounded-xl font-medium transition-all duration-200 border-2'
 
     const isSelected = selectedAnswers.includes(index)
     const isCorrect = shuffledData.correctAnswerIndices.includes(index)
@@ -147,15 +147,15 @@ export default function MultipleSelectQuestion({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Question Text */}
       <div>
-        <div className="text-xl font-medium leading-relaxed mb-2">{question.question}</div>
-        <p className="text-sm text-white/60">Select all that apply</p>
+        <div className="text-lg sm:text-xl font-medium leading-relaxed mb-2">{question.question}</div>
+        <p className="text-xs sm:text-sm text-white/60">Select all that apply</p>
       </div>
 
       {/* Options */}
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-3">
         {shuffledData.options.map((option, index) => (
           <button
             key={index}
@@ -163,9 +163,9 @@ export default function MultipleSelectQuestion({
             disabled={hasAnswered}
             className={getOptionClass(index)}
           >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               {getOptionIcon(index)}
-              <span className="flex-1">{option}</span>
+              <span className="flex-1 text-left text-sm sm:text-base">{option}</span>
             </div>
           </button>
         ))}
