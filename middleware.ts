@@ -7,43 +7,7 @@ export const config = {
 }
 
 export function middleware(req: NextRequest) {
-  const url = req.nextUrl
-  const ua = req.headers.get('user-agent') || ''
-  const path = url.pathname
-  const isEmbed = url.searchParams.get('embed') === '1'
-
-  // Let crawlers through for SEO & link previews
-  const isBot = /bot|crawler|spider|crawling|preview|facebookexternalhit|linkedinbot|twitterbot/i.test(ua)
-  if (isBot) return NextResponse.next()
-
-  // Basic mobile detection
-  const isMobile = /iphone|ipod|ipad|android|mobile|blackberry|iemobile|opera mini/i.test(ua)
-  if (!isMobile || isEmbed) return NextResponse.next() // always allow desktop or iframe previews
-
-  // Safety: if we're already on the warning page, do nothing
-  if (path === '/demos/mobile-warning') return NextResponse.next()
-
-  // Mobile allowlist
-  const allowExact = new Set<string>([
-    '/demos',
-    '/demos/mobile-warning',
-    '/demos/gym-dashboard/form', // mobile data-entry page
-    '/koreader-remote',
-    '/demos/koreader-remote',
-  ])
-  const allowPrefixes = ['/demos/gym-dashboard/form/'] // nested under form
-
-  const isAllowed =
-    allowExact.has(path) || allowPrefixes.some((p) => path.startsWith(p))
-
-  if (isAllowed) {
-    return NextResponse.next()
-  }
-
-  // For any other /demos/* on mobile, serve the warning UI in-place
-  // (keeps the original URL in the bar; no redirect loops)
-  const rewriteUrl = url.clone()
-  rewriteUrl.pathname = '/demos/mobile-warning'
-  rewriteUrl.search = ''
-  return NextResponse.rewrite(rewriteUrl)
+  // Middleware kept for future use but currently allows all traffic
+  // All demos are now mobile-friendly
+  return NextResponse.next()
 }

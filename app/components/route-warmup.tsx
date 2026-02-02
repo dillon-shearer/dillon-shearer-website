@@ -8,7 +8,6 @@ const dashboardRoutes = [
   '/demos/data-access-portal',
   '/demos/data-access-portal/admin',
   '/demos/gym-dashboard',
-  '/demos/materials-dashboard',
   '/koreader-remote',
 ]
 

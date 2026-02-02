@@ -41,7 +41,6 @@ npm run dev
 # Visit demos in browser:
 # - http://localhost:3001/demos/gym-dashboard
 # - http://localhost:3001/demos/data-access-portal
-# - http://localhost:3001/demos/materials-dashboard
 # - http://localhost:3001/demos/dillons-data-cleaner
 ```
 

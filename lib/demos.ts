@@ -25,28 +25,6 @@ const demos: Demo[] = [
     ],
   },
   {
-    slug: 'materials-dashboard',
-    title: 'Materials Dashboard (Synthetic Data)',
-    description: 'Interactive inventory management system with real-time analytics, scenario planning, and predictive insights for manufacturing operations. Features dynamic KPIs, supply chain simulation, and responsive design.',
-    image: '/images/demos/materials-dashboard-preview.svg',
-    techStack: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Interactive Charts'],
-    category: 'fullstack',
-    complexity: 'beginner',
-    buildTime: '2 days',
-    status: 'live',
-    featured: false,
-    githubUrl: 'https://github.com/dillon-shearer/dillon-shearer-website/blob/main/app/demos/materials-dashboard/dashboard.tsx',
-    liveUrl: 'https://www.datawithdillon.com/demos/materials-dashboard', // Will be the demo page itself
-    highlights: [
-      'Real-time inventory tracking with status indicators',
-      'Interactive scenario planning (stockouts, overstock, seasonal spikes)',
-      'Automated KPI calculations and trend analysis',
-      'Hidden control panel for comprehensive data manipulation',
-      'Responsive design optimized for mobile and desktop',
-      'Dynamically generated synthetic materials data'
-    ]
-  },
-  {
     slug: 'gym-dashboard',
     title: 'Gym Data Tracker',
     description: 'My real-time personal fitness tracking dashboard with workout history, lift analytics, and progress visualization. Daily updates of gym lift data with comprehensive volume calculations and performance metrics.',

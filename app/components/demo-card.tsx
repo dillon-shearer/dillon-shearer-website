@@ -93,11 +93,16 @@ export default function DemoCard({ demo, onSeeMore, index }: DemoCardProps) {
   const previewBase = exploreHref
   const queryJoiner = previewBase.includes('?') ? '&' : '?'
   const previewSrc = `${previewBase}${queryJoiner}embed=1&nosplash=1`
-  const mobileBlocked = !demo.mobileReady && isMobileViewport
 
   return (
     <article
       className={`group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl ${mobileOrderClass}`}
+      onClick={(e) => {
+        // Make entire card clickable on mobile - open demo directly
+        if (isMobileViewport && isAccessible && e.target === e.currentTarget) {
+          window.location.href = exploreHref
+        }
+      }}
     >
       <div className="relative h-[200px] w-full overflow-hidden rounded-t-2xl bg-black sm:h-[240px] md:h-[280px]">
         {/* Loading skeleton - shows until iframe loads */}
@@ -128,11 +133,8 @@ export default function DemoCard({ demo, onSeeMore, index }: DemoCardProps) {
         {isAccessible && (
           <Link
             href={exploreHref}
-            className={`absolute inset-0 z-10 flex items-end justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 ${
-              mobileBlocked ? 'pointer-events-none opacity-0' : 'opacity-0 hover:opacity-100 focus-visible:opacity-100'
-            }`}
+            className="absolute inset-0 z-10 flex items-end justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300"
             aria-label={`Open ${demo.title} demo`}
-            tabIndex={mobileBlocked ? -1 : 0}
           >
             <span className="mb-3 mr-3 rounded-full bg-white/15 px-3 py-1 text-xs font-medium tracking-wide text-white backdrop-blur">
               Open demo
@@ -181,9 +183,7 @@ export default function DemoCard({ demo, onSeeMore, index }: DemoCardProps) {
           <button
             type="button"
             onClick={onSeeMore}
-            className={`inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white/70 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#54b3d6] ${
-              mobileBlocked ? 'opacity-80' : 'hover:border-[#54b3d6]/50 hover:text-[#54b3d6] hover:bg-[#54b3d6]/5'
-            }`}
+            className="inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-white/70 transition-all duration-200 hover:border-[#54b3d6]/50 hover:text-[#54b3d6] hover:bg-[#54b3d6]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#54b3d6]"
           >
             See more
             <svg

@@ -134,12 +134,6 @@ export default function DemoModal({ demo, onClose }: DemoModalProps) {
                 </div>
               )}
 
-              {!demo.mobileReady && (
-                <p className="text-xs font-medium text-amber-400">
-                  Best experienced on desktop devices
-                </p>
-              )}
-
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-widest text-white/40">Tech Stack</h4>
                 <div className="mt-2 flex flex-wrap gap-1.5">
