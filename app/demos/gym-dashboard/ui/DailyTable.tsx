@@ -14,7 +14,7 @@ export default function DailyTable({ lifts }: { lifts: GymLift[] }) {
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="text-left text-gray-400 border-b border-gray-800">
+          <tr className="text-left text-white/40 border-b border-white/5">
             <th className="py-2 pr-4">Date</th>
             <th className="py-2 pr-4">Exercise</th>
             <th className="py-2 pr-4">Set</th>
@@ -25,7 +25,7 @@ export default function DailyTable({ lifts }: { lifts: GymLift[] }) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} className="border-b border-gray-800/60">
+            <tr key={r.id} className="border-b border-white/5">
               <td className="py-2 pr-4">{r.date}</td>
               <td className="py-2 pr-4">{r.exercise}</td>
               <td className="py-2 pr-4">{r.setNumber}</td>

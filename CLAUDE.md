@@ -32,13 +32,38 @@ npm run gym-chat:workout-plan-eval       # Workout planning
 npm run gym-chat:quick-win-eval          # Quick win scenarios
 ```
 
+## Testing Demos
+
+```bash
+# Start dev server
+npm run dev
+
+# Visit demos in browser:
+# - http://localhost:3001/demos/gym-dashboard
+# - http://localhost:3001/demos/data-access-portal
+# - http://localhost:3001/demos/materials-dashboard
+# - http://localhost:3001/demos/dillons-data-cleaner
+```
+
+**Mobile Testing:**
+- Middleware redirects mobile users from unsupported demos to mobile-warning page
+- Test mobile redirect: Resize browser to mobile width or use DevTools device emulation
+- Allow-listed routes in `middleware.ts` permit mobile data entry forms
+- Bot/crawler detection allows SEO indexing even on redirect-protected pages
+
+**Gym Dashboard Specific:**
+- Charts require data in Postgres database (gym_lifts table)
+- Chat widget in bottom-right opens AI-powered workout analytics
+- Test different time ranges: Day, 7d, 30d, YTD buttons
+- Volume chart, heatmap, and body diagram all respond to selected time range
+
 ## High-Level Architecture
 
 ### Next.js App Router Structure
 
 - **File-based routing** in `app/` directory with nested layouts
 - **Server components by default** - mark with `'use client'` for interactivity
-- **API routes** in `app/api/` - 11 endpoint directories for various services
+- **API routes** in `app/api/` - 12 endpoint directories for various services
 - **Middleware** at root (`middleware.ts`) handles mobile detection and routing
 
 ### Gym Chatbot System
@@ -95,6 +120,13 @@ Located in `app/demos/data-access-portal/`:
 
 ### UI Conventions
 
+**Global CSS Design System (`app/global.css`):**
+- CSS variables for all colors, spacing, typography (see `:root` section)
+- Utility classes: `.card-base`, `.card-hover`, `.card-accent`, `.btn-primary`, `.btn-secondary`, `.input-base`, `.badge-base`
+- Text opacity: `var(--text-primary)`, `var(--text-secondary)`, `var(--text-tertiary)`, `var(--text-muted)`
+- Backgrounds: `var(--bg-subtle)` for hover states, `var(--border-primary)` for borders
+- Always use CSS variables instead of hard-coded colors or Tailwind utilities for consistency
+
 **Header/Navigation (`app/components/nav.tsx`):**
 - Fixed positioning with hide-on-scroll (down) / show-on-scroll (up) behavior
 - Mobile overlay is full-screen with close button in top-right
@@ -107,28 +139,35 @@ Located in `app/demos/data-access-portal/`:
 - Spacing follows Tailwind's refined scale: `gap-2.5`, `py-3.5`, `space-y-3.5`
 - Transitions: 200-300ms for hovers, 300-400ms for layout shifts
 
-## AI Agent Workflow
+**Modern Card Pattern (Established Feb 2026):**
+- Card background: `bg-white/[0.02]` with `border border-white/10`
+- Hover enhancement: `hover:border-white/20` or `hover:border-[#54b3d6]/30`
+- Hover overlays: `<div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />`
+- Numeric data: Always use `font-mono` with `style={{ fontVariantNumeric: 'tabular-nums' }}` for perfect alignment
+- Glassmorphic modals: `bg-black/95 backdrop-blur-sm border border-white/20`
+- Replace old patterns: `bg-gray-900 border-gray-800` → `bg-white/[0.02] border-white/10`
 
-This project uses a structured `.ai/` directory for agent coordination:
+**Component Update Pattern:**
+When updating multiple similar components (e.g., cards, tables):
+1. Use `Edit` tool with `replace_all: true` for bulk pattern updates
+2. Test one component first, then batch update the rest
+3. Common color migrations: `text-gray-400` → `text-white/40`, `border-gray-700` → `border-white/10`
 
-### Handoff Log (MANDATORY)
+## Development Workflow
 
-All development work must update `.ai/HANDOFF.md`:
+### Work Tracking
+- Use `git status` to see current changes
+- Create meaningful commits after logical milestones
+- For large refactors, consider feature branches
+- Git commit messages should include `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>` when AI-assisted
 
-- **Single source of truth** for context, decisions, and changes
-- **Append-only** - never delete or rewrite prior entries
-- **Status Log section** with dated entries (YYYY-MM-DD format)
-- Update after ANY meaningful work
+### Optional: AI Agent Coordination
+For structured multi-agent workflows, this project has:
+- `.ai/HANDOFF.md` - Append-only log of agent context and decisions
+- `.ai/AGENTS.md` - Agent coordination guidelines
+- `.ai/outputs/` - Generated files and artifacts
 
-### Output Management
-
-- All generated files go under `.ai/outputs/`
-- Never create outputs outside this directory
-- List all outputs in handoff log Output Manifest
-
-### Reference Files
-
-- `.ai/AGENTS.md` - Core agent principles and coordination guidelines
+These are optional tools for complex agent handoffs, not required for normal development.
 
 ## Important Gotchas
 
@@ -136,6 +175,13 @@ All development work must update `.ai/HANDOFF.md`:
 
 - TypeScript `ignoreBuildErrors: true` is temporarily set in `next.config.js`
 - Fix type errors rather than relying on this setting
+
+### Server Components
+
+- **Default is Server Component** - All components in `app/` are Server Components unless marked with `'use client'`
+- **No event handlers** - Cannot use `onClick`, `onMouseEnter`, etc. in Server Components
+- **Use CSS for interactions** - Prefer Tailwind hover utilities (`hover:bg-white/10`) over JS event handlers
+- **Client Components** - Add `'use client'` directive at top of file when you need interactivity
 
 ### Testing
 
@@ -170,7 +216,8 @@ When working on gym chat queries:
 
 - Header uses `fixed` positioning (not `sticky`) with hide-on-scroll behavior
 - Main content requires `pt-20` to prevent overlap with fixed header
-- Footer spacing: `mt-32` for generous separation from content
+- Footer spacing: `mt-20` for professional separation from content
+- Hero title: `.hero-title` class has `margin-top: 0` for tight spacing between name and tagline
 
 ## Key Technologies
 
@@ -189,6 +236,38 @@ Required environment variables in `.env.local`:
 - `POSTGRES_URL` - Vercel Postgres connection string
 - `RESEND_API_KEY` - For email notifications (DAR system)
 - `ANTHROPIC_API_KEY` - For gym chat LLM integration
+
+## Troubleshooting
+
+### Dev Server Won't Start
+```bash
+# Check if port 3001 is in use
+lsof -i :3001
+
+# Kill process if needed
+kill -9 <PID>
+
+# Or use a different port temporarily
+npm run dev -- -p 3002
+```
+
+### Build Errors
+- **Type errors**: `ignoreBuildErrors: true` is set in `next.config.js` - fix type errors rather than relying on this
+- **Missing env vars**: Verify `.env.local` has all required keys (see Environment Setup)
+- **Postgres connection**: Test with `npm run sql` - should connect without errors
+- **Module not found**: Run `npm install` to ensure dependencies are installed
+
+### Gym Chat Not Working
+- Verify `ANTHROPIC_API_KEY` in `.env.local`
+- Check browser console for 30-second timeout errors (LLM calls have 30000ms timeout)
+- LLM calls log to server console - check terminal output for API errors
+- SQL validation errors appear in chat UI - read the error message for specific policy violations
+
+### Component Styling Issues
+- If cards/components look wrong after updates, check for missed pattern migrations
+- Old pattern: `bg-gray-900 border-gray-800` should be `bg-white/[0.02] border-white/10`
+- Use browser DevTools to inspect applied classes
+- Clear Next.js cache: `rm -rf .next` then `npm run dev`
 
 ## Local Overrides
 

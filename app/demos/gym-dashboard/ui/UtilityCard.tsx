@@ -18,24 +18,17 @@ export default function UtilityCard({
   downloadButton,
 }: Props) {
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8">
-      <div
-        className="
-          relative isolate z-20                  /* <-- ensure this whole bar is on top */
-          bg-surface-1 dark:bg-surface-1-dark
-          border border-gray-800/10 dark:border-gray-700/30
-          rounded-xl shadow-sm p-3 sm:p-4
-          flex items-center gap-3
-        "
-        style={{ minHeight: 64 }}
-      >
-        {/* Left: filters (date picker, prev/next, etc.) */}
-        <div className="flex-1 min-w-0 flex items-center relative z-30 pointer-events-auto">
+    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 sm:p-5">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-4">
+        {/* Filters - takes up most space */}
+        <div className="flex-1 min-w-0">
           {filters}
         </div>
 
-        {/* Right: download */}
-        <div className="pointer-events-auto">{downloadButton}</div>
+        {/* Download button - aligned to right on desktop, full width on mobile */}
+        <div className="lg:flex-shrink-0">
+          {downloadButton}
+        </div>
       </div>
     </div>
   )

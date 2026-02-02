@@ -201,7 +201,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
   return (
     <div className="space-y-6">
       {/* Last 7 days (Sun→Sat replaced with rolling 7 ending today) */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4">
         <div className="mb-3 text-center">
           <h2 className="text-lg font-semibold text-white">Last 7 days</h2>
         </div>
@@ -213,8 +213,8 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
               isSelected
                 ? 'bg-green-500/70 border-green-400 text-white'
                 : (d.hasData
-                    ? 'bg-transparent border-gray-700 text-gray-200 hover:bg-gray-800/40'
-                    : 'bg-transparent border-gray-800 text-gray-500 hover:bg-gray-800/30 opacity-80')
+                    ? 'bg-transparent border-white/10 text-gray-200 hover:bg-gray-800/40'
+                    : 'bg-transparent border-white/5 text-gray-500 hover:bg-gray-800/30 opacity-80')
             ].join(' ')
             return (
               <button
@@ -235,21 +235,21 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
 
       {/* KPI row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
           <div className="text-sm text-gray-400">Total Volume</div>
           <div className="text-2xl font-semibold mt-2">{totalVolume.toLocaleString()} lbs</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
           <div className="text-sm text-gray-400">Exercises • Sets • Reps</div>
           <div className="text-2xl font-semibold mt-2">
             {exerciseCount} • {totalSets} • {totalReps}
           </div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
           <div className="text-sm text-gray-400">Top Body Part</div>
           <div className="text-2xl font-semibold mt-2">{topBodyPart}</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-center">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 text-center">
           <div className="text-sm text-gray-400">Near-Max Sets</div>
           <div className="text-2xl font-semibold mt-2">
             {
@@ -269,7 +269,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cumulative Volume */}
-        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="lg:col-span-2 bg-white/[0.02] border border-white/10 rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Cumulative Volume (by body part)</h2>
             <div className="hidden md:flex flex-wrap gap-3">
@@ -357,7 +357,7 @@ export default function DailyView({ lifts, date, onChangeDate }: Props) {
         </div>
 
         {/* Donut: Volume by Body Part */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5">
           <h2 className="text-lg font-semibold">Volume by Body Part</h2>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -437,7 +437,7 @@ function ExerciseFlow({ lifts }: { lifts: GymLift[] }) {
   }, [lifts])
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5">
       <h2 className="text-lg font-semibold mb-3">Exercise Flow</h2>
       <div className="flex flex-wrap gap-3">
         {flowGroups.map((g, i) => {
@@ -446,7 +446,7 @@ function ExerciseFlow({ lifts }: { lifts: GymLift[] }) {
           return (
             <div
               key={`${g.exercise}-${i}`}
-              className="inline-flex items-center rounded-md border border-gray-700 bg-gray-800/60 px-3 py-2"
+              className="inline-flex items-center rounded-md border border-white/10 bg-gray-800/60 px-3 py-2"
               title={`${g.exercise} • ${g.sets} set${g.sets>1?'s':''}`}
             >
               <span className="mr-2 inline-flex items-center justify-center rounded-full text-[11px] font-semibold bg-gray-700 text-white w-5 h-5">

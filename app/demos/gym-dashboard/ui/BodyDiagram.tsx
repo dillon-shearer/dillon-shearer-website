@@ -92,9 +92,9 @@ export default function BodyDiagram({
   const badgeMatFor = (p: BodyPart) => <meshStandardMaterial color={colorFor(p)} roughness={0.55} metalness={0.05} />
 
   return (
-    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col ${className}`}>
-      <div className="flex items-center justify-between mb-3 gap-2">
-        <h3 className="text-lg font-semibold">Body Focus</h3>
+    <div className={`bg-white/[0.02] border border-white/10 rounded-xl p-5 flex flex-col ${className}`}>
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <h3 className="text-base sm:text-lg font-bold tracking-tight">Body Focus</h3>
         <InfoTooltip>
           <div className="max-w-[320px] space-y-2">
             <div className="text-[11px] uppercase tracking-wide text-gray-300">Color Formula</div>
@@ -136,7 +136,7 @@ export default function BodyDiagram({
         </InfoTooltip>
       </div>
 
-      <div className="relative flex-1 rounded-lg border border-gray-800 bg-gray-950 aspect-[5/9] min-h-[360px] md:min-h-[440px] lg:min-h-[520px]">
+      <div className="relative flex-1 rounded-lg border border-white/5 bg-black/40 aspect-[5/9] min-h-[360px] md:min-h-[440px] lg:min-h-[520px]">
         {webglOK ? (
           <Canvas dpr={[1, 2]} camera={{ position: [0, 1.4, 7], fov: 39 }} style={{ width: '100%', height: '100%' }}>
             <ambientLight intensity={0.7} />

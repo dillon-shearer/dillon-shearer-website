@@ -95,7 +95,7 @@ function Tooltip({
       </span>
       {visible && (
         <div className="fixed z-50 pointer-events-none" style={{ left: pos.x + offset, top: pos.y + offset }}>
-          <div className="rounded-md border shadow-lg px-3 py-2 text-xs bg-[#1f2937] border-[#374151] text-white">
+          <div className="rounded-lg border border-white/20 shadow-2xl px-3 py-2 text-xs font-medium bg-black/95 backdrop-blur-sm text-white/90">
             {text}
           </div>
         </div>
@@ -158,10 +158,12 @@ function StatChip({ label, value, sub, className }: {
   label: string; value: number | string; sub?: string; className?: string
 }) {
   return (
-    <div className={['rounded-xl border border-gray-800 bg-gray-900 px-4 py-3 flex flex-col gap-1', className].join(' ')}>
-      <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
-      <div className="text-2xl font-semibold leading-none">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      {sub ? <div className="text-[11px] text-gray-500">{sub}</div> : null}
+    <div className={['rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3.5 flex flex-col gap-2 hover:border-white/20 transition-colors', className].join(' ')}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">{label}</div>
+      <div className="text-2xl font-bold leading-none font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </div>
+      {sub ? <div className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">{sub}</div> : null}
     </div>
   )
 }
@@ -171,21 +173,21 @@ function CompactChip({
 }: { label: string; count: number; className?: string; size?: 'xs' | 'sm' | 'md' }) {
   const sizeClasses =
     size === 'xs'
-      ? 'h-6 min-w-[104px] px-2 text-[10px]'
+      ? 'h-7 min-w-[104px] px-2.5 text-[11px]'
       : size === 'sm'
-      ? 'h-7 min-w-[120px] px-3 text-[11px]'
-      : 'h-8 min-w-[140px] px-3 text-xs'
-  const badgePad = size === 'xs' ? 'px-1.5 py-[1px] text-[10px]' : size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2 py-0.5 text-[11px]'
+      ? 'h-8 min-w-[120px] px-3 text-xs'
+      : 'h-9 min-w-[140px] px-3.5 text-sm'
+  const badgePad = size === 'xs' ? 'px-2 py-0.5 text-[10px]' : size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
   return (
     <div
       className={[
-        'inline-flex items-center justify-between rounded-full border border-gray-700 bg-gray-900',
-        'whitespace-nowrap overflow-hidden', sizeClasses, className
+        'inline-flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03]',
+        'whitespace-nowrap overflow-hidden hover:border-white/20 transition-colors', sizeClasses, className
       ].join(' ')}
       title={`${label} ${count}`}
     >
-      <span className="font-medium text-gray-200 truncate">{label}</span>
-      <span className={`ml-2 inline-flex items-center justify-center rounded-full border border-gray-600 bg-gray-800 ${badgePad} leading-none text-gray-300`}>
+      <span className="font-semibold text-white/80 truncate">{label}</span>
+      <span className={`ml-2 inline-flex items-center justify-center rounded-md border border-white/20 bg-white/10 ${badgePad} leading-none font-bold text-white/90 font-mono`} style={{ fontVariantNumeric: 'tabular-nums' }}>
         {count}
       </span>
     </div>
@@ -193,15 +195,26 @@ function CompactChip({
 }
 
 function SplitTile({ name, count }: { name: 'Push'|'Pull'|'Legs'; count: number }) {
+  const colors = {
+    Push: 'bg-red-500/20 border-red-500/30 shadow-red-500/10',
+    Pull: 'bg-blue-500/20 border-blue-500/30 shadow-blue-500/10',
+    Legs: 'bg-green-500/20 border-green-500/30 shadow-green-500/10',
+  }
+  const dotColors = {
+    Push: 'bg-red-400',
+    Pull: 'bg-blue-400',
+    Legs: 'bg-green-400',
+  }
   return (
-    <div className="h-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2.5 flex items-center justify-between">
+    <div className="h-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 flex flex-col gap-2 hover:border-white/20 transition-all">
       <div className="flex items-center gap-2">
-        <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-600" />
-        <span className="text-sm font-medium text-gray-200">{name}</span>
+        <span className={`inline-block h-2 w-2 rounded-full ${dotColors[name]} shadow-lg`} />
+        <span className="text-sm font-bold text-white/90">{name}</span>
       </div>
-      <span className="inline-flex items-center justify-center rounded-full border border-gray-700 bg-gray-800 h-6 min-w-[26px] text-[11px] px-2 text-gray-300">
-        {count}
-      </span>
+      <div className="flex items-end justify-between">
+        <span className="text-2xl font-bold font-mono leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+        <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">days</span>
+      </div>
     </div>
   )
 }
@@ -211,20 +224,30 @@ function Pager({
   page, totalPages, onPrev, onNext, className = '',
 }: { page: number; totalPages: number; onPrev: () => void; onNext: () => void; className?: string }) {
   return (
-    <div className={`grid grid-cols-3 items-center ${className}`}>
-      <div className="justify-self-start">
-        <button disabled={page <= 1} onClick={onPrev} className="text-xs text-gray-300 disabled:text-gray-600 hover:underline">
-          ← Prev
-        </button>
+    <div className={`flex items-center justify-between ${className}`}>
+      <button
+        disabled={page <= 1}
+        onClick={onPrev}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white/70 disabled:text-white/20 hover:text-white disabled:cursor-not-allowed transition-colors"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+        </svg>
+        Prev
+      </button>
+      <div className="text-xs font-mono text-white/40 font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {page} / {Math.max(1, totalPages)}
       </div>
-      <div className="justify-self-center text-xs text-gray-400">
-        Page {page} / {Math.max(1, totalPages)}
-      </div>
-      <div className="justify-self-end">
-        <button disabled={page >= totalPages} onClick={onNext} className="text-xs text-gray-300 disabled:text-gray-600 hover:underline">
-          Next →
-        </button>
-      </div>
+      <button
+        disabled={page >= totalPages}
+        onClick={onNext}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white/70 disabled:text-white/20 hover:text-white disabled:cursor-not-allowed transition-colors"
+      >
+        Next
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
     </div>
   )
 }
@@ -487,28 +510,26 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const backVisible = mode === 'day' && !!prevMode
 
   const Filters = (
-    <div className="grid items-center w-full gap-3 grid-cols-[96px_320px_220px] justify-start" aria-label="Dashboard filters">
-      {backVisible ? (
-        <div className="col-start-1">
-          <button
-            type="button"
-            title={`Back to ${prevMode}`}
-            aria-label="Back"
-            onClick={() => {
-              if (!prevMode) return
-              setMode(prevMode)
-              setPrevMode(null)
-              if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
-            }}
-            className="h-9 w-full rounded-lg border text-[13px] bg-gray-900 border-gray-700 text-gray-200"
-          >
-            ← Back
-          </button>
-        </div>
-      ) : null}
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full" aria-label="Dashboard filters">
+      {backVisible && (
+        <button
+          type="button"
+          title={`Back to ${prevMode}`}
+          aria-label="Back"
+          onClick={() => {
+            if (!prevMode) return
+            setMode(prevMode)
+            setPrevMode(null)
+            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+          }}
+          className="h-10 px-4 rounded-lg border text-sm font-medium bg-white/[0.03] border-white/10 text-white/80 hover:bg-white/[0.06] hover:border-white/20 transition-all"
+        >
+          ← Back
+        </button>
+      )}
 
-      <div className={backVisible ? 'col-start-2 col-span-1' : 'col-start-1 col-span-2'}>
-        <div className="grid grid-cols-4 gap-1.5 w-full">
+      <div className="flex-1 min-w-0">
+        <div className="grid grid-cols-4 gap-2">
           {(['day','week','month','year'] as RangeMode[]).map(k => {
             const active = mode === k
             return (
@@ -518,11 +539,11 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 onClick={() => setMode(k)}
                 aria-pressed={active}
                 className={[
-                  'h-9 w-full rounded-lg border text-[13px] leading-none',
-                  'focus:outline-none focus:ring-2 focus:ring-blue-500/40',
+                  'h-10 px-3 rounded-lg border text-sm font-semibold tracking-wide transition-all',
+                  'focus:outline-none focus:ring-2 focus:ring-[#54b3d6]/40',
                   active
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-900 border-gray-700 text-gray-200 hover:bg-gray-800'
+                    ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
+                    : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20 hover:text-white'
                 ].join(' ')}
               >
                 {k === 'day' ? 'Day' : k === 'week' ? '7d' : k === 'month' ? '30d' : 'YTD'}
@@ -532,69 +553,68 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
       </div>
 
-      <div className="col-start-3 h-9 flex items-center justify-start">
-        {mode === 'day' ? (
-          <div className="flex items-center gap-2">
-            <button
-              className="h-9 px-2 rounded-lg border bg-gray-900 hover:bg-gray-800 border-gray-700 disabled:opacity-40"
-              onClick={() => setDayDate(d => shiftYMD(d, -1))}
-              aria-label="Previous Day"
-              disabled={datasetMinDate ? dayDate <= datasetMinDate : false}
-            >
-              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-                <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
-              </svg>
-            </button>
-            <div className="min-w-[120px] text-center text-[13px] text-gray-300">
-              {formatLongDate(dayDate)}
-            </div>
-            <button
-              className="h-9 px-2 rounded-lg border bg-gray-900 hover:bg-gray-800 border-gray-700 disabled:opacity-40"
-              onClick={() => setDayDate(d => clampToToday(shiftYMD(d, +1)))}
-              aria-label="Next Day"
-              disabled={dayDate >= todayUTCKey()}
-            >
-              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-                <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
-              </svg>
-            </button>
+      {mode === 'day' ? (
+        <div className="flex items-center gap-2 justify-center sm:justify-start">
+          <button
+            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            onClick={() => setDayDate(d => shiftYMD(d, -1))}
+            aria-label="Previous Day"
+            disabled={datasetMinDate ? dayDate <= datasetMinDate : false}
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+              <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
+            </svg>
+          </button>
+          <div className="min-w-[140px] text-center text-sm font-medium text-white/80 font-mono">
+            {formatLongDate(dayDate)}
           </div>
-        ) : mode === 'year' ? (
-          <div className="flex items-center gap-2">
-            <button
-              className="h-9 px-2 rounded-lg border bg-gray-900 hover:bg-gray-800 border-gray-700"
-              onClick={decYear}
-              aria-label="Previous Year"
-            >
-              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-                <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
-              </svg>
-            </button>
-            <div className="min-w-[64px] text-center text-[13px] text-gray-300">{year}</div>
-            <button
-              className="h-9 px-2 rounded-lg border bg-gray-900 hover:bg-gray-800 border-gray-700 disabled:opacity-40"
-              onClick={incYear}
-              aria-label="Next Year"
-              disabled={year >= currentYear}
-            >
-              <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
-                <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <div className="h-9 w-full" />
-        )}
-      </div>
+          <button
+            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            onClick={() => setDayDate(d => clampToToday(shiftYMD(d, +1)))}
+            aria-label="Next Day"
+            disabled={dayDate >= todayUTCKey()}
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+              <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
+            </svg>
+          </button>
+        </div>
+      ) : mode === 'year' ? (
+        <div className="flex items-center gap-2 justify-center sm:justify-start">
+          <button
+            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 transition-all"
+            onClick={decYear}
+            aria-label="Previous Year"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+              <path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.4 10l3.3 3.3a1 1 0 0 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.4 0z" />
+            </svg>
+          </button>
+          <div className="min-w-[80px] text-center text-sm font-semibold text-white/80 font-mono">{year}</div>
+          <button
+            className="h-10 w-10 flex items-center justify-center rounded-lg border bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            onClick={incYear}
+            aria-label="Next Year"
+            disabled={year >= currentYear}
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+              <path d="M7.3 14.7a1 1 0 0 1 0-1.4l3.3-3.3-3.3-3.3a1 1 0 0 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 0 1-1.4 0z" />
+            </svg>
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 
   const DownloadButton = (
     <button
       onClick={() => setShowDownload(true)}
-      className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md"
+      className="h-10 px-4 text-sm font-medium bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg transition-all flex items-center gap-2"
     >
-      Download Data
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      Download
     </button>
   )
 
@@ -617,25 +637,36 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
   const SMALL_CARD_HEIGHT = KPI_CARD_HEIGHT
 
   return (
-    <div className="bg-black text-white">
-      <div className="max-w-7xl mx-auto px-6 pb-12">
-        <div className="pt-12 text-center flex flex-col items-center gap-4">
-          <h1 className="text-4xl font-bold">Workout Data Dashboard</h1>
-          <p className="text-sm opacity-75 italic">
-            Enjoy my daily live workout data available for viewing or download.
-          </p>
-          {lastModifiedStr ? (
-            <p className="text-xs text-gray-500">
-              Last modified{' '}
-              <span className="font-medium text-gray-300">
-                {lastModifiedStr}
-              </span>
-            </p>
-          ) : null}
+    <div className="bg-black text-white min-h-screen">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-12">
+        {/* Hero Header - Athletic precision */}
+        <div className="pt-20 pb-8 border-b border-white/5">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 rounded-full bg-[#54b3d6]/10 border border-[#54b3d6]/20">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#54b3d6] animate-pulse" />
+                <span className="text-xs font-medium text-[#54b3d6] uppercase tracking-wider">Live Data</span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-none mb-2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                Workout Analytics
+              </h1>
+              <p className="text-sm sm:text-base text-white/50 max-w-xl">
+                Real-time performance metrics and training data visualization
+              </p>
+            </div>
+            {lastModifiedStr ? (
+              <div className="flex items-center gap-2 text-xs text-white/40 sm:pb-1">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="font-mono">{lastModifiedStr}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        {/* Utility Card row */}
-        <div className="mt-4 mb-6">
+        {/* Control Panel */}
+        <div className="mt-8 mb-8">
           <UtilityCard
             filters={Filters}
             downloadButton={DownloadButton}
@@ -644,46 +675,61 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         </div>
 
         {!hasData ? (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-8">
-            <p className="text-gray-300">No data in this range.</p>
+          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-12 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/5 mb-4">
+              <svg className="w-8 h-8 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+            </div>
+            <p className="text-white/60 text-base font-medium">No workout data in this range</p>
+            <p className="text-white/40 text-sm mt-1">Try selecting a different time period</p>
           </div>
         ) : mode === 'day' ? (
           <DailyView lifts={lifts} date={dayDate} onChangeDate={(newDate) => setDayDate(clampToToday(newDate))} />
         ) : (
           <>
-            {/* KPI row + chart + body */}
-            <section className="mb-6">
-              <div className="grid lg:grid-cols-[1fr_1fr_1fr_0.85fr] lg:grid-rows-[auto_auto] gap-x-4 gap-y-4">
+            {/* Metrics Grid */}
+            <section className="mb-8">
+              <div className="grid lg:grid-cols-[1fr_1fr_1fr_0.85fr] lg:grid-rows-[auto_auto] gap-4">
                 {/* LEFT: KPI row + chart */}
-                <div className="lg:col-span-3 lg:row-start-1 lg:row-end-2 grid grid-rows-[auto_1fr] gap-y-3">
+                <div className="lg:col-span-3 lg:row-start-1 lg:row-end-2 grid grid-rows-[auto_1fr] gap-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {/* TOTAL VOLUME */}
-                    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
-                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Total Volume</div>
-                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)] mb-2">{formatNum(totalVolume)}</div>
-                      <div className="text-xs sm:text-sm tracking-wide text-gray-400">lbs</div>
+                    <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="relative">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40 mb-3">Total Volume</div>
+                        <div className="font-bold text-4xl sm:text-5xl leading-none mb-2 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatNum(totalVolume)}</div>
+                        <div className="text-xs font-semibold tracking-wider text-white/50 uppercase">lbs</div>
+                      </div>
                     </div>
 
                     {/* GYM DAYS */}
-                    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
-                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Gym Days</div>
-                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">
-                        {unique(filtered.map(l => l.date)).length}
-                        <span className="mx-1 text-gray-500">/</span>
-                        {dateWindow.length}
+                    <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="relative">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40 mb-3">Gym Days</div>
+                        <div className="font-bold text-4xl sm:text-5xl leading-none font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {unique(filtered.map(l => l.date)).length}
+                          <span className="text-2xl mx-2 text-white/30">/</span>
+                          {dateWindow.length}
+                        </div>
                       </div>
                     </div>
 
                     {/* EXERCISE VARIETY */}
-                    <div className={`bg-gray-900 border border-gray-800 rounded-xl p-4 ${KPI_CARD_HEIGHT} flex flex-col items-center justify-center text-center`}>
-                      <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Exercise Variety</div>
-                      <div className="leading-tight font-semibold text-[clamp(1rem,3.4vw,2.1rem)]">{exerciseVariety}</div>
+                    <div className="group relative bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="relative">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40 mb-3">Exercise Variety</div>
+                        <div className="font-bold text-4xl sm:text-5xl leading-none font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>{exerciseVariety}</div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-lg font-semibold">Daily Volume</h2>
+                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-base sm:text-lg font-bold tracking-tight">Daily Volume</h2>
                     </div>
                     <VolumeChart data={daily.map(d => ({ date: d.date, volume: d.volume }))} height={236} />
                   </div>
@@ -698,34 +744,34 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
 
                 {/* ROW 2 LEFT: Split + Body-part frequency */}
                 <div className="lg:col-span-3 lg:row-start-2 lg:row-end-3 grid lg:grid-cols-2 gap-4">
-                  {/* Split Frequency — EXACTLY 3 tiles */}
-                  <div className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 ${SMALL_CARD_HEIGHT} flex flex-col`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-sm font-semibold">Split Frequency</h2>
-                      <div className="text-[11px] text-gray-400">
+                  {/* Split Frequency */}
+                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 flex flex-col min-h-[180px]">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-base font-bold tracking-tight">Split Frequency</h2>
+                      <div className="text-[10px] font-mono text-white/40">
                         {dateWindow[0]} – {dateWindow[dateWindow.length - 1]}
                       </div>
                     </div>
-                    <div className="mt-1 grid grid-cols-3 gap-2 auto-rows-[1fr] items-stretch flex-1 min-h-0">
-                      <SplitTile name="Push"  count={splitCountsPPL.Push} />
-                      <SplitTile name="Pull"  count={splitCountsPPL.Pull} />
-                      <SplitTile name="Legs"  count={splitCountsPPL.Legs} />
+                    <div className="grid grid-cols-3 gap-3 flex-1">
+                      <SplitTile name="Push" count={splitCountsPPL.Push} />
+                      <SplitTile name="Pull" count={splitCountsPPL.Pull} />
+                      <SplitTile name="Legs" count={splitCountsPPL.Legs} />
                     </div>
                   </div>
 
-                  {/* Body-part Frequency — micro chips */}
-                  <div className={`bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 ${SMALL_CARD_HEIGHT} flex flex-col`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <h2 className="text-sm font-semibold">Body-part Frequency</h2>
-                      <span className="text-[11px] text-gray-400">
+                  {/* Body-part Frequency */}
+                  <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 flex flex-col min-h-[180px]">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-base font-bold tracking-tight">Body Part Frequency</h2>
+                      <span className="text-[10px] font-mono text-white/40">
                         {bodyPartsPaged.total} groups
                       </span>
                     </div>
 
                     {bodyPartsPaged.rows.length === 0 ? (
-                      <div className="text-xs text-gray-400 mt-auto mb-auto">No sets in this range.</div>
+                      <div className="text-sm text-white/40 flex-1 flex items-center justify-center">No sets in this range</div>
                     ) : (
-                      <div className="mt-1 grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-1.5">
+                      <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2 flex-1 content-start">
                         {bodyPartsPaged.rows.map(({ bp, sets }) => (
                           <CompactChip key={bp} label={bp.charAt(0).toUpperCase() + bp.slice(1)} count={sets} size="xs" />
                         ))}
@@ -737,7 +783,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                       totalPages={bodyPartsPaged.totalPages}
                       onPrev={() => setBpPage(p => Math.max(1, p - 1))}
                       onNext={() => setBpPage(p => Math.min(bodyPartsPaged.totalPages, p + 1))}
-                      className="mt-auto"
+                      className="mt-4 pt-4 border-t border-white/5"
                     />
                   </div>
                 </div>
@@ -745,33 +791,41 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             </section>
 
             {/* PRs + Heatmap */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-lg font-semibold">Exercise PRs</h2>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <h2 className="text-base sm:text-lg font-bold tracking-tight">Exercise PRs</h2>
                   <Tooltip text={e1RMTooltip}>
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none" aria-label="Estimated 1RM formula info">i</span>
+                    <button className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 hover:border-[#54b3d6]/50 text-[10px] font-bold leading-none hover:bg-[#54b3d6]/10 transition-all" aria-label="Estimated 1RM formula info">i</button>
                   </Tooltip>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto -mx-5 sm:-mx-6 px-5 sm:px-6">
                   <table className="min-w-full text-sm">
                     <thead>
-                      <tr className="text-left text-gray-400 border-b border-gray-800 select-none">
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('exercise')}>Exercise {sortKey === 'exercise' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('bestWeight')}>Best Weight {sortKey === 'bestWeight' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('best1RM')}>Best 1RM (est) {sortKey === 'best1RM' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
-                        <th className="py-2 pr-4">Best Set</th>
-                        <th className="py-2 pr-4 cursor-pointer" onClick={() => toggleSort('bestSetDate')}>Date {sortKey === 'bestSetDate' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</th>
+                      <tr className="text-left text-white/40 border-b border-white/5 select-none">
+                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('exercise')}>
+                          Exercise {sortKey === 'exercise' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('bestWeight')}>
+                          Weight {sortKey === 'bestWeight' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('best1RM')}>
+                          Est 1RM {sortKey === 'best1RM' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider">Best Set</th>
+                        <th className="py-3 pr-6 text-xs font-bold uppercase tracking-wider cursor-pointer hover:text-white/60 transition-colors" onClick={() => toggleSort('bestSetDate')}>
+                          Date {sortKey === 'bestSetDate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {prsSortedPaged.rows.map((row) => (
-                        <tr key={row.exercise} className="border-b border-gray-800/60">
-                          <td className="py-2 pr-4">{row.exercise}</td>
-                          <td className="py-2 pr-4">{row.bestWeight} lbs</td>
-                          <td className="py-2 pr-4">{row.best1RM} lbs</td>
-                          <td className="py-2 pr-4 text-gray-300">{row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}</td>
-                          <td className="py-2 pr-4">{row.bestSetDate}</td>
+                      {prsSortedPaged.rows.map((row, idx) => (
+                        <tr key={row.exercise} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${idx === prsSortedPaged.rows.length - 1 ? 'border-0' : ''}`}>
+                          <td className="py-3 pr-6 font-medium">{row.exercise}</td>
+                          <td className="py-3 pr-6 font-mono text-white/80" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.bestWeight} lbs</td>
+                          <td className="py-3 pr-6 font-mono text-white/80" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.best1RM} lbs</td>
+                          <td className="py-3 pr-6 font-mono text-white/60" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.bestSet ? `${row.bestSet.weight} × ${row.bestSet.reps}` : '—'}</td>
+                          <td className="py-3 pr-6 font-mono text-white/60 text-xs">{row.bestSetDate}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -782,15 +836,15 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                   totalPages={prsSortedPaged.totalPages}
                   onPrev={() => setPrsPage(p => Math.max(1, p - 1))}
                   onNext={() => setPrsPage(p => Math.min(prsSortedPaged.totalPages, p + 1))}
-                  className="mt-3"
+                  className="mt-5 pt-5 border-t border-white/5"
                 />
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col">
-                <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-lg font-semibold">Volume Heatmap</h2>
+              <div className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 flex flex-col">
+                <div className="flex items-center gap-2 mb-5">
+                  <h2 className="text-base sm:text-lg font-bold tracking-tight">Volume Heatmap</h2>
                   <Tooltip text={heatmapTooltip}>
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-600 text-[10px] leading-none" aria-label="Heatmap info">i</span>
+                    <button className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/20 hover:border-[#54b3d6]/50 text-[10px] font-bold leading-none hover:bg-[#54b3d6]/10 transition-all" aria-label="Heatmap info">i</button>
                   </Tooltip>
                 </div>
                 <div className="flex-1">
@@ -800,9 +854,9 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
             </section>
 
             {/* Recent sessions */}
-            <section className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Recent Sessions</h2>
+            <section className="bg-white/[0.02] border border-white/10 rounded-xl p-5 sm:p-6 mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <h2 className="text-base sm:text-lg font-bold tracking-tight">Recent Sessions</h2>
                 <Pager
                   page={recentSessions.page}
                   totalPages={recentSessions.totalPages}
@@ -811,32 +865,46 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {recentSessions.rows.map((s) => (
-                  <Tooltip key={s.date} text="Open Daily View">
+                  <Tooltip key={s.date} text="Click to view detailed breakdown">
                     <button
                       onClick={() => jumpToDay(s.date)}
-                      className="text-left bg-gray-800/60 hover:bg-gray-800 transition-colors rounded-lg px-4 py-4 border border-gray-700/60 hover:border-gray-600 group w-full"
+                      className="group relative text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 hover:border-[#54b3d6]/40 transition-all rounded-lg px-4 py-4 w-full overflow-hidden"
                       aria-label={`Open daily view for ${s.date}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="font-semibold tracking-wide">
-                          {formatLongDate(s.date)}
-                          {s.dayTag ? `: ${titleCaseTag(cleanTag(s.dayTag))}` : ''}
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/0 to-[#54b3d6]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="relative">
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-sm tracking-tight mb-0.5">
+                              {formatLongDate(s.date)}
+                            </div>
+                            {s.dayTag && (
+                              <div className="text-xs font-semibold text-[#54b3d6]">
+                                {titleCaseTag(cleanTag(s.dayTag))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-shrink-0 text-xs font-mono text-white/60 font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {formatNum(s.volume)} lbs
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-400 group-hover:text-gray-300">
-                          {formatNum(s.volume)} lbs
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-md text-[11px] font-semibold text-white/70">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            {s.exercises.length} ex
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-md text-[11px] font-semibold text-white/70 font-mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                            {s.sets} sets
+                          </span>
                         </div>
                       </div>
-                      <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
-                        <span className="inline-block px-2 py-1 bg-gray-900 rounded">
-                          {s.exercises.length} exercise{s.exercises.length === 1 ? '' : 's'}
-                        </span>
-                        <span className="inline-block px-2 py-1 bg-gray-900 rounded">
-                          {s.sets} set{s.sets === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                      <div className="mt-3 text-[11px] italic text-gray-500">Click to open Daily View</div>
                     </button>
                   </Tooltip>
                 ))}
@@ -852,7 +920,7 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
         style={{ transform: `translate(${bubbleOffset.x}px, ${bubbleOffset.y}px)` }}
       >
         {isChatOpen ? (
-          <div className="h-[75vh] max-h-[640px] w-[min(460px,94vw)] overflow-hidden rounded-3xl bg-[#0d1117] shadow-2xl backdrop-blur">
+          <div className="h-[75vh] max-h-[640px] w-[min(460px,94vw)] overflow-hidden rounded-2xl bg-[#0d1117] border border-white/10 shadow-2xl backdrop-blur">
             <ChatClient embedded onClose={() => setIsChatOpen(false)} />
           </div>
         ) : null}
@@ -860,35 +928,53 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
           type="button"
           onClick={() => setIsChatOpen(current => !current)}
           aria-label={isChatOpen ? 'Close gym chat' : 'Open gym chat'}
-          className="flex h-14 w-14 items-center justify-center rounded-full border border-blue-500/60 bg-blue-600/30 text-lg font-semibold text-white shadow-xl hover:border-blue-400/80"
+          className="group flex h-14 w-14 items-center justify-center rounded-full border border-[#54b3d6]/40 bg-[#54b3d6]/20 backdrop-blur-sm text-xl font-bold text-white shadow-lg shadow-[#54b3d6]/20 hover:border-[#54b3d6]/60 hover:bg-[#54b3d6]/30 hover:shadow-xl hover:shadow-[#54b3d6]/30 transition-all"
         >
-          {isChatOpen ? '×' : '✦'}
+          {isChatOpen ? (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          )}
         </button>
       </div>
 
       {/* Download modal */}
       {showDownload && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-              <h3 className="text-lg font-semibold">Download Dataset</h3>
-              <button onClick={() => setShowDownload(false)} className="text-gray-400 hover:text-gray-200" aria-label="Close">
-                ✕
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDownload(false)}>
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-xl max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
+              <h3 className="text-lg font-bold tracking-tight">Download Dataset</h3>
+              <button onClick={() => setShowDownload(false)} className="text-white/40 hover:text-white transition-colors" aria-label="Close">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-sm">
+            <div className="p-6 space-y-5">
               <div>
-                <div className="text-gray-300 mb-2">Range</div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wider">Range</div>
+                <div className="grid grid-cols-2 gap-3">
                   <button
-                    className={`px-3 py-2 rounded-lg border ${dlRange === 'current' ? 'bg-blue-600 border-blue-500' : 'bg-gray-800 border-gray-700 hover:bg-gray-750'}`}
+                    className={`px-4 py-3 rounded-lg border text-sm font-semibold transition-all ${
+                      dlRange === 'current'
+                        ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
+                        : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20'
+                    }`}
                     onClick={() => setDlRange('current')}
                   >
                     Current filter
                   </button>
                   <button
-                    className={`px-3 py-2 rounded-lg border ${dlRange === 'all' ? 'bg-blue-600 border-blue-500' : 'bg-gray-800 border-gray-700 hover:bg-gray-750'}`}
+                    className={`px-4 py-3 rounded-lg border text-sm font-semibold transition-all ${
+                      dlRange === 'all'
+                        ? 'bg-[#54b3d6] border-[#54b3d6] text-black shadow-lg shadow-[#54b3d6]/20'
+                        : 'bg-white/[0.03] border-white/10 text-white/70 hover:bg-white/[0.06] hover:border-white/20'
+                    }`}
                     onClick={() => setDlRange('all')}
                   >
                     All time
@@ -897,16 +983,24 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               </div>
 
               <div>
-                <div className="text-gray-300 mb-2">Format</div>
-                <div className="inline-flex rounded-lg overflow-hidden border border-gray-700">
+                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wider">Format</div>
+                <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
                   <button
-                    className={`px-4 py-2 text-sm ${dlFormat === 'csv' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                    className={`px-5 py-2.5 text-sm font-semibold transition-all ${
+                      dlFormat === 'csv'
+                        ? 'bg-[#54b3d6] text-black'
+                        : 'bg-white/[0.03] text-white/70 hover:bg-white/[0.06]'
+                    }`}
                     onClick={() => setDlFormat('csv')}
                   >
                     CSV
                   </button>
                   <button
-                    className={`px-4 py-2 text-sm ${dlFormat === 'json' ? 'bg-blue-600' : 'bg-gray-900 hover:bg-gray-800'}`}
+                    className={`px-5 py-2.5 text-sm font-semibold transition-all ${
+                      dlFormat === 'json'
+                        ? 'bg-[#54b3d6] text-black'
+                        : 'bg-white/[0.03] text-white/70 hover:bg-white/[0.06]'
+                    }`}
                     onClick={() => setDlFormat('json')}
                   >
                     JSON
@@ -915,15 +1009,21 @@ export default function DashboardClient({ lifts }: { lifts: GymLift[] }) {
               </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-gray-800 flex justify-end gap-2">
-              <button onClick={() => setShowDownload(false)} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg">
+            <div className="px-6 py-5 border-t border-white/10 flex justify-end gap-3">
+              <button
+                onClick={() => setShowDownload(false)}
+                className="px-5 py-2.5 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg text-sm font-semibold transition-all"
+              >
                 Cancel
               </button>
               <a
                 href={buildDownloadUrl()}
                 onClick={() => setShowDownload(false)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg"
+                className="px-5 py-2.5 bg-[#54b3d6] hover:bg-[#6dc5e8] text-black rounded-lg text-sm font-bold transition-all shadow-lg shadow-[#54b3d6]/20 flex items-center gap-2"
               >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
                 Download
               </a>
             </div>
