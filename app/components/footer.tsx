@@ -88,30 +88,30 @@ export default function Footer() {
   return (
     <footer
       ref={ref}
-      className={cn('mt-24 border-t border-white/10 bg-gradient-to-b from-black to-black/95 reveal-on-scroll', isVisible && 'is-visible')}
+      className={cn('mt-32 border-t border-white/10 bg-gradient-to-b from-black to-black reveal-on-scroll', isVisible && 'is-visible')}
     >
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
         {/* 4-Column Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12 mb-12">
           {/* Column 1: Brand */}
-          <div className="space-y-4">
-            <div className="font-mono text-xl font-bold text-[#54b3d6]">DWD</div>
-            <p className="text-sm text-white/60 leading-relaxed">
+          <div className="space-y-3.5">
+            <div className="font-mono text-lg font-bold text-[#54b3d6] tracking-wide">DWD</div>
+            <p className="text-sm text-white/50 leading-relaxed">
               Data-centric software engineer building analytics, pipelines, and AI tooling.
             </p>
           </div>
 
           {/* Column 2: Navigation */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/80">
+          <div className="space-y-3.5">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/70">
               Navigate
             </h3>
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {navigationLinks.map((link) => (
                 <li key={link.path}>
                   <Link
                     href={link.path}
-                    className="text-sm text-white/60 hover:text-[#54b3d6] transition-colors"
+                    className="text-sm text-white/50 hover:text-[#54b3d6] transition-colors inline-block"
                   >
                     {link.name}
                   </Link>
@@ -121,16 +121,16 @@ export default function Footer() {
           </div>
 
           {/* Column 3: Resources */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/80">
+          <div className="space-y-3.5">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/70">
               Resources
             </h3>
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {resourceLinks.map((link) => (
                 <li key={link.path}>
                   <Link
                     href={link.path}
-                    className="text-sm text-white/60 hover:text-[#54b3d6] transition-colors"
+                    className="text-sm text-white/50 hover:text-[#54b3d6] transition-colors inline-block"
                   >
                     {link.name}
                   </Link>
@@ -140,22 +140,22 @@ export default function Footer() {
           </div>
 
           {/* Column 4: Connect */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/80">
+          <div className="space-y-3.5">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-white/70">
               Connect
             </h3>
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {socialLinks.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-3 text-sm text-white/60 hover:text-[#54b3d6] transition-colors group"
+                  className="flex items-center gap-2.5 text-sm text-white/50 hover:text-[#54b3d6] transition-colors group"
                 >
-                  <link.icon className="w-4 h-4" />
+                  <link.icon className="w-4 h-4 flex-shrink-0" />
                   <span>{link.label}</span>
-                  <ExternalLinkIcon className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
+                  <ExternalLinkIcon className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                 </a>
               ))}
             </div>
@@ -163,12 +163,12 @@ export default function Footer() {
         </div>
 
         {/* Gradient Divider */}
-        <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-8" />
+        <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-10" />
 
         {/* Bottom Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-white/40">
-          <p>© {new Date().getFullYear()} Dillon Shearer. MIT Licensed.</p>
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-sm text-white/40">
+          <p className="text-xs">© {new Date().getFullYear()} Dillon Shearer. MIT Licensed.</p>
+          <div className="flex items-center gap-4 text-xs">
             <a
               href="https://github.com/dillon-shearer/dillon-shearer-website"
               target="_blank"
@@ -178,7 +178,7 @@ export default function Footer() {
               View Source
             </a>
             <span className="text-white/20">•</span>
-            <span className="font-mono text-xs">Built with Next.js</span>
+            <span className="font-mono">Built with Next.js</span>
           </div>
         </div>
       </div>

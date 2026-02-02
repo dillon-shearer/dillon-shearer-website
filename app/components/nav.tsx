@@ -49,6 +49,47 @@ function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ')
 }
 
+// Hook for scroll behavior
+function useScrollDirection() {
+  const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null)
+  const [isAtTop, setIsAtTop] = useState(true)
+  const lastScrollY = useRef(0)
+  const ticking = useRef(false)
+
+  useEffect(() => {
+    const updateScrollDirection = () => {
+      const scrollY = window.scrollY
+
+      if (scrollY < 10) {
+        setIsAtTop(true)
+        setScrollDirection(null)
+      } else {
+        setIsAtTop(false)
+        if (Math.abs(scrollY - lastScrollY.current) < 10) {
+          ticking.current = false
+          return
+        }
+        setScrollDirection(scrollY > lastScrollY.current ? 'down' : 'up')
+      }
+
+      lastScrollY.current = scrollY
+      ticking.current = false
+    }
+
+    const onScroll = () => {
+      if (!ticking.current) {
+        window.requestAnimationFrame(updateScrollDirection)
+        ticking.current = true
+      }
+    }
+
+    window.addEventListener('scroll', onScroll)
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  return { scrollDirection, isAtTop }
+}
+
 // Icon Components
 function ChevronDownIcon({ className }: { className?: string }) {
   return (
@@ -88,6 +129,7 @@ export function Navbar() {
   const dropdownTimeout = useRef<NodeJS.Timeout | null>(null)
   const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false)
   const pathname = usePathname()
+  const { scrollDirection, isAtTop } = useScrollDirection()
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -106,6 +148,7 @@ export function Navbar() {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && mobileMenuOpen) {
         setMobileMenuOpen(false)
+        setMobileSubmenuOpen(null)
       }
     }
     window.addEventListener('keydown', handleEscape)
@@ -121,27 +164,35 @@ export function Navbar() {
     dropdownTimeout.current = setTimeout(() => setDesktopDropdownOpen(false), 150)
   }
 
+  const headerVisible = isAtTop || scrollDirection === 'up' || mobileMenuOpen
+
   return (
     <>
       {/* Desktop & Mobile Header */}
-      <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-black/80 border-b border-white/10" style={{ animation: 'slideDown 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both' }}>
+      <header
+        className={cn(
+          'fixed top-0 left-0 right-0 z-40 w-full backdrop-blur-xl bg-black/90 border-b border-white/10',
+          'transition-transform duration-300 ease-in-out',
+          headerVisible ? 'translate-y-0' : '-translate-y-full'
+        )}
+      >
         {/* Subtle top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#54b3d6]/50 to-transparent" />
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#54b3d6]/40 to-transparent" />
 
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
           <div className="flex items-center justify-between">
             {/* Logo/Brand */}
-            <Link href="/" className="flex items-center gap-2 group">
-              <div className="font-mono text-xl font-bold tracking-wider text-[#54b3d6] transition-all duration-300 group-hover:scale-105">
+            <Link href="/" className="flex items-center gap-2.5 group relative z-50">
+              <div className="font-mono text-lg sm:text-xl font-bold tracking-wide text-[#54b3d6] transition-all duration-300 group-hover:tracking-wider">
                 DWD
               </div>
-              <div className="hidden sm:block text-sm text-white/40 font-light">
+              <div className="hidden sm:block text-xs text-white/30 font-light tracking-wide">
                 | Data With Dillon
               </div>
             </Link>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-0.5">
               {navItems.map((item) =>
                 item.children ? (
                   <div
@@ -153,11 +204,11 @@ export function Navbar() {
                     <Link
                       href={item.path}
                       className={cn(
-                        'relative px-4 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-1',
+                        'relative px-3.5 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-1',
                         'hover:text-[#54b3d6] group',
                         pathname === item.path || item.children.some(child => pathname === child.path)
                           ? 'text-white'
-                          : 'text-white/70'
+                          : 'text-white/60'
                       )}
                     >
                       {item.name}
@@ -168,34 +219,31 @@ export function Navbar() {
 
                       {/* Active page indicator */}
                       {(pathname === item.path || item.children.some(child => pathname === child.path)) && (
-                        <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#54b3d6] shadow-[0_0_8px_rgba(84,179,214,0.6)]" />
+                        <span className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#54b3d6]" />
                       )}
 
                       {/* Hover background effect */}
-                      <span className="absolute inset-0 rounded-lg bg-white/5 scale-95 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 -z-10" />
+                      <span className="absolute inset-0 rounded-md bg-white/[0.03] scale-95 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 -z-10" />
                     </Link>
 
                     {/* Enhanced Dropdown */}
                     <div
                       className={cn(
-                        'absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48',
-                        'rounded-xl border border-white/10 bg-black/90 backdrop-blur-xl',
-                        'shadow-[0_8px_32px_rgba(84,179,214,0.15)]',
-                        'transition-all duration-300',
+                        'absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-44',
+                        'rounded-lg border border-white/10 bg-black/95 backdrop-blur-xl',
+                        'shadow-[0_8px_32px_rgba(0,0,0,0.5)]',
+                        'transition-all duration-200',
                         desktopDropdownOpen
                           ? 'opacity-100 translate-y-0 pointer-events-auto'
-                          : 'opacity-0 -translate-y-2 pointer-events-none'
+                          : 'opacity-0 -translate-y-1 pointer-events-none'
                       )}
                     >
-                      {/* Visual connector line to parent */}
-                      <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-px h-2 bg-white/10" />
-
-                      <div className="p-2 space-y-1">
+                      <div className="p-1.5 space-y-0.5">
                         {item.children.map((child) => (
                           <Link
                             key={child.path}
                             href={child.path}
-                            className="block px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-all"
+                            className="block px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.05] rounded-md transition-all"
                           >
                             {child.name}
                           </Link>
@@ -208,20 +256,20 @@ export function Navbar() {
                     key={item.path}
                     href={item.path}
                     className={cn(
-                      'relative px-4 py-2 text-sm font-medium transition-all duration-200 group',
+                      'relative px-3.5 py-2 text-sm font-medium transition-all duration-200 group',
                       'hover:text-[#54b3d6]',
-                      pathname === item.path ? 'text-white' : 'text-white/70'
+                      pathname === item.path ? 'text-white' : 'text-white/60'
                     )}
                   >
                     {item.name}
 
                     {/* Active page indicator */}
                     {pathname === item.path && (
-                      <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#54b3d6] shadow-[0_0_8px_rgba(84,179,214,0.6)]" />
+                      <span className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#54b3d6]" />
                     )}
 
                     {/* Hover background effect */}
-                    <span className="absolute inset-0 rounded-lg bg-white/5 scale-95 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 -z-10" />
+                    <span className="absolute inset-0 rounded-md bg-white/[0.03] scale-95 opacity-0 transition-all duration-200 group-hover:scale-100 group-hover:opacity-100 -z-10" />
                   </Link>
                 )
               )}
@@ -231,7 +279,7 @@ export function Navbar() {
             <div className="hidden md:block">
               <MagneticButton
                 href="/contact"
-                className="px-4 py-2 rounded-lg bg-[#54b3d6]/10 border border-[#54b3d6]/30 text-[#54b3d6] font-medium text-sm hover:bg-[#54b3d6]/20 transition-all"
+                className="px-4 py-1.5 rounded-md bg-[#54b3d6]/10 border border-[#54b3d6]/20 text-[#54b3d6] font-medium text-sm hover:bg-[#54b3d6]/20 hover:border-[#54b3d6]/40 transition-all"
               >
                 Contact
               </MagneticButton>
@@ -240,36 +288,36 @@ export function Navbar() {
             {/* Mobile Hamburger */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="relative w-10 h-10 md:hidden group"
+              className="relative w-10 h-10 md:hidden group z-50"
               aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileMenuOpen}
             >
-              <div className="relative w-6 h-6 mx-auto">
+              <div className="relative w-5 h-5 mx-auto">
                 <span
                   className={cn(
-                    'absolute left-0 w-full h-0.5 transition-all duration-300',
+                    'absolute left-0 w-full h-[2px] transition-all duration-300 rounded-full',
                     mobileMenuOpen
                       ? 'top-1/2 -translate-y-1/2 rotate-45 bg-[#54b3d6]'
-                      : 'top-[20%] bg-white'
+                      : 'top-[15%] bg-white/80'
                   )}
                 />
                 <span
                   className={cn(
-                    'absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-white transition-all duration-300',
+                    'absolute left-0 top-1/2 -translate-y-1/2 w-full h-[2px] bg-white/80 transition-all duration-300 rounded-full',
                     mobileMenuOpen && 'opacity-0 scale-0'
                   )}
                 />
                 <span
                   className={cn(
-                    'absolute left-0 w-full h-0.5 transition-all duration-300',
+                    'absolute left-0 w-full h-[2px] transition-all duration-300 rounded-full',
                     mobileMenuOpen
                       ? 'top-1/2 -translate-y-1/2 -rotate-45 bg-[#54b3d6]'
-                      : 'top-[80%] bg-white'
+                      : 'top-[85%] bg-white/80'
                   )}
                 />
               </div>
-              {/* Hover glow */}
-              <div className="absolute inset-0 rounded-full bg-[#54b3d6]/10 scale-0 group-hover:scale-100 transition-transform duration-300" />
+              {/* Hover effect */}
+              <div className="absolute inset-0 rounded-full bg-white/[0.05] scale-0 group-hover:scale-100 transition-transform duration-200" />
             </button>
           </div>
         </div>
@@ -278,38 +326,73 @@ export function Navbar() {
       {/* Full-Screen Mobile Overlay Menu */}
       <div
         className={cn(
-          'fixed inset-0 z-40 bg-black/95 backdrop-blur-xl transition-all duration-500 md:hidden',
+          'fixed inset-0 z-30 bg-black/98 backdrop-blur-2xl transition-all duration-300 md:hidden',
           mobileMenuOpen
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
         )}
         aria-hidden={!mobileMenuOpen}
+        onClick={() => {
+          setMobileMenuOpen(false)
+          setMobileSubmenuOpen(null)
+        }}
       >
-        {/* Animated grid background pattern */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(84,179,214,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(84,179,214,0.03)_1px,transparent_1px)] bg-[size:50px_50px] opacity-50" />
+        {/* Subtle grid background pattern */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(84,179,214,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(84,179,214,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
 
-        <div className="relative h-full flex flex-col items-center justify-center px-6">
+        {/* Radial gradient overlay */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.3)_100%)]" />
+
+        {/* Close Button - Top Right */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setMobileMenuOpen(false)
+            setMobileSubmenuOpen(null)
+          }}
+          className={cn(
+            'absolute top-4 right-4 w-12 h-12 flex items-center justify-center rounded-full',
+            'bg-white/5 border border-white/10 text-white/60 hover:text-[#54b3d6] hover:bg-white/10 hover:border-[#54b3d6]/30',
+            'transition-all duration-300 group z-50',
+            mobileMenuOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
+          )}
+          style={{ transitionDelay: mobileMenuOpen ? '200ms' : '0ms' }}
+          aria-label="Close menu"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <div
+          className="relative h-full flex flex-col items-center justify-center px-6"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Navigation Items with Staggered Animation */}
-          <nav className="space-y-4 w-full max-w-xs" role="navigation">
+          <nav className="space-y-2 w-full max-w-xs" role="navigation">
             {navItems.map((item, index) =>
               item.children ? (
-                <div key={item.path} className="space-y-2">
+                <div key={item.path} className="space-y-1">
                   <button
-                    onClick={() => setMobileSubmenuOpen(mobileSubmenuOpen === item.name ? null : item.name)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMobileSubmenuOpen(mobileSubmenuOpen === item.name ? null : item.name)
+                    }}
                     className={cn(
-                      'w-full flex items-center justify-between px-6 py-4 text-lg font-medium text-white/70 hover:text-[#54b3d6] hover:bg-white/5 rounded-xl transition-all border border-transparent hover:border-white/10',
-                      'transform transition-all duration-500',
+                      'w-full flex items-center justify-between px-5 py-3.5 text-base font-medium text-white/60 hover:text-[#54b3d6] hover:bg-white/[0.03] rounded-lg transition-all border border-white/[0.05] hover:border-white/10',
+                      'transform transition-all duration-400',
                       mobileMenuOpen
                         ? 'translate-x-0 opacity-100'
-                        : 'translate-x-8 opacity-0'
+                        : 'translate-x-8 opacity-0',
+                      mobileSubmenuOpen === item.name && 'bg-white/[0.03] border-white/10'
                     )}
-                    style={{ transitionDelay: `${index * 80}ms` }}
+                    style={{ transitionDelay: `${index * 60 + 100}ms` }}
                     aria-expanded={mobileSubmenuOpen === item.name}
                   >
                     {item.name}
                     <ChevronDownIcon
                       className={cn(
-                        'w-5 h-5 transition-transform duration-300',
+                        'w-4 h-4 transition-transform duration-200',
                         mobileSubmenuOpen === item.name && 'rotate-180 text-[#54b3d6]'
                       )}
                     />
@@ -318,7 +401,7 @@ export function Navbar() {
                   {/* Submenu accordion */}
                   <div
                     className={cn(
-                      'overflow-hidden transition-all duration-300 pl-4 space-y-2',
+                      'overflow-hidden transition-all duration-200 pl-3 space-y-1',
                       mobileSubmenuOpen === item.name ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
                     )}
                   >
@@ -330,7 +413,7 @@ export function Navbar() {
                           setMobileMenuOpen(false)
                           setMobileSubmenuOpen(null)
                         }}
-                        className="block px-6 py-3 text-base text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-all"
+                        className="block px-5 py-2.5 text-sm text-white/50 hover:text-white hover:bg-white/[0.03] rounded-md transition-all"
                       >
                         {child.name}
                       </Link>
@@ -341,17 +424,17 @@ export function Navbar() {
                 <div
                   key={item.path}
                   className={cn(
-                    'transform transition-all duration-500',
+                    'transform transition-all duration-400',
                     mobileMenuOpen
                       ? 'translate-x-0 opacity-100'
                       : 'translate-x-8 opacity-0'
                   )}
-                  style={{ transitionDelay: `${index * 80}ms` }}
+                  style={{ transitionDelay: `${index * 60 + 100}ms` }}
                 >
                   <Link
                     href={item.path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block px-6 py-4 text-lg font-medium text-white/70 hover:text-[#54b3d6] hover:bg-white/5 rounded-xl transition-all border border-transparent hover:border-white/10"
+                    className="block px-5 py-3.5 text-base font-medium text-white/60 hover:text-[#54b3d6] hover:bg-white/[0.03] rounded-lg transition-all border border-white/[0.05] hover:border-white/10"
                   >
                     {item.name}
                   </Link>
@@ -361,24 +444,25 @@ export function Navbar() {
           </nav>
 
           {/* Social Icons at Bottom */}
-          <div className="mt-12 flex gap-4">
+          <div className="mt-10 flex gap-3">
             {socialLinks.map((link, index) => (
               <a
                 key={link.href}
                 href={link.href}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
                 className={cn(
-                  'w-12 h-12 flex items-center justify-center rounded-full border border-white/20 text-white/60 hover:text-[#54b3d6] hover:border-[#54b3d6]/50 transition-all',
-                  'transform transition-all duration-500',
+                  'w-11 h-11 flex items-center justify-center rounded-full border border-white/10 bg-white/[0.02] text-white/50 hover:text-[#54b3d6] hover:border-[#54b3d6]/40 hover:bg-[#54b3d6]/10 transition-all',
+                  'transform transition-all duration-400',
                   mobileMenuOpen
                     ? 'scale-100 opacity-100'
                     : 'scale-50 opacity-0'
                 )}
-                style={{ transitionDelay: `${(navItems.length + index) * 80}ms` }}
+                style={{ transitionDelay: `${(navItems.length + index) * 60 + 100}ms` }}
                 aria-label={link.label}
               >
-                <link.icon className="w-5 h-5" />
+                <link.icon className="w-4.5 h-4.5" />
               </a>
             ))}
           </div>

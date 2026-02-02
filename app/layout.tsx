@@ -104,7 +104,7 @@ export default function RootLayout({
         <div data-embed-hide="true">
           <Navbar />
         </div>
-        <main className="site-shell flex-auto min-w-0 mt-6 flex flex-col w-full">
+        <main className="site-shell flex-auto min-w-0 pt-20 flex flex-col w-full">
           <div className="w-full overflow-x-hidden site-shell-content max-w-7xl mx-auto px-2 md:px-0">
             {children}
           </div>
