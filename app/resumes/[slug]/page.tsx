@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!meta) return {}
 
   return {
-    title: `${meta.displayName} Resume | Dillon Shearer`,
+    title: `${meta.displayName} Resume`,
     description: meta.summary,
     openGraph: {
       title: `${meta.displayName} Resume | Data With Dillon`,

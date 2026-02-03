@@ -3,13 +3,13 @@ import Link from 'next/link'
 import { getAllVariantMeta } from '@/lib/resume-data'
 
 export const metadata: Metadata = {
-  title: 'Resumes | DWD',
+  title: 'Resumes',
   description:
-    'Role-specific resumes tailored to different job families: Data Engineer, Data Analyst, and Full-Stack Python Developer.',
+    'View and download role-specific resumes for Dillon Shearer: Data Engineer, Data Analyst, and Full-Stack Python Developer. PDF versions available.',
   openGraph: {
-    title: 'Resumes | Data With Dillon',
+    title: 'Resumes',
     description:
-      'Role-specific resumes tailored to different job families: Data Engineer, Data Analyst, and Full-Stack Python Developer.',
+      'View and download role-specific resumes for Dillon Shearer: Data Engineer, Data Analyst, and Full-Stack Python Developer. PDF versions available.',
     type: 'website',
   },
 }

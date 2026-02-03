@@ -1,10 +1,10 @@
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'About | DWD',
+  title: 'About',
   description: 'Data-centric software engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.',
   openGraph: {
-    title: 'About | Data With Dillon',
+    title: 'About',
     description: 'Data-centric software engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.',
     type: 'website',
   },
@@ -29,10 +29,10 @@ export default function AboutPage() {
             </p>
           </div>
           <h1 className="section-title">
-            Data-Centric Software Engineer
+            About Dillon Shearer
           </h1>
           <p className="section-subtitle max-w-2xl mx-auto">
-            Building data systems, analytics, and applications. Currently focused on healthcare and life sciences.
+            Data-Centric Software Engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.
           </p>
         </header>
 

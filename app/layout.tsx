@@ -11,13 +11,13 @@ import EmbedToggle from './components/embed-toggle'
 import RouteWarmup from './components/route-warmup'
 import { baseUrl } from './sitemap'
 
-const siteDescription = 'Data-centric software engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.'
+const siteDescription = 'Dillon Shearer | Data Engineer & Analyst specializing in healthcare analytics and AI. Building production data systems in Georgia.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: {
-    default: 'Home | DWD',
-    template: '%s',
+    default: 'Dillon Shearer | Data Engineer & Data Analyst | Healthcare Analytics',
+    template: '%s | Dillon Shearer',
   },
   description: siteDescription,
   icons: {
