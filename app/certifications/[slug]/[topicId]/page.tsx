@@ -30,17 +30,17 @@ export default function QuizPage() {
     setRandomizedQuestions(questions)
   }, []) // Empty dependency array - only run once on mount
 
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
+  const [showExplanation, setShowExplanation] = useState(true)
+  const [answers, setAnswers] = useState<Record<string, boolean>>({})
+  const questionCardRef = useRef<HTMLDivElement>(null)
+
   // Scroll to question when it changes
   useEffect(() => {
     if (questionCardRef.current) {
       questionCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [currentQuestionIndex])
-
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [showExplanation, setShowExplanation] = useState(true)
-  const [answers, setAnswers] = useState<Record<string, boolean>>({})
-  const questionCardRef = useRef<HTMLDivElement>(null)
 
   if (!data) {
     return (
@@ -268,7 +268,7 @@ export default function QuizPage() {
         {/* Tags */}
         {currentQuestion.tags && currentQuestion.tags.length > 0 && (
           <div className="mt-8 flex flex-wrap gap-2">
-            {currentQuestion.tags.map((tag) => (
+            {currentQuestion.tags.map((tag: string) => (
               <span
                 key={tag}
                 className="px-3 py-1 text-xs bg-white/5 text-white/50 rounded-full border border-white/10"
