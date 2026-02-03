@@ -1,5 +1,3 @@
-'use client'
-
 import Link from 'next/link'
 import { baseUrl } from '@/app/sitemap'
 
