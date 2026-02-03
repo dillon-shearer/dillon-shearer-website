@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { CustomMDX } from '@/app/components/mdx'
 import { formatDate, getBlogPosts } from '@/app/blog/utils'
 import { baseUrl } from '@/app/sitemap'
+import Breadcrumbs from '@/app/components/breadcrumbs'
 
 // Updated type for Next.js 15
 type Params = {
@@ -69,10 +70,17 @@ export default async function Blog({ params }: Params) {
     notFound()
   }
 
+  const breadcrumbItems = [
+    { name: 'Blog', url: `${baseUrl}/blog` },
+    { name: post.metadata.title, url: `${baseUrl}/blog/${post.slug}` },
+  ]
+
   return (
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-6 py-10">
         <div className="max-w-4xl mx-auto">
+          <Breadcrumbs items={breadcrumbItems} />
+
           <script
             type="application/ld+json"
             suppressHydrationWarning
@@ -86,11 +94,24 @@ export default async function Blog({ params }: Params) {
                 description: post.metadata.summary,
                 image: post.metadata.image
                   ? `${baseUrl}${post.metadata.image}`
-                  : `/og?title=${encodeURIComponent(post.metadata.title)}`,
+                  : `${baseUrl}/og?title=${encodeURIComponent(post.metadata.title)}`,
                 url: `${baseUrl}/blog/${post.slug}`,
                 author: {
                   '@type': 'Person',
                   name: 'Dillon Shearer',
+                  url: baseUrl,
+                  sameAs: [
+                    'https://github.com/dillon-shearer',
+                    'https://www.linkedin.com/in/dillonshearer/',
+                  ],
+                },
+                publisher: {
+                  '@type': 'Person',
+                  name: 'Dillon Shearer',
+                },
+                mainEntityOfPage: {
+                  '@type': 'WebPage',
+                  '@id': `${baseUrl}/blog/${post.slug}`,
                 },
               }),
             }}
@@ -115,15 +136,48 @@ export default async function Blog({ params }: Params) {
             {post.metadata.title}
           </h1>
 
-          <div className="flex justify-between items-center mb-8">
-            <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+          <div className="flex items-center gap-3 mb-8 text-sm text-white/60">
+            <span>By</span>
+            <a
+              href="/about"
+              className="text-[#54b3d6] hover:text-[#54b3d6]/80 transition-colors font-medium"
+            >
+              Dillon Shearer
+            </a>
+            <span>•</span>
+            <time dateTime={post.metadata.publishedAt}>
               {formatDate(post.metadata.publishedAt)}
-            </p>
+            </time>
           </div>
 
           <article className="prose prose-neutral dark:prose-invert max-w-none">
             <CustomMDX source={post.content} />
           </article>
+
+          {/* Author bio */}
+          <div className="mt-12 p-6 border border-white/10 rounded-lg bg-white/[0.02]">
+            <div className="flex items-start gap-4">
+              <img
+                src="/ds.jpg"
+                alt="Dillon Shearer"
+                className="w-16 h-16 rounded-full"
+              />
+              <div>
+                <h3 className="font-bold text-white mb-2">About the Author</h3>
+                <p className="text-white/60 text-sm mb-3">
+                  <strong className="text-white">Dillon Shearer</strong> is a Data Engineer and Data Analyst
+                  specializing in healthcare analytics and AI implementation. Currently working at Answer ALS,
+                  building data systems for rare disease research.
+                </p>
+                <a
+                  href="/about"
+                  className="text-[#54b3d6] hover:text-[#54b3d6]/80 text-sm font-medium"
+                >
+                  Learn more about Dillon →
+                </a>
+              </div>
+            </div>
+          </div>
 
           {/* Back to blog link */}
           <div className="mt-16 pt-8">

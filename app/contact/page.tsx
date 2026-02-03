@@ -4,8 +4,8 @@ import { Metadata } from 'next'
 import ContactForm from './contact-form'
 
 export const metadata: Metadata = {
-  title: 'Contact | DWD',
-  description: 'Get in touch with me',
+  title: 'Contact Dillon Shearer | Data Engineer & Analyst',
+  description: 'Get in touch with Dillon Shearer for data engineering, analytics, or healthcare data projects. Based in Newnan, Georgia.',
 }
 
 export default function Contact() {
