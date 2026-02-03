@@ -4,10 +4,10 @@ import DemoGrid from '@/app/components/demo-grid'
 import { getAllDemos } from '@/lib/demos'
 
 export const metadata: Metadata = {
-  title: 'Work Demos | Dillon Shearer',
+  title: 'Work Demos',
   description: 'Interactive demonstrations by Dillon Shearer showcasing data engineering, analytics dashboards, AI implementation, and full-stack development skills.',
   openGraph: {
-    title: 'Work Demos | Dillon Shearer',
+    title: 'Work Demos',
     description: 'Interactive demonstrations by Dillon Shearer showcasing data engineering, analytics dashboards, AI implementation, and full-stack development skills.',
     type: 'website',
   },

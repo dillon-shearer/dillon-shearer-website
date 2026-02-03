@@ -3,7 +3,7 @@ import { BlogPosts } from '@/app/components/posts'
 import { DataDontLiePosts } from '@/app/components/data-dont-lie-posts'
 
 export const metadata = {
-  title: 'Blog | Dillon Shearer',
+  title: 'Blog',
   description: 'Thoughts, insights, and learnings from Dillon Shearer on data engineering, analytics, healthcare data, and AI implementation.',
 }
 

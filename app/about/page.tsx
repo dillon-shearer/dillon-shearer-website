@@ -1,10 +1,10 @@
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'About Dillon Shearer | Data-Centric Software Engineer',
+  title: 'About',
   description: 'Data-centric software engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.',
   openGraph: {
-    title: 'About Dillon Shearer | Data-Centric Software Engineer',
+    title: 'About',
     description: 'Data-centric software engineer building data systems, analytics, and applications. Currently focused on healthcare and life sciences.',
     type: 'website',
   },

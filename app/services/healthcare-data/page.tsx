@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Healthcare Data Services | Dillon Shearer',
+  title: 'Healthcare Data Services',
   description: 'Specialized healthcare data solutions by Dillon Shearer: clinical data engineering, HL7 FHIR, OMOP, SNOMED, LOINC, and rare disease research data systems.',
 }
 

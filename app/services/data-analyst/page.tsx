@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Data Analyst Services | Dillon Shearer',
+  title: 'Data Analyst Services',
   description: 'Hire Dillon Shearer for data analytics services: dashboard development, business intelligence, Power BI/Tableau reporting, and healthcare analytics. Based in Georgia.',
 }
 
