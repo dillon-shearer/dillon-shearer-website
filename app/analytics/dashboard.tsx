@@ -59,11 +59,7 @@ export default function AnalyticsDashboard() {
     const fetchStats = async () => {
       setLoading(true)
       try {
-        // Add timestamp to bypass cache
-        const timestamp = Date.now()
-        const response = await fetch(`/api/analytics/stats?range=${range}&t=${timestamp}`, {
-          cache: 'no-store',
-        })
+        const response = await fetch(`/api/analytics/stats?range=${range}`)
         const data = await response.json()
         setStats(data)
       } catch (error) {
@@ -73,7 +69,14 @@ export default function AnalyticsDashboard() {
       }
     }
 
+    // Fetch immediately
     fetchStats()
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchStats, 30000)
+
+    // Cleanup interval on unmount or range change
+    return () => clearInterval(interval)
   }, [range])
 
   const avgViewsPerVisitor = stats

@@ -160,9 +160,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(stats, {
       headers: {
-        // TODO: RE-ENABLE CACHING FOR PRODUCTION! Set to 'public, s-maxage=300, stale-while-revalidate=600'
-        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-        'Pragma': 'no-cache',
+        // 30 second cache - balances freshness with performance
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
       },
     })
   } catch (error: any) {
