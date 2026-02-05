@@ -191,8 +191,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(stats, {
       headers: {
-        // 30 second cache - balances freshness with performance
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        // 15 second cache - balances freshness with performance
+        'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
       },
     })
   } catch (error: any) {

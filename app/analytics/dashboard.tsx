@@ -61,7 +61,11 @@ export default function AnalyticsDashboard() {
 
   useEffect(() => {
     const fetchStats = async () => {
-      setLoading(true)
+      // Only show loading spinner if we don't have data yet (initial load)
+      if (!stats) {
+        setLoading(true)
+      }
+
       try {
         const response = await fetch(`/api/analytics/stats?range=${range}`)
         const data = await response.json()
@@ -76,8 +80,8 @@ export default function AnalyticsDashboard() {
     // Fetch immediately
     fetchStats()
 
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchStats, 30000)
+    // Auto-refresh every 15 seconds
+    const interval = setInterval(fetchStats, 15000)
 
     // Cleanup interval on unmount or range change
     return () => clearInterval(interval)
