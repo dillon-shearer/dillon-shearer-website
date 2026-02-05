@@ -46,40 +46,26 @@ export async function POST(request: Request) {
     // Normalize path
     const normalizedPath = path === '' || path === '/' ? '/' : path.startsWith('/') ? path : `/${path}`
 
-    // Insert into unified analytics table
+    // Update the most recent analytics record for this session/path with performance metrics
+    // This prevents creating duplicate page view records
     await sql`
-      INSERT INTO analytics (
-        path,
-        referrer,
-        session_hash,
-        browser,
-        os,
-        device_type,
-        is_bot,
-        lcp,
-        fid,
-        cls,
-        ttfb,
-        fcp,
-        dom_load_time,
-        window_load_time,
-        connection_type
-      ) VALUES (
-        ${normalizedPath},
-        ${normalizedReferrer},
-        ${sessionHash},
-        ${browser},
-        ${os},
-        ${deviceType},
-        ${isBotRequest},
-        ${lcp || null},
-        ${fid || null},
-        ${cls || null},
-        ${ttfb || null},
-        ${fcp || null},
-        ${domLoadTime || null},
-        ${windowLoadTime || null},
-        ${connectionType || null}
+      UPDATE analytics
+      SET
+        lcp = ${lcp || null},
+        fid = ${fid || null},
+        cls = ${cls || null},
+        ttfb = ${ttfb || null},
+        fcp = ${fcp || null},
+        dom_load_time = ${domLoadTime || null},
+        window_load_time = ${windowLoadTime || null},
+        connection_type = ${connectionType || null}
+      WHERE id = (
+        SELECT id FROM analytics
+        WHERE session_hash = ${sessionHash}
+          AND path = ${normalizedPath}
+          AND timestamp >= NOW() - INTERVAL '30 seconds'
+        ORDER BY timestamp DESC
+        LIMIT 1
       )
     `
 
