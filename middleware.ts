@@ -34,13 +34,17 @@ export function middleware(req: NextRequest) {
       // Skip bot detection in middleware (API will handle it)
       // Fire-and-forget tracking (non-blocking)
       const trackingUrl = new URL('/api/analytics/track', req.url)
+
+      // Normalize path - ensure home page is always "/"
+      const pathname = req.nextUrl.pathname || '/'
+
       fetch(trackingUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          path: req.nextUrl.pathname,
+          path: pathname,
           referrer: req.headers.get('referer') || null,
           userAgent,
           ip,

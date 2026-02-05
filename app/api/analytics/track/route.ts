@@ -6,10 +6,23 @@ import { normalizeReferrer } from '@/lib/analytics/referrer'
 
 export async function POST(request: Request) {
   try {
-    const { path, referrer, userAgent, ip } = await request.json()
+    const body = await request.json()
+    let { path, referrer, userAgent, ip } = body
+
+    // Extract real IP from headers if client sent placeholder
+    if (!ip || ip === '0.0.0.0') {
+      ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+           request.headers.get('x-real-ip') ||
+           '0.0.0.0'
+    }
+
+    // Extract user agent from headers if not provided
+    if (!userAgent) {
+      userAgent = request.headers.get('user-agent') || ''
+    }
 
     // Validate required fields
-    if (!path || !userAgent || !ip) {
+    if (!path || !userAgent) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -18,7 +31,8 @@ export async function POST(request: Request) {
 
     // Normalize path: ensure it always starts with /
     // This treats 'datawithdillon.com' and 'datawithdillon.com/' the same
-    const normalizedPath = path === '' || path === '/' ? '/' : path.startsWith('/') ? path : `/${path}`
+    // Also handles empty paths as home page
+    const normalizedPath = !path || path === '' || path === '/' ? '/' : path.startsWith('/') ? path : `/${path}`
 
     // Parse user agent
     const { browser, os, deviceType } = parseUserAgent(userAgent)
