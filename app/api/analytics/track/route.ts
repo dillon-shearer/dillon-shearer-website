@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { sql } from '@vercel/postgres'
 import { parseUserAgent, isBot } from '@/lib/analytics/user-agent'
 import { generateSessionHash } from '@/lib/analytics/session'
+import { normalizeReferrer } from '@/lib/analytics/referrer'
 
 export async function POST(request: Request) {
   try {
@@ -26,9 +27,12 @@ export async function POST(request: Request) {
     // Generate session hash
     const sessionHash = generateSessionHash(ip, userAgent)
 
-    // Insert page view
+    // Normalize referrer URL to clean domain
+    const normalizedReferrer = normalizeReferrer(referrer)
+
+    // Insert page view into unified analytics table
     await sql`
-      INSERT INTO analytics_page_views (
+      INSERT INTO analytics (
         path,
         referrer,
         session_hash,
@@ -38,7 +42,7 @@ export async function POST(request: Request) {
         is_bot
       ) VALUES (
         ${normalizedPath},
-        ${referrer},
+        ${normalizedReferrer},
         ${sessionHash},
         ${browser},
         ${os},
@@ -49,7 +53,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('Analytics tracking error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

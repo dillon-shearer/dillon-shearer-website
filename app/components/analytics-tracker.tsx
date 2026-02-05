@@ -20,6 +20,7 @@ export default function AnalyticsTracker() {
 
         const metrics: any = {
           path: pathname,
+          referrer: document.referrer || null,
           domLoadTime: navigation?.domContentLoadedEventEnd - navigation?.domContentLoadedEventStart,
           windowLoadTime: navigation?.loadEventEnd - navigation?.loadEventStart,
           ttfb: navigation?.responseStart - navigation?.requestStart,
@@ -32,18 +33,28 @@ export default function AnalyticsTracker() {
         }
 
         // Dynamically import web-vitals and collect Core Web Vitals
-        const { onLCP } = await import('web-vitals')
+        const { onLCP, onFID, onCLS, onFCP } = await import('web-vitals')
 
         onLCP((metric) => {
           metrics.lcp = metric.value
-          sendMetrics(metrics)
         })
 
-        // Send initial metrics even if some web vitals aren't triggered
+        onFID((metric) => {
+          metrics.fid = metric.value
+        })
+
+        onCLS((metric) => {
+          metrics.cls = metric.value
+        })
+
+        onFCP((metric) => {
+          metrics.fcp = metric.value
+        })
+
+        // Send metrics after collecting web vitals (or timeout after 5 seconds)
         setTimeout(() => sendMetrics(metrics), 5000)
       } catch (error) {
         // Silently fail - analytics should never break the site
-        console.debug('Analytics performance tracking error:', error)
       }
     }
 

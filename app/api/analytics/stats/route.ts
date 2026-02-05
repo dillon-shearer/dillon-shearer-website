@@ -46,101 +46,125 @@ export async function GET(request: Request) {
     const range = (searchParams.get('range') || '7d') as TimeRange
 
     const { startDate, endDate } = getDateRange(range)
-    console.log(`[Analytics] Range: ${range}, Start: ${startDate}, End: ${endDate}`)
 
-    // Execute parallel queries
+    // Execute parallel queries using unified analytics table
     const [
       totalViewsResult,
       uniqueVisitorsResult,
       topPagesResult,
       topReferrersResult,
       browserDistResult,
+      deviceDistResult,
+      osDistResult,
       dailyViewsResult,
       perfAveragesResult,
     ] = await Promise.all([
-      // Total page views (including ALL data - no bot filtering)
+      // Total page views (real traffic only - exclude bots)
       sql`
         SELECT COUNT(*) as count
-        FROM analytics_page_views
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
       `,
 
-      // Unique visitors (including ALL data)
+      // Unique visitors (real traffic only)
       sql`
         SELECT COUNT(DISTINCT session_hash) as count
-        FROM analytics_page_views
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
       `,
 
-      // All pages - show every single entry from database
+      // All pages - real traffic only
       sql`
         SELECT path, COUNT(*) as views
-        FROM analytics_page_views
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
         GROUP BY path
         ORDER BY views DESC
+        LIMIT 100
       `,
 
-      // External referrers only - exclude internal navigation
+      // External referrers only - exclude internal navigation and bots
       sql`
         SELECT referrer, COUNT(*) as views
-        FROM analytics_page_views
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
           AND referrer IS NOT NULL
-          AND referrer NOT LIKE '%datawithdillon.com%'
-          AND referrer NOT LIKE '%localhost%'
+          AND referrer != 'datawithdillon.com'
+          AND referrer != 'localhost'
         GROUP BY referrer
         ORDER BY views DESC
+        LIMIT 50
       `,
 
-      // Browser distribution (all data, no limits)
+      // Browser distribution (real traffic only)
       sql`
         SELECT browser, COUNT(*) as count
-        FROM analytics_page_views
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
         GROUP BY browser
         ORDER BY count DESC
       `,
 
-      // Daily page views for chart (all data)
+      // Device type distribution (real traffic only)
       sql`
-        SELECT date, COUNT(*) as views
-        FROM analytics_page_views
+        SELECT device_type, COUNT(*) as count
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
+        GROUP BY device_type
+        ORDER BY count DESC
+      `,
+
+      // OS distribution (real traffic only)
+      sql`
+        SELECT os, COUNT(*) as count
+        FROM analytics
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
+          AND is_bot = false
+        GROUP BY os
+        ORDER BY count DESC
+      `,
+
+      // Daily page views for chart (real traffic only)
+      sql`
+        SELECT date, COUNT(*) as views
+        FROM analytics
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
+          AND is_bot = false
         GROUP BY date
         ORDER BY date ASC
       `,
 
-      // Performance averages
+      // Performance averages (real traffic only)
       sql`
         SELECT
           AVG(lcp) as avg_lcp,
-          AVG(ttfb) as avg_ttfb
-        FROM analytics_performance
+          AVG(fid) as avg_fid,
+          AVG(cls) as avg_cls,
+          AVG(ttfb) as avg_ttfb,
+          AVG(fcp) as avg_fcp,
+          AVG(dom_load_time) as avg_dom_load,
+          AVG(window_load_time) as avg_window_load
+        FROM analytics
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
+          AND is_bot = false
       `,
     ])
 
-    console.log(`[Analytics] Top pages query returned ${topPagesResult.rows.length} pages:`, topPagesResult.rows)
-
-    // Debug: Check if there are bot pages being filtered out
-    const allPagesDebug = await sql`
-      SELECT path, COUNT(*) as total_views,
-             COUNT(*) FILTER (WHERE is_bot = true) as bot_views,
-             COUNT(*) FILTER (WHERE is_bot = false) as real_views
-      FROM analytics_page_views
-      WHERE date >= ${startDate}::date AND date < ${endDate}::date
-      GROUP BY path
-      ORDER BY total_views DESC
-    `
-    console.log(`[Analytics DEBUG] All pages including bots:`, allPagesDebug.rows)
 
     const stats = {
       totalViews: parseInt(totalViewsResult.rows[0]?.count || '0'),
@@ -148,13 +172,20 @@ export async function GET(request: Request) {
       topPages: topPagesResult.rows,
       topReferrers: topReferrersResult.rows,
       browserDistribution: browserDistResult.rows,
+      deviceDistribution: deviceDistResult.rows,
+      osDistribution: osDistResult.rows,
       dailyViews: dailyViewsResult.rows.map(row => ({
         date: row.date,
         views: parseInt(row.views),
       })),
       performance: {
         avgLcp: parseFloat(perfAveragesResult.rows[0]?.avg_lcp || '0'),
+        avgFid: parseFloat(perfAveragesResult.rows[0]?.avg_fid || '0'),
+        avgCls: parseFloat(perfAveragesResult.rows[0]?.avg_cls || '0'),
         avgTtfb: parseFloat(perfAveragesResult.rows[0]?.avg_ttfb || '0'),
+        avgFcp: parseFloat(perfAveragesResult.rows[0]?.avg_fcp || '0'),
+        avgDomLoad: parseFloat(perfAveragesResult.rows[0]?.avg_dom_load || '0'),
+        avgWindowLoad: parseFloat(perfAveragesResult.rows[0]?.avg_window_load || '0'),
       },
     }
 
@@ -165,7 +196,6 @@ export async function GET(request: Request) {
       },
     })
   } catch (error: any) {
-    console.error('Analytics stats error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

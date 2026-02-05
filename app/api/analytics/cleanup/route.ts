@@ -21,26 +21,18 @@ export async function GET(request: Request) {
     cutoffDate.setDate(cutoffDate.getDate() - 90)
     const cutoff = cutoffDate.toISOString().split('T')[0] // YYYY-MM-DD format
 
-    // Delete old page views
-    const pageViewsResult = await sql`
-      DELETE FROM analytics_page_views
-      WHERE date < ${cutoff}::date
-    `
-
-    // Delete old performance metrics
-    const performanceResult = await sql`
-      DELETE FROM analytics_performance
+    // Delete old analytics records
+    const analyticsResult = await sql`
+      DELETE FROM analytics
       WHERE date < ${cutoff}::date
     `
 
     return NextResponse.json({
       success: true,
       cutoff,
-      deletedPageViews: pageViewsResult.rowCount,
-      deletedPerformance: performanceResult.rowCount,
+      deletedRecords: analyticsResult.rowCount,
     })
   } catch (error: any) {
-    console.error('Analytics cleanup error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

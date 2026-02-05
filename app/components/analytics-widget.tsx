@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 type WidgetStats = {
   todayViews: number
@@ -11,6 +11,7 @@ type WidgetStats = {
 }
 
 export default function AnalyticsWidget() {
+  const router = useRouter()
   const [stats, setStats] = useState<WidgetStats | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -40,7 +41,7 @@ export default function AnalyticsWidget() {
           mostPopularPage,
         })
       } catch (error) {
-        console.error('Failed to fetch analytics widget stats:', error)
+        // Silently fail - analytics should never break the site
       } finally {
         setLoading(false)
       }
@@ -80,7 +81,7 @@ export default function AnalyticsWidget() {
   return (
     <div
       className="card-base card-hover w-full p-6 cursor-pointer"
-      onClick={() => window.location.href = '/analytics'}
+      onClick={() => router.push('/analytics')}
     >
       <div className="text-sm text-center">
         <div className="flex items-center justify-center gap-2 mb-2">
