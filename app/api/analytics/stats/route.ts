@@ -35,8 +35,8 @@ function getDateRange(range: TimeRange): { startDate: string; endDate: string } 
   }
 
   return {
-    startDate: startDate.toISOString(),
-    endDate: endDate.toISOString(),
+    startDate: startDate.toISOString().split('T')[0], // Return YYYY-MM-DD
+    endDate: endDate.toISOString().split('T')[0],     // Return YYYY-MM-DD
   }
 }
 
@@ -61,8 +61,8 @@ export async function GET(request: Request) {
       sql`
         SELECT COUNT(*) as count
         FROM analytics_page_views
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
           AND is_bot = false
       `,
 
@@ -70,8 +70,8 @@ export async function GET(request: Request) {
       sql`
         SELECT COUNT(DISTINCT session_hash) as count
         FROM analytics_page_views
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
           AND is_bot = false
       `,
 
@@ -79,8 +79,8 @@ export async function GET(request: Request) {
       sql`
         SELECT path, COUNT(*) as views
         FROM analytics_page_views
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
           AND is_bot = false
         GROUP BY path
         ORDER BY views DESC
@@ -91,8 +91,8 @@ export async function GET(request: Request) {
       sql`
         SELECT referrer, COUNT(*) as views
         FROM analytics_page_views
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
           AND is_bot = false
           AND referrer IS NOT NULL
         GROUP BY referrer
@@ -104,8 +104,8 @@ export async function GET(request: Request) {
       sql`
         SELECT browser, COUNT(*) as count
         FROM analytics_page_views
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
           AND is_bot = false
         GROUP BY browser
         ORDER BY count DESC
@@ -114,12 +114,12 @@ export async function GET(request: Request) {
 
       // Daily page views for chart
       sql`
-        SELECT DATE(timestamp) as date, COUNT(*) as views
+        SELECT date, COUNT(*) as views
         FROM analytics_page_views
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
           AND is_bot = false
-        GROUP BY DATE(timestamp)
+        GROUP BY date
         ORDER BY date ASC
       `,
 
@@ -132,8 +132,8 @@ export async function GET(request: Request) {
           AVG(ttfb) as avg_ttfb,
           AVG(fcp) as avg_fcp
         FROM analytics_performance
-        WHERE timestamp >= ${startDate}
-          AND timestamp < ${endDate}
+        WHERE date >= ${startDate}::date
+          AND date < ${endDate}::date
       `,
     ])
 

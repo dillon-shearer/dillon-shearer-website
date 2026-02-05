@@ -19,18 +19,18 @@ export async function GET(request: Request) {
     // Calculate cutoff date (90 days ago)
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - 90)
-    const cutoff = cutoffDate.toISOString()
+    const cutoff = cutoffDate.toISOString().split('T')[0] // YYYY-MM-DD format
 
     // Delete old page views
     const pageViewsResult = await sql`
       DELETE FROM analytics_page_views
-      WHERE timestamp < ${cutoff}
+      WHERE date < ${cutoff}::date
     `
 
     // Delete old performance metrics
     const performanceResult = await sql`
       DELETE FROM analytics_performance
-      WHERE timestamp < ${cutoff}
+      WHERE date < ${cutoff}::date
     `
 
     return NextResponse.json({

@@ -15,7 +15,7 @@ npm run build
 npm test
 
 # Execute SQL migrations/scripts
-npm run sql
+npm run sql -- --yes --file scripts/your-script.sql
 
 # Gym chat SQL policy validation
 npm run gym-chat:policy
@@ -170,6 +170,11 @@ These are optional tools for complex agent handoffs, not required for normal dev
 
 ## Important Gotchas
 
+### Database
+
+- **Generated columns**: Postgres `GENERATED ALWAYS AS` columns must use immutable functions. `DATE(timestamp)` fails because it's timezone-dependent. Use functional indexes like `CREATE INDEX ... ON table (DATE(timestamp))` or store dates directly.
+- **SQL execution**: Use `npm run sql -- --yes --file path/to/script.sql` (not positional args after `--`)
+
 ### Type Safety
 
 - TypeScript `ignoreBuildErrors: true` is temporarily set in `next.config.js`
@@ -224,6 +229,7 @@ When working on gym chat queries:
 - **Framework**: Next.js 15 (App Router) + React 19
 - **Styling**: Tailwind CSS v4 alpha + PostCSS (⚠️ alpha version - expect potential breaking changes)
 - **Database**: Vercel Postgres + native pg driver
+- **Analytics**: Custom self-hosted (ua-parser-js, web-vitals) + Vercel Analytics
 - **Content**: MDX with remark-gfm for GitHub Flavored Markdown
 - **Visualization**: Recharts for charts, Three.js for 3D
 - **PDF/Excel**: @react-pdf/renderer, ExcelJS
@@ -236,6 +242,7 @@ Required environment variables in `.env.local`:
 - `POSTGRES_URL` - Vercel Postgres connection string
 - `RESEND_API_KEY` - For email notifications (DAR system)
 - `ANTHROPIC_API_KEY` - For gym chat LLM integration
+- `CRON_SECRET` - For authenticated Vercel Cron jobs (use `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` to generate)
 
 ## Troubleshooting
 
