@@ -1,7 +1,7 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 
 type Props = {
   data: any[]
@@ -50,7 +50,8 @@ function truncateLabel(label: string, maxLength: number) {
   return label.slice(0, maxLength - 3) + '...'
 }
 
-export default function AnalyticsBarChart({ data, dataKey, nameKey, height = 300, scrollable = false }: Props) {
+// Memoize to prevent re-renders when data hasn't changed
+const AnalyticsBarChart = memo(function AnalyticsBarChart({ data, dataKey, nameKey, height = 300, scrollable = false }: Props) {
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -140,4 +141,6 @@ export default function AnalyticsBarChart({ data, dataKey, nameKey, height = 300
       )}
     </div>
   )
-}
+})
+
+export default AnalyticsBarChart

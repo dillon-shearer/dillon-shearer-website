@@ -1,5 +1,7 @@
 'use client'
 
+import { memo } from 'react'
+
 type Props = {
   label: string
   value: number
@@ -8,7 +10,8 @@ type Props = {
   description?: string
 }
 
-export default function PerformanceGauge({ label, value, unit, threshold, description }: Props) {
+// Memoize to prevent re-renders when data hasn't changed
+const PerformanceGauge = memo(function PerformanceGauge({ label, value, unit, threshold, description }: Props) {
   const isGood = value > 0 && value <= threshold
   const percentage = Math.min((value / (threshold * 2)) * 100, 100)
 
@@ -45,4 +48,6 @@ export default function PerformanceGauge({ label, value, unit, threshold, descri
       )}
     </div>
   )
-}
+})
+
+export default PerformanceGauge

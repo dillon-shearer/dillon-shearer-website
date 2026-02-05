@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts'
 
 type Props = {
@@ -22,7 +23,8 @@ function ChartTooltip({ active, payload }: any) {
   )
 }
 
-export default function AnalyticsChart({ data, height = 300 }: Props) {
+// Memoize to prevent re-renders when data hasn't changed
+const AnalyticsChart = memo(function AnalyticsChart({ data, height = 300 }: Props) {
   return (
     <div className="w-full" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -64,4 +66,6 @@ export default function AnalyticsChart({ data, height = 300 }: Props) {
       </ResponsiveContainer>
     </div>
   )
-}
+})
+
+export default AnalyticsChart

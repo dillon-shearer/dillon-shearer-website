@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import AnalyticsChart from './ui/AnalyticsChart'
 import AnalyticsBarChart from './ui/AnalyticsBarChart'
 import PerformanceGauge from './ui/PerformanceGauge'
@@ -27,7 +27,39 @@ type AnalyticsStats = {
   }
 }
 
-function StatCard({ label, value, sub, trend }: {
+// Efficiently check if analytics data has actually changed
+// Only compares key metrics to avoid deep comparison overhead
+function hasDataChanged(oldData: AnalyticsStats, newData: AnalyticsStats): boolean {
+  // Compare simple metrics first (fast)
+  if (
+    oldData.totalViews !== newData.totalViews ||
+    oldData.uniqueVisitors !== newData.uniqueVisitors ||
+    oldData.dailyViews.length !== newData.dailyViews.length ||
+    oldData.topPages.length !== newData.topPages.length
+  ) {
+    return true
+  }
+
+  // Compare most recent daily views (likely to change most frequently)
+  const oldLatest = oldData.dailyViews[oldData.dailyViews.length - 1]
+  const newLatest = newData.dailyViews[newData.dailyViews.length - 1]
+  if (oldLatest?.views !== newLatest?.views || oldLatest?.date !== newLatest?.date) {
+    return true
+  }
+
+  // Compare top page views (most frequently changing metric after total views)
+  const oldTopPage = oldData.topPages[0]
+  const newTopPage = newData.topPages[0]
+  if (oldTopPage?.views !== newTopPage?.views || oldTopPage?.path !== newTopPage?.path) {
+    return true
+  }
+
+  // If we got here, data is effectively unchanged
+  return false
+}
+
+// Memoize StatCard to prevent re-renders when data hasn't changed
+const StatCard = memo(function StatCard({ label, value, sub, trend }: {
   label: string
   value: number | string
   sub?: string
@@ -52,12 +84,13 @@ function StatCard({ label, value, sub, trend }: {
       </div>
     </div>
   )
-}
+})
 
 export default function AnalyticsDashboard() {
   const [range, setRange] = useState<TimeRange>('today')
   const [stats, setStats] = useState<AnalyticsStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [etag, setEtag] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -67,9 +100,32 @@ export default function AnalyticsDashboard() {
       }
 
       try {
-        const response = await fetch(`/api/analytics/stats?range=${range}`)
+        // Include If-None-Match header for conditional requests (ETag)
+        const headers: HeadersInit = {}
+        if (etag) {
+          headers['If-None-Match'] = etag
+        }
+
+        const response = await fetch(`/api/analytics/stats?range=${range}`, { headers })
+
+        // 304 Not Modified - data hasn't changed, keep existing state
+        if (response.status === 304) {
+          return
+        }
+
         const data = await response.json()
-        setStats(data)
+
+        // Store new ETag for next request
+        const newEtag = response.headers.get('etag')
+        if (newEtag) {
+          setEtag(newEtag)
+        }
+
+        // Only update state if data actually changed (deep comparison of key metrics)
+        // This prevents unnecessary re-renders and eliminates the "blink" effect
+        if (!stats || hasDataChanged(stats, data)) {
+          setStats(data)
+        }
       } catch (error) {
         // Silently fail - analytics should never break the site
       } finally {
@@ -85,7 +141,7 @@ export default function AnalyticsDashboard() {
 
     // Cleanup interval on unmount or range change
     return () => clearInterval(interval)
-  }, [range])
+  }, [range, stats, etag])
 
   const avgViewsPerVisitor = stats
     ? stats.uniqueVisitors > 0

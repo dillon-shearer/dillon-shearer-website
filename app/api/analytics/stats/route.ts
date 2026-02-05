@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sql } from '@vercel/postgres'
+import { createHash } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -189,8 +190,26 @@ export async function GET(request: Request) {
       },
     }
 
+    // Generate ETag from data hash for efficient conditional requests
+    const dataHash = createHash('md5').update(JSON.stringify(stats)).digest('hex')
+    const etag = `"${dataHash}"`
+
+    // Check if client has cached version (If-None-Match header)
+    const clientEtag = request.headers.get('if-none-match')
+    if (clientEtag === etag) {
+      // Data hasn't changed - return 304 Not Modified (no body, saves bandwidth)
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          'ETag': etag,
+          'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
+        },
+      })
+    }
+
     return NextResponse.json(stats, {
       headers: {
+        'ETag': etag,
         // 15 second cache - balances freshness with performance
         'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
       },
