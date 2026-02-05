@@ -86,12 +86,10 @@ export default function GitHubWidget() {
 
   if (loading) {
     return (
-      <div className="flex justify-center">
-        <div className="card-base max-w-md w-full p-6">
-          <div className="animate-pulse text-center">
-            <div className="h-4 rounded w-32 mb-2 mx-auto" style={{ backgroundColor: 'var(--bg-subtle)' }}></div>
-            <div className="h-3 rounded w-64 mx-auto" style={{ backgroundColor: 'var(--bg-subtle)' }}></div>
-          </div>
+      <div className="card-base w-full p-6">
+        <div className="animate-pulse text-center">
+          <div className="h-4 rounded w-32 mb-2 mx-auto" style={{ backgroundColor: 'var(--bg-subtle)' }}></div>
+          <div className="h-3 rounded w-64 mx-auto" style={{ backgroundColor: 'var(--bg-subtle)' }}></div>
         </div>
       </div>
     )
@@ -99,13 +97,11 @@ export default function GitHubWidget() {
 
   if (!loading && (error || commits.length === 0)) {
     return (
-      <div className="flex justify-center">
-        <div className="card-base max-w-md w-full p-6 text-center">
-          <h3 className="font-semibold mb-2 text-white">GitHub Activity Unavailable</h3>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            GitHub is rate-limiting or unreachable right now. Please try again in a few minutes.
-          </p>
-        </div>
+      <div className="card-base w-full p-6 text-center">
+        <h3 className="font-semibold mb-2 text-white">GitHub Activity Unavailable</h3>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          GitHub is rate-limiting or unreachable right now. Please try again in a few minutes.
+        </p>
       </div>
     )
   }
@@ -128,29 +124,27 @@ export default function GitHubWidget() {
 
   return (
     <>
-      <div className="flex justify-center">
-        <div
-          className="card-base card-hover max-w-md w-full p-6 cursor-pointer"
-          onClick={handleCardClick}
-        >
-          <div className="text-sm text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <h3 className="font-semibold text-white">
-                Site Development
-              </h3>
-              {isStale && (
-                <span className="badge-base badge-secondary text-[10px]">
-                  cached
-                </span>
-              )}
+      <div
+        className="card-base card-hover w-full p-6 cursor-pointer"
+        onClick={handleCardClick}
+      >
+        <div className="text-sm text-center">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <h3 className="font-semibold text-white">
+              Site Development
+            </h3>
+            {isStale && (
+              <span className="badge-base badge-secondary text-[10px]">
+                cached
+              </span>
+            )}
+          </div>
+          <div className="space-y-1" style={{ color: 'var(--text-secondary)' }}>
+            <div>
+              Last updated: {timeAgo} • {commitsThisMonth} commit{commitsThisMonth === 1 ? '' : 's'} this month
             </div>
-            <div className="space-y-1" style={{ color: 'var(--text-secondary)' }}>
-              <div>
-                Last updated: {timeAgo} • {commitsThisMonth} commit{commitsThisMonth === 1 ? '' : 's'} this month
-              </div>
-              <div>
-                Latest: "{commitMessage}"
-              </div>
+            <div>
+              Latest: "{commitMessage}"
             </div>
           </div>
         </div>

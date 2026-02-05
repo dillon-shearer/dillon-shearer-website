@@ -87,14 +87,8 @@ export default function HomePage() {
             <AnimatedCardStack cards={cardStackData} />
           </section>
 
-          <section className="mb-20">
-            <div className="mb-8">
-              <p className="section-label">Site Analytics</p>
-            </div>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <AnalyticsWidget />
-          </section>
-
-          <section>
             <GitHubWidget />
           </section>
         </div>

@@ -55,16 +55,21 @@ export default function AnalyticsWidget() {
 
   if (loading) {
     return (
-      <div className="group rounded-xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/30 transition-all">
-        <div className="text-white/40 text-sm">Loading analytics...</div>
+      <div className="card-base w-full p-6">
+        <div className="animate-pulse text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Loading site analytics...
+        </div>
       </div>
     )
   }
 
   if (!stats) {
     return (
-      <div className="group rounded-xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/30 transition-all">
-        <div className="text-white/40 text-sm">Analytics unavailable</div>
+      <div className="card-base w-full p-6 text-center">
+        <h3 className="font-semibold mb-2 text-white">Analytics Unavailable</h3>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Unable to load analytics data. Please try again later.
+        </p>
       </div>
     )
   }
@@ -73,42 +78,36 @@ export default function AnalyticsWidget() {
   const hasYesterdayData = stats.yesterdayViews > 0
 
   return (
-    <Link href="/analytics" className="block group">
-      <div className="relative rounded-xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/30 transition-all overflow-hidden">
-        {/* Gradient overlay on hover */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#54b3d6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-        <div className="relative z-10">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-white/60">Today's Traffic</h3>
-            <span className="text-xs text-[#54b3d6] group-hover:underline">View Dashboard →</span>
-          </div>
-
-          {/* Main Stats */}
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              <div className="text-4xl font-bold font-mono mb-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {stats.todayViews.toLocaleString()}
-              </div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">Page Views</div>
-            </div>
-
+    <div
+      className="card-base card-hover w-full p-6 cursor-pointer"
+      onClick={() => window.location.href = '/analytics'}
+    >
+      <div className="text-sm text-center">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <h3 className="font-semibold text-white">
+            Site Analytics
+          </h3>
+        </div>
+        <div className="space-y-1" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex items-center justify-center gap-2">
+            <span className="font-mono font-bold text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {stats.todayViews.toLocaleString()}
+            </span>
+            <span>view{stats.todayViews === 1 ? '' : 's'} today</span>
             {hasYesterdayData && (
-              <div className={`flex items-center gap-1 text-sm font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                {isPositive ? '↑' : '↓'}
-                {Math.abs(stats.percentChange).toFixed(1)}%
-              </div>
+              <>
+                <span>•</span>
+                <span className={isPositive ? 'text-green-400' : 'text-red-400'}>
+                  {isPositive ? '↑' : '↓'}{Math.abs(stats.percentChange).toFixed(0)}%
+                </span>
+              </>
             )}
           </div>
-
-          {/* Most Popular Page */}
-          <div className="pt-4 border-t border-white/10">
-            <div className="text-xs text-white/40 uppercase tracking-wider mb-1">Most Popular</div>
-            <div className="text-sm text-white/80 font-mono truncate">{stats.mostPopularPage}</div>
+          <div>
+            Top page: "{stats.mostPopularPage}"
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   )
 }
