@@ -59,7 +59,11 @@ export default function AnalyticsDashboard() {
     const fetchStats = async () => {
       setLoading(true)
       try {
-        const response = await fetch(`/api/analytics/stats?range=${range}`)
+        // Add timestamp to bypass cache
+        const timestamp = Date.now()
+        const response = await fetch(`/api/analytics/stats?range=${range}&t=${timestamp}`, {
+          cache: 'no-store',
+        })
         const data = await response.json()
         setStats(data)
       } catch (error) {
