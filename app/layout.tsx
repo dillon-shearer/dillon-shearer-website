@@ -9,6 +9,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import Footer from './components/footer'
 import EmbedToggle from './components/embed-toggle'
 import RouteWarmup from './components/route-warmup'
+import AnalyticsTracker from './components/analytics-tracker'
 import { baseUrl } from './sitemap'
 
 const siteDescription = 'Dillon Shearer | Data Engineer & Analyst specializing in healthcare analytics and AI. Building production data systems in Georgia.'
@@ -115,6 +116,7 @@ export default function RootLayout({
           </div>
           <Analytics />
           <SpeedInsights />
+          <AnalyticsTracker />
         </main>
         <div data-embed-hide="true">
           <Footer />

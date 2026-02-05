@@ -4,6 +4,7 @@ import HeroTitle from '@/app/components/hero-title'
 import TripleClickAvatar from '@/app/components/triple-click-avatar'
 import AnimatedCardStack from '@/app/components/animated-card-stack'
 import MagneticButton from '@/app/components/magnetic-button'
+import AnalyticsWidget from '@/app/components/analytics-widget'
 
 // NOTE: Keep the triple-click easter egg on the hero image pointing to the gym form.
 const cardStackData = [
@@ -84,6 +85,13 @@ export default function HomePage() {
             </div>
 
             <AnimatedCardStack cards={cardStackData} />
+          </section>
+
+          <section className="mb-20">
+            <div className="mb-8">
+              <p className="section-label">Site Analytics</p>
+            </div>
+            <AnalyticsWidget />
           </section>
 
           <section>
