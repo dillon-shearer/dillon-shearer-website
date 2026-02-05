@@ -60,6 +60,7 @@ const navigationLinks = [
 const resourceLinks = [
   { path: '/resumes', name: 'Resumes' },
   { path: '/jupyter', name: 'Notebooks' },
+  { path: '/analytics', name: 'Analytics' },
   { path: '/certifications', name: 'Certifications' },
   { path: '/rss', name: 'RSS Feed' },
 ]

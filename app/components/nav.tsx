@@ -23,6 +23,7 @@ const navItems: NavItem[] = [
       { path: '/jupyter', name: 'Notebooks' },
     ],
   },
+  { path: '/analytics', name: 'Analytics' },
   { path: '/blog', name: 'Blog' },
 ]
 
