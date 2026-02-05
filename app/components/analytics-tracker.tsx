@@ -32,15 +32,19 @@ export default function AnalyticsTracker() {
 
     const trackPerformance = async () => {
       try {
-        // Collect Navigation Timing API metrics
+        // Collect Navigation Timing API metrics (available immediately)
         const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
 
         const metrics: any = {
           path: pathname,
           referrer: document.referrer || null,
-          domLoadTime: navigation?.domContentLoadedEventEnd - navigation?.domContentLoadedEventStart,
-          windowLoadTime: navigation?.loadEventEnd - navigation?.loadEventStart,
-          ttfb: navigation?.responseStart - navigation?.requestStart,
+        }
+
+        // Navigation timing metrics are available immediately after load
+        if (navigation) {
+          metrics.domLoadTime = navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart
+          metrics.windowLoadTime = navigation.loadEventEnd - navigation.loadEventStart
+          metrics.ttfb = navigation.responseStart - navigation.requestStart
         }
 
         // Get connection type if available
@@ -49,27 +53,50 @@ export default function AnalyticsTracker() {
           metrics.connectionType = connection.effectiveType || connection.type
         }
 
+        // Track which vitals we've collected
+        let vitalCount = 0
+        const expectedVitals = 4 // LCP, FID, CLS, FCP
+        let sendTimeoutId: NodeJS.Timeout
+
+        const sendWhenReady = () => {
+          // Send after 10 seconds OR when we have most vitals (FID may never fire)
+          if (vitalCount >= 3 || !sendTimeoutId) {
+            clearTimeout(sendTimeoutId)
+            sendMetrics(metrics)
+          }
+        }
+
+        // Set a maximum wait time of 10 seconds
+        sendTimeoutId = setTimeout(() => {
+          sendMetrics(metrics)
+        }, 10000)
+
         // Dynamically import web-vitals and collect Core Web Vitals
         const { onLCP, onFID, onCLS, onFCP } = await import('web-vitals')
 
         onLCP((metric) => {
           metrics.lcp = metric.value
+          vitalCount++
+          sendWhenReady()
         })
 
         onFID((metric) => {
           metrics.fid = metric.value
+          vitalCount++
+          sendWhenReady()
         })
 
         onCLS((metric) => {
           metrics.cls = metric.value
+          vitalCount++
+          sendWhenReady()
         })
 
         onFCP((metric) => {
           metrics.fcp = metric.value
+          vitalCount++
+          sendWhenReady()
         })
-
-        // Send metrics after collecting web vitals (or timeout after 5 seconds)
-        setTimeout(() => sendMetrics(metrics), 5000)
       } catch (error) {
         // Silently fail - analytics should never break the site
       }
