@@ -87,7 +87,7 @@ export async function GET(request: Request) {
         LIMIT 10
       `,
 
-      // Top referrers
+      // Top referrers (exclude internal referrers)
       sql`
         SELECT referrer, COUNT(*) as views
         FROM analytics_page_views
@@ -95,6 +95,8 @@ export async function GET(request: Request) {
           AND date < ${endDate}::date
           AND is_bot = false
           AND referrer IS NOT NULL
+          AND referrer NOT LIKE '%datawithdillon.com%'
+          AND referrer NOT LIKE '%localhost%'
         GROUP BY referrer
         ORDER BY views DESC
         LIMIT 10

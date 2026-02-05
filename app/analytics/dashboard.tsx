@@ -230,45 +230,48 @@ export default function AnalyticsDashboard() {
                 )}
               </div>
 
-              {/* Core Web Vitals */}
-              <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/20 transition-all">
-                <div className="flex items-baseline gap-3 mb-5">
-                  <h2 className="text-lg font-bold">Core Web Vitals</h2>
-                  <span className="text-xs text-white/40 uppercase tracking-wider">
-                    Performance
-                  </span>
+              {/* Core Web Vitals - Only show if we have performance data */}
+              {(stats.performance.avgLcp > 0 || stats.performance.avgFid > 0 ||
+                stats.performance.avgCls > 0 || stats.performance.avgTtfb > 0) && (
+                <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/20 transition-all">
+                  <div className="flex items-baseline gap-3 mb-5">
+                    <h2 className="text-lg font-bold">Core Web Vitals</h2>
+                    <span className="text-xs text-white/40 uppercase tracking-wider">
+                      Performance
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <PerformanceGauge
+                      label="LCP"
+                      value={stats.performance.avgLcp}
+                      unit="ms"
+                      threshold={2500}
+                      description="Largest Contentful Paint"
+                    />
+                    <PerformanceGauge
+                      label="FID"
+                      value={stats.performance.avgFid}
+                      unit="ms"
+                      threshold={100}
+                      description="First Input Delay"
+                    />
+                    <PerformanceGauge
+                      label="CLS"
+                      value={stats.performance.avgCls}
+                      unit=""
+                      threshold={0.1}
+                      description="Cumulative Layout Shift"
+                    />
+                    <PerformanceGauge
+                      label="TTFB"
+                      value={stats.performance.avgTtfb}
+                      unit="ms"
+                      threshold={600}
+                      description="Time to First Byte"
+                    />
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <PerformanceGauge
-                    label="LCP"
-                    value={stats.performance.avgLcp}
-                    unit="ms"
-                    threshold={2500}
-                    description="Largest Contentful Paint"
-                  />
-                  <PerformanceGauge
-                    label="FID"
-                    value={stats.performance.avgFid}
-                    unit="ms"
-                    threshold={100}
-                    description="First Input Delay"
-                  />
-                  <PerformanceGauge
-                    label="CLS"
-                    value={stats.performance.avgCls}
-                    unit=""
-                    threshold={0.1}
-                    description="Cumulative Layout Shift"
-                  />
-                  <PerformanceGauge
-                    label="TTFB"
-                    value={stats.performance.avgTtfb}
-                    unit="ms"
-                    threshold={600}
-                    description="Time to First Byte"
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </>
         )}
