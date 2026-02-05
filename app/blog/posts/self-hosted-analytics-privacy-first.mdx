@@ -1,0 +1,76 @@
+---
+title: 'Building Self-Hosted Analytics: Privacy First, No Compromises'
+publishedAt: '2026-02-05'
+summary: 'How I ditched third-party analytics tracking and built my own privacy-focused system with real-time dashboards, Core Web Vitals, and zero data leakage. No cookies, no tracking scripts, no dark patterns.'
+---
+
+I just shipped a complete analytics system for this site. It is fast, privacy-focused, and built exactly the way I think analytics should work. No third-party trackers. No cookies. No selling visitor data to ad networks. Just clean metrics that help me understand traffic patterns without compromising anyone's privacy.
+
+This came out of frustration with the current state of web analytics. Google Analytics is a surveillance engine. Privacy-focused alternatives like Plausible and Fathom are great, but they still cost money and require trusting another third party with visitor data. I wanted full control over what gets collected, how it gets stored, and who can access it.
+
+So I built my own. Self-hosted. Open. Privacy by design.
+
+## What I built
+
+The system has three main components.
+
+**Client-side tracker** - A lightweight script that runs on every page. It tracks page views on client-side navigation (Next.js App Router), collects Core Web Vitals (LCP, FID, CLS, FCP, TTFB), and sends performance metrics using the browser's Navigation Timing API. The tracker uses `sendBeacon` for reliability during page unload and falls back to `fetch` with `keepalive` if needed. It only runs in production, never breaks the site if tracking fails, and has smart race condition handling to ensure web vitals are collected before the page unloads.
+
+**Backend API** - Three endpoints handle tracking, stats, and exports. The `/track` endpoint normalizes paths, parses user agents, generates session hashes, filters bots, and stores everything in Postgres. The `/stats` endpoint runs parallel queries for views, visitors, referrers, browsers, devices, and performance averages with ETag-based caching to prevent unnecessary data transfers. The `/export` endpoint generates CSV downloads for any time range.
+
+**Analytics dashboard** - A real-time interface with auto-refresh every 5 seconds. Time range selection (today, yesterday, 7d, 30d). Traffic trend charts, page popularity rankings, external referrer tracking, browser/OS/device distribution, Core Web Vitals visualization. Smart state management that only re-renders when data actually changes, eliminating the annoying "blink" effect you see on most dashboards.
+
+There is also a **homepage widget** that shows today's views versus yesterday with percent change, updates every 5 minutes, and links to the full dashboard.
+
+## The privacy approach
+
+This is where most analytics platforms fail. They collect everything, store it forever, and use it for purposes far beyond what site owners need. I took the opposite approach.
+
+**No IP addresses.** The client sends a placeholder IP. The backend extracts the real IP from headers but never stores it. Instead, it generates a SHA256 hash of `ip|userAgent|date` that rotates daily. Same visitor on Monday gets a different session hash on Tuesday. This gives me unique visitor counts without tracking individuals across days.
+
+**No raw user agents.** User agent strings contain tons of identifiable information (browser version, OS version, device model, plugins). I parse them once using `ua-parser-js`, extract only the high-level metadata (browser name, OS name, device type), and discard the raw string. No fingerprinting. No tracking.
+
+**Bot filtering.** Bots and crawlers get tracked but flagged with `is_bot = true`. All analytics queries exclude them by default. SEO crawlers can index the site without polluting traffic stats.
+
+**Path normalization.** URLs get normalized to prevent tracking query parameters. `/blog/post?utm_source=twitter` becomes `/blog/post`. Referrers get cleaned to just the domain (`google.com`, `github.com`). No tracking campaign codes. No leaking where people came from beyond the referring site.
+
+**No cookies.** Session tracking works entirely server-side using the daily-rotating hash. No need to ask for consent. No cookie banners. No GDPR complications.
+
+## The technical decisions
+
+Most of this is straightforward Next.js and Postgres, but there were a few areas where the implementation got interesting.
+
+**Timezone handling in generated columns.** Postgres `GENERATED ALWAYS AS` columns must use immutable functions. `DATE(timestamp)` fails because it depends on session timezone settings. The fix is explicit UTC conversion: `date DATE GENERATED ALWAYS AS ((timestamp AT TIME ZONE 'UTC')::date) STORED`. This is already documented in CLAUDE.md but easy to miss. Without it, migration scripts fail and queries return inconsistent results across different timezone configs.
+
+**Web Vitals race conditions.** Core Web Vitals fire asynchronously. LCP and CLS can take several seconds to stabilize. FID might never fire if the user does not interact with the page. The tracker uses a 10-second timeout with early exit if at least 3 out of 4 vitals are collected. This balances completeness with performance.
+
+**ETag caching for dashboards.** The `/stats` endpoint generates an MD5 hash of the response data and returns it as an ETag. On subsequent requests, the client sends `If-None-Match` with the cached ETag. If data has not changed, the server responds with `304 Not Modified` and no body. This saves bandwidth and prevents unnecessary React re-renders. Combined with smart state comparison in the dashboard component, the result is instant updates when data changes and zero flicker when it does not.
+
+**Auto-refresh without blink.** Most dashboards re-render the entire UI on every refresh, causing annoying visual jumps. This one uses memoized components and a custom `hasDataChanged` function that compares only the key metrics (total views, latest daily view count, top page). If nothing changed, React skips the re-render entirely. The dashboard stays stable even with 5-second refresh intervals.
+
+## Why this matters
+
+Building this system made me better at the data engineering I do for work. Writing high-performance SQL queries with proper indexing. Understanding browser APIs like Navigation Timing and sendBeacon. Implementing ETag caching and conditional requests. Handling timezone edge cases in Postgres. These are the same problems I solve in production data pipelines, just applied to a different domain.
+
+But more importantly, it proves that privacy-focused analytics is not a trade-off. You do not need to sacrifice performance, functionality, or insights to respect visitor privacy. You just need to be intentional about what you collect and why.
+
+This system gives me everything I need to understand traffic patterns, optimize page performance, and track which content resonates. And it does it without cookies, without tracking scripts, without selling data to third parties.
+
+## What is next
+
+The dashboard is fully public. Anyone can see the same real-time metrics I see. Visit [/analytics](/analytics) to check it out. I am proud of how clean the implementation is, and the data itself is interesting if you care about traffic patterns on a personal portfolio site. No reason to hide it.
+
+I want to add performance budgets and alerting. Right now the dashboard shows average Core Web Vitals, but there is no threshold-based monitoring. If LCP spikes above 2.5 seconds or CLS exceeds 0.1, I want to know immediately. That should be straightforward with a cron job and the Resend email integration I already have set up.
+
+I also want to build referrer categorization. The current implementation groups referrers by exact domain (`google.com`, `github.com`, `linkedin.com`). I already wrote a `categorizeReferrer` function that groups domains into Search Engines, Social Media, Dev Platforms, and Other. Just need to wire it into the queries and dashboard.
+
+Longer term, I might expose a public API for the anonymized data. Same pattern as the gym dashboard API - raw CSV and JSON exports, no authentication required, intentionally designed for analysis and modeling. If someone wants to study traffic patterns on a personal portfolio site, the data should be available.
+
+## Try it yourself
+
+The homepage has a small analytics widget in the bottom section. It shows today's view count, percent change from yesterday, and the most popular page. Click it to see the full dashboard. The traffic chart, browser distribution, and Core Web Vitals are all live.
+
+If you are building something similar, the core insight is simple: collect only what you need, hash what you can, rotate what you must, and never store raw identifiers. Privacy and performance are not opposites. They are both solved by intentional design.
+
+Much love,
+Dillon

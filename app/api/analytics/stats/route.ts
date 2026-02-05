@@ -202,7 +202,7 @@ export async function GET(request: Request) {
         status: 304,
         headers: {
           'ETag': etag,
-          'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
+          'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10',
         },
       })
     }
@@ -210,8 +210,8 @@ export async function GET(request: Request) {
     return NextResponse.json(stats, {
       headers: {
         'ETag': etag,
-        // 15 second cache - balances freshness with performance
-        'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
+        // 5 second cache - balances freshness with performance
+        'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10',
       },
     })
   } catch (error: any) {

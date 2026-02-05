@@ -136,8 +136,8 @@ export default function AnalyticsDashboard() {
     // Fetch immediately
     fetchStats()
 
-    // Auto-refresh every 15 seconds
-    const interval = setInterval(fetchStats, 15000)
+    // Auto-refresh every 5 seconds
+    const interval = setInterval(fetchStats, 5000)
 
     // Cleanup interval on unmount or range change
     return () => clearInterval(interval)

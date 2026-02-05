@@ -12,6 +12,20 @@ export default function AnalyticsTracker() {
     // Only track in production
     if (process.env.NODE_ENV !== 'production') return
 
+    // Skip tracking if we're in an iframe or embed mode (e.g., demo previews)
+    if (typeof window !== 'undefined') {
+      // Check if we're in an iframe
+      if (window.self !== window.top) return
+
+      // Check if we're in embed mode
+      const searchParams = new URLSearchParams(window.location.search)
+      if (searchParams.get('embed') === '1') return
+
+      // Only track if the component's pathname matches the actual browser URL
+      // This prevents tracking when pages are rendered for previews (like /demos rendering sub-pages)
+      if (window.location.pathname !== pathname) return
+    }
+
     // Skip tracking if this is the same page (shouldn't happen, but safety check)
     if (previousPathRef.current === pathname) return
 
@@ -29,6 +43,14 @@ export default function AnalyticsTracker() {
 
     // Wait for page load completion
     if (typeof window === 'undefined') return
+
+    // Skip tracking if we're in an iframe or embed mode
+    if (window.self !== window.top) return
+    const searchParams = new URLSearchParams(window.location.search)
+    if (searchParams.get('embed') === '1') return
+
+    // Only track if the component's pathname matches the actual browser URL
+    if (window.location.pathname !== pathname) return
 
     const trackPerformance = async () => {
       try {
