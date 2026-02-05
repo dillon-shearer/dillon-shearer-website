@@ -6,10 +6,7 @@ export async function POST(request: Request) {
     const {
       path,
       lcp,
-      fid,
-      cls,
       ttfb,
-      fcp,
       domLoadTime,
       windowLoadTime,
       connectionType,
@@ -28,20 +25,14 @@ export async function POST(request: Request) {
       INSERT INTO analytics_performance (
         path,
         lcp,
-        fid,
-        cls,
         ttfb,
-        fcp,
         dom_load_time,
         window_load_time,
         connection_type
       ) VALUES (
         ${path},
         ${lcp || null},
-        ${fid || null},
-        ${cls || null},
         ${ttfb || null},
-        ${fcp || null},
         ${domLoadTime || null},
         ${windowLoadTime || null},
         ${connectionType || null}

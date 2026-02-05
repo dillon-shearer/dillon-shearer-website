@@ -16,10 +16,7 @@ type AnalyticsStats = {
   dailyViews: { date: string; views: number }[]
   performance: {
     avgLcp: number
-    avgFid: number
-    avgCls: number
     avgTtfb: number
-    avgFcp: number
   }
 }
 
@@ -172,14 +169,13 @@ export default function AnalyticsDashboard() {
               </div>
             </div>
 
-            {/* Two-Column Insights */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              {/* Top Pages */}
-              <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/20 transition-all">
-                <div className="flex items-baseline gap-3 mb-5">
-                  <h2 className="text-lg font-bold">Top Pages</h2>
+            {/* All Pages - Full Width */}
+            <div className="mb-8">
+              <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 hover:border-[#54b3d6]/20 transition-all">
+                <div className="flex items-baseline gap-3 mb-6">
+                  <h2 className="text-xl font-bold">All Pages</h2>
                   <span className="text-xs text-white/40 uppercase tracking-wider">
-                    {stats.topPages.length} Total
+                    {stats.topPages.length} {stats.topPages.length === 1 ? 'Page' : 'Pages'}
                   </span>
                 </div>
                 {stats.topPages.length > 0 ? (
@@ -187,14 +183,17 @@ export default function AnalyticsDashboard() {
                     data={stats.topPages}
                     dataKey="views"
                     nameKey="path"
-                    height={280}
+                    height={Math.max(280, stats.topPages.length * 40)}
                   />
                 ) : (
                   <div className="text-white/30 text-sm py-12 text-center">No page data available</div>
                 )}
               </div>
+            </div>
 
-              {/* Top Referrers */}
+            {/* Traffic Sources & Browser Usage - Two Column */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Traffic Sources */}
               <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/20 transition-all">
                 <div className="flex items-baseline gap-3 mb-5">
                   <h2 className="text-lg font-bold">Traffic Sources</h2>
@@ -213,11 +212,8 @@ export default function AnalyticsDashboard() {
                   <div className="text-white/30 text-sm py-12 text-center">No referrer data available</div>
                 )}
               </div>
-            </div>
 
-            {/* Browser Distribution & Performance */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Browser Stats */}
+              {/* Browser Usage */}
               <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/20 transition-all">
                 <div className="flex items-baseline gap-3 mb-5">
                   <h2 className="text-lg font-bold">Browser Usage</h2>
@@ -236,50 +232,35 @@ export default function AnalyticsDashboard() {
                   <div className="text-white/30 text-sm py-12 text-center">No browser data available</div>
                 )}
               </div>
-
-              {/* Core Web Vitals - Only show if we have performance data */}
-              {(stats.performance.avgLcp > 0 || stats.performance.avgFid > 0 ||
-                stats.performance.avgCls > 0 || stats.performance.avgTtfb > 0) && (
-                <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:border-[#54b3d6]/20 transition-all">
-                  <div className="flex items-baseline gap-3 mb-5">
-                    <h2 className="text-lg font-bold">Core Web Vitals</h2>
-                    <span className="text-xs text-white/40 uppercase tracking-wider">
-                      Performance
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <PerformanceGauge
-                      label="LCP"
-                      value={stats.performance.avgLcp}
-                      unit="ms"
-                      threshold={2500}
-                      description="Largest Contentful Paint"
-                    />
-                    <PerformanceGauge
-                      label="FID"
-                      value={stats.performance.avgFid}
-                      unit="ms"
-                      threshold={100}
-                      description="First Input Delay"
-                    />
-                    <PerformanceGauge
-                      label="CLS"
-                      value={stats.performance.avgCls}
-                      unit=""
-                      threshold={0.1}
-                      description="Cumulative Layout Shift"
-                    />
-                    <PerformanceGauge
-                      label="TTFB"
-                      value={stats.performance.avgTtfb}
-                      unit="ms"
-                      threshold={600}
-                      description="Time to First Byte"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* Performance Metrics - Full Width - Only show if we have data */}
+            {(stats.performance.avgLcp > 0 || stats.performance.avgTtfb > 0) && (
+              <div className="group rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 hover:border-[#54b3d6]/20 transition-all">
+                <div className="flex items-baseline gap-3 mb-6">
+                  <h2 className="text-xl font-bold">Performance Metrics</h2>
+                  <span className="text-xs text-white/40 uppercase tracking-wider">
+                    Load Times
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
+                  <PerformanceGauge
+                    label="LCP"
+                    value={stats.performance.avgLcp}
+                    unit="ms"
+                    threshold={2500}
+                    description="Largest Contentful Paint"
+                  />
+                  <PerformanceGauge
+                    label="TTFB"
+                    value={stats.performance.avgTtfb}
+                    unit="ms"
+                    threshold={600}
+                    description="Time to First Byte"
+                  />
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

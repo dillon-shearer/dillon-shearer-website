@@ -32,25 +32,10 @@ export default function AnalyticsTracker() {
         }
 
         // Dynamically import web-vitals and collect Core Web Vitals
-        const { onLCP, onFID, onCLS, onFCP } = await import('web-vitals')
+        const { onLCP } = await import('web-vitals')
 
         onLCP((metric) => {
           metrics.lcp = metric.value
-          sendMetrics(metrics)
-        })
-
-        onFID((metric) => {
-          metrics.fid = metric.value
-          sendMetrics(metrics)
-        })
-
-        onCLS((metric) => {
-          metrics.cls = metric.value
-          sendMetrics(metrics)
-        })
-
-        onFCP((metric) => {
-          metrics.fcp = metric.value
           sendMetrics(metrics)
         })
 

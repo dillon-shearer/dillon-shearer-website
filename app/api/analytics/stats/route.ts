@@ -46,6 +46,7 @@ export async function GET(request: Request) {
     const range = (searchParams.get('range') || '7d') as TimeRange
 
     const { startDate, endDate } = getDateRange(range)
+    console.log(`[Analytics] Range: ${range}, Start: ${startDate}, End: ${endDate}`)
 
     // Execute parallel queries
     const [
@@ -57,70 +58,61 @@ export async function GET(request: Request) {
       dailyViewsResult,
       perfAveragesResult,
     ] = await Promise.all([
-      // Total page views (excluding bots)
+      // Total page views (including ALL data - no bot filtering)
       sql`
         SELECT COUNT(*) as count
         FROM analytics_page_views
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
-          AND is_bot = false
       `,
 
-      // Unique visitors
+      // Unique visitors (including ALL data)
       sql`
         SELECT COUNT(DISTINCT session_hash) as count
         FROM analytics_page_views
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
-          AND is_bot = false
       `,
 
-      // Top pages
+      // All pages - show every single entry from database
       sql`
         SELECT path, COUNT(*) as views
         FROM analytics_page_views
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
-          AND is_bot = false
         GROUP BY path
         ORDER BY views DESC
-        LIMIT 10
       `,
 
-      // Top referrers (exclude internal referrers)
+      // External referrers only - exclude internal navigation
       sql`
         SELECT referrer, COUNT(*) as views
         FROM analytics_page_views
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
-          AND is_bot = false
           AND referrer IS NOT NULL
           AND referrer NOT LIKE '%datawithdillon.com%'
           AND referrer NOT LIKE '%localhost%'
         GROUP BY referrer
         ORDER BY views DESC
-        LIMIT 10
       `,
 
-      // Browser distribution
+      // Browser distribution (all data, no limits)
       sql`
         SELECT browser, COUNT(*) as count
         FROM analytics_page_views
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
-          AND is_bot = false
         GROUP BY browser
         ORDER BY count DESC
-        LIMIT 10
       `,
 
-      // Daily page views for chart
+      // Daily page views for chart (all data)
       sql`
         SELECT date, COUNT(*) as views
         FROM analytics_page_views
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
-          AND is_bot = false
         GROUP BY date
         ORDER BY date ASC
       `,
@@ -129,15 +121,26 @@ export async function GET(request: Request) {
       sql`
         SELECT
           AVG(lcp) as avg_lcp,
-          AVG(fid) as avg_fid,
-          AVG(cls) as avg_cls,
-          AVG(ttfb) as avg_ttfb,
-          AVG(fcp) as avg_fcp
+          AVG(ttfb) as avg_ttfb
         FROM analytics_performance
         WHERE date >= ${startDate}::date
           AND date < ${endDate}::date
       `,
     ])
+
+    console.log(`[Analytics] Top pages query returned ${topPagesResult.rows.length} pages:`, topPagesResult.rows)
+
+    // Debug: Check if there are bot pages being filtered out
+    const allPagesDebug = await sql`
+      SELECT path, COUNT(*) as total_views,
+             COUNT(*) FILTER (WHERE is_bot = true) as bot_views,
+             COUNT(*) FILTER (WHERE is_bot = false) as real_views
+      FROM analytics_page_views
+      WHERE date >= ${startDate}::date AND date < ${endDate}::date
+      GROUP BY path
+      ORDER BY total_views DESC
+    `
+    console.log(`[Analytics DEBUG] All pages including bots:`, allPagesDebug.rows)
 
     const stats = {
       totalViews: parseInt(totalViewsResult.rows[0]?.count || '0'),
@@ -151,10 +154,7 @@ export async function GET(request: Request) {
       })),
       performance: {
         avgLcp: parseFloat(perfAveragesResult.rows[0]?.avg_lcp || '0'),
-        avgFid: parseFloat(perfAveragesResult.rows[0]?.avg_fid || '0'),
-        avgCls: parseFloat(perfAveragesResult.rows[0]?.avg_cls || '0'),
         avgTtfb: parseFloat(perfAveragesResult.rows[0]?.avg_ttfb || '0'),
-        avgFcp: parseFloat(perfAveragesResult.rows[0]?.avg_fcp || '0'),
       },
     }
 

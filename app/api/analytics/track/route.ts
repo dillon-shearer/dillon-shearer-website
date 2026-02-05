@@ -15,6 +15,10 @@ export async function POST(request: Request) {
       )
     }
 
+    // Normalize path: ensure it always starts with /
+    // This treats 'datawithdillon.com' and 'datawithdillon.com/' the same
+    const normalizedPath = path === '' || path === '/' ? '/' : path.startsWith('/') ? path : `/${path}`
+
     // Parse user agent
     const { browser, os, deviceType } = parseUserAgent(userAgent)
     const isBotRequest = isBot(userAgent)
@@ -33,7 +37,7 @@ export async function POST(request: Request) {
         device_type,
         is_bot
       ) VALUES (
-        ${path},
+        ${normalizedPath},
         ${referrer},
         ${sessionHash},
         ${browser},
