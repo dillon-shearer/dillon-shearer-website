@@ -42,3 +42,6 @@ next-env.d.ts
 .ai/outputs/*
 .ai/output/*
 .ai/HANDOFF.md
+
+# claude code
+.claude/settings.local.json
