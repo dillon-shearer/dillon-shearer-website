@@ -6,8 +6,9 @@ export const dynamic = 'force-dynamic'
 
 type TimeRange = 'today' | 'yesterday' | '7d' | '30d'
 
-function getDateRange(range: TimeRange): { startDate: string; endDate: string } {
+function getDateRange(range: TimeRange): { startTimestamp: string; endTimestamp: string } {
   const now = new Date()
+  // Get midnight in local timezone
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
   let startDate: Date
@@ -35,9 +36,10 @@ function getDateRange(range: TimeRange): { startDate: string; endDate: string } 
       endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000)
   }
 
+  // Return ISO timestamps that preserve timezone - Postgres will handle conversion
   return {
-    startDate: startDate.toISOString().split('T')[0], // Return YYYY-MM-DD
-    endDate: endDate.toISOString().split('T')[0],     // Return YYYY-MM-DD
+    startTimestamp: startDate.toISOString(),
+    endTimestamp: endDate.toISOString(),
   }
 }
 
@@ -46,7 +48,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const range = (searchParams.get('range') || '7d') as TimeRange
 
-    const { startDate, endDate } = getDateRange(range)
+    const { startTimestamp, endTimestamp } = getDateRange(range)
 
     // Execute parallel queries using unified analytics table
     const [
@@ -64,8 +66,8 @@ export async function GET(request: Request) {
       sql`
         SELECT COUNT(*) as count
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
       `,
 
@@ -73,8 +75,8 @@ export async function GET(request: Request) {
       sql`
         SELECT COUNT(DISTINCT session_hash) as count
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
       `,
 
@@ -82,8 +84,8 @@ export async function GET(request: Request) {
       sql`
         SELECT path, COUNT(*) as views
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
         GROUP BY path
         ORDER BY views DESC
@@ -94,8 +96,8 @@ export async function GET(request: Request) {
       sql`
         SELECT referrer, COUNT(*) as views
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
           AND referrer IS NOT NULL
           AND referrer != 'datawithdillon.com'
@@ -109,8 +111,8 @@ export async function GET(request: Request) {
       sql`
         SELECT browser, COUNT(*) as count
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
         GROUP BY browser
         ORDER BY count DESC
@@ -120,8 +122,8 @@ export async function GET(request: Request) {
       sql`
         SELECT device_type, COUNT(*) as count
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
         GROUP BY device_type
         ORDER BY count DESC
@@ -131,8 +133,8 @@ export async function GET(request: Request) {
       sql`
         SELECT os, COUNT(*) as count
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
         GROUP BY os
         ORDER BY count DESC
@@ -142,8 +144,8 @@ export async function GET(request: Request) {
       sql`
         SELECT date, COUNT(*) as views
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
         GROUP BY date
         ORDER BY date ASC
@@ -160,8 +162,8 @@ export async function GET(request: Request) {
           AVG(dom_load_time) as avg_dom_load,
           AVG(window_load_time) as avg_window_load
         FROM analytics
-        WHERE date >= ${startDate}::date
-          AND date < ${endDate}::date
+        WHERE timestamp >= ${startTimestamp}::timestamptz
+          AND timestamp < ${endTimestamp}::timestamptz
           AND is_bot = false
       `,
     ])

@@ -5,8 +5,9 @@ export const dynamic = 'force-dynamic'
 
 type TimeRange = 'today' | 'yesterday' | '7d' | '30d' | 'all'
 
-function getDateRange(range: TimeRange): { startDate: string; endDate: string } {
+function getDateRange(range: TimeRange): { startTimestamp: string; endTimestamp: string } {
   const now = new Date()
+  // Get midnight in local timezone
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
   let startDate: Date
@@ -39,9 +40,10 @@ function getDateRange(range: TimeRange): { startDate: string; endDate: string } 
       endDate = new Date(today.getTime() + 24 * 60 * 60 * 1000)
   }
 
+  // Return ISO timestamps that preserve timezone - Postgres will handle conversion
   return {
-    startDate: startDate.toISOString().split('T')[0],
-    endDate: endDate.toISOString().split('T')[0],
+    startTimestamp: startDate.toISOString(),
+    endTimestamp: endDate.toISOString(),
   }
 }
 
@@ -60,7 +62,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const range = (searchParams.get('range') || '7d') as TimeRange
 
-    const { startDate, endDate } = getDateRange(range)
+    const { startTimestamp, endTimestamp } = getDateRange(range)
 
     // Get all analytics data (real traffic only)
     const analyticsResult = await sql`
@@ -83,8 +85,8 @@ export async function GET(request: Request) {
         window_load_time,
         connection_type
       FROM analytics
-      WHERE date >= ${startDate}::date
-        AND date < ${endDate}::date
+      WHERE timestamp >= ${startTimestamp}::timestamptz
+        AND timestamp < ${endTimestamp}::timestamptz
         AND is_bot = false
       ORDER BY timestamp DESC
     `
