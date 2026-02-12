@@ -6,9 +6,9 @@
 // what appears on each resume.
 // =============================================================================
 
-export type ResumeVariant = 'comprehensive' | 'data-engineer' | 'data-analyst' | 'python-developer'
+export type ResumeVariant = 'data-engineer' | 'data-analyst' | 'python-developer'
 
-export const ALL_VARIANTS: ResumeVariant[] = ['comprehensive', 'data-engineer', 'data-analyst', 'python-developer']
+export const ALL_VARIANTS: ResumeVariant[] = ['data-engineer', 'data-analyst', 'python-developer']
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,68 +100,6 @@ export const contactInfo: ContactInfo = {
 // ---------------------------------------------------------------------------
 
 export const variantContent: VariantContent[] = [
-  // =========================================================================
-  // COMPREHENSIVE (Master Resume - All Content)
-  // =========================================================================
-  {
-    slug: 'comprehensive',
-    displayName: 'Comprehensive Resume',
-    shortDescription: 'The complete picture: every skill, project, certification, and experience',
-    headline: 'Data Professional | Analytics, Engineering & Development',
-    summary:
-      'Data professional with 4+ years delivering end-to-end solutions across analytics, engineering, and application development in regulated healthcare environments. Built production ETL pipelines processing millions of clinical and genomic records, shipped full-stack applications serving 470+ researchers, and delivered dashboards and analyses that shaped strategic decisions. Core expertise in Python and SQL with hands-on experience across the modern data stack: cloud infrastructure (Azure, Snowflake), BI tools (Tableau, Power BI, Looker), and web frameworks (React, Next.js, FastAPI). Combines technical depth with clear communication to translate complex data into actionable insights.',
-    accentColor: '#ffffff',
-    isPrimary: false,
-    focusAreas: [
-      'Data Engineering & Pipeline Development',
-      'Analytics & Business Intelligence',
-      'Full-Stack Application Development',
-    ],
-    impactMetrics: [
-      { value: '470+', label: 'Researchers Served' },
-      { value: '50M+', label: 'Records Processed' },
-      { value: '15+ hrs/week', label: 'Automation Savings' },
-      { value: '5+', label: 'Production Apps' },
-    ],
-    skillsSpotlight: [
-      'Python',
-      'SQL',
-      'Azure',
-      'PostgreSQL',
-      'Snowflake',
-      'React',
-      'Next.js',
-      'Tableau',
-      'Power BI',
-      'FastAPI',
-      'Pandas',
-      'ETL/ELT',
-    ],
-    signatureProjectIds: ['variant-reporting', 'dua-tracking', 'data-access-portal', 'gym-dashboard', 'saipe-analysis', 'drug-utilization'],
-    experienceBullets: {
-      'answer-als': [
-        'aals-de-1', 'aals-de-2', 'aals-de-3', 'aals-de-4', 'aals-de-5', 'aals-de-6',
-        'aals-da-1', 'aals-da-2', 'aals-da-3', 'aals-da-4', 'aals-da-5',
-        'aals-py-1', 'aals-py-2', 'aals-py-3', 'aals-py-5',
-      ],
-      'equity-quotient': [
-        'eq-de-1', 'eq-de-2', 'eq-de-3',
-        'eq-da-1', 'eq-da-2', 'eq-da-3', 'eq-da-4',
-        'eq-py-1', 'eq-py-2',
-      ],
-      'rare-x': [
-        'rx-de-1', 'rx-de-2',
-        'rx-da-1', 'rx-da-2',
-        'rx-py-1', 'rx-py-2',
-      ],
-      'across-healthcare': [
-        'ah-de-1', 'ah-de-2',
-        'ah-da-1', 'ah-da-2',
-        'ah-py-1', 'ah-py-2', 'ah-py-3',
-      ],
-    },
-  },
-
   // =========================================================================
   // DATA ENGINEER
   // =========================================================================

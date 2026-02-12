@@ -22,7 +22,6 @@ export default async function sitemap() {
 
     // Resumes
     '/resumes',
-    '/resumes/comprehensive',
     '/resumes/data-engineer',
     '/resumes/data-analyst',
     '/resumes/python-developer',

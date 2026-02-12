@@ -455,7 +455,7 @@ async function main() {
   console.log('Generating Sage Data Product Engineer resume PDF...')
   const buffer = await renderToBuffer(<SageResume />)
   const outPath = join(process.cwd(), 'Dillon_Shearer_Resume_Data_Product_Engineer.pdf')
-  writeFileSync(outPath, buffer)
+  writeFileSync(outPath, new Uint8Array(buffer))
   console.log(`Done! Saved to: ${outPath}`)
 }
 
